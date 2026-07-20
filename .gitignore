@@ -14,3 +14,15 @@ keystore.properties
 *.log
 .DS_Store
 Thumbs.db
+
+# 项目文档（仅保留首页 README）
+/docs/*
+!/docs/README.md
+!/docs/README_EN.md
+
+# 贡献/安全/计划文档（项目代码不包含这些）
+CONTRIBUTING.md
+SECURITY.md
+Muse_Product_Enhancement_Plan.md
+_skill_existing.txt
+report_*.txt

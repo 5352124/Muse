@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="app/src/main/res/drawable/ic_muse_logo.png">
-    <img src="app/src/main/res/drawable/ic_muse_logo.png" width="96" height="96" alt="Muse">
+    <source media="(prefers-color-scheme: dark)" srcset="../app/src/main/res/drawable/ic_muse_logo.png">
+    <img src="../app/src/main/res/drawable/ic_muse_logo.png" width="96" height="96" alt="Muse">
   </picture>
 </p>
 
@@ -13,16 +13,16 @@
 </p>
 
 <p align="center">
-  <b>中文</b> · <a href="README_EN.md">English</a>
+  <b>English</b> · <a href="README.md">中文</a>
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-blue.svg" alt="License: GPL v3"></a>
+  <a href="../LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-blue.svg" alt="License: GPL v3"></a>
   <img src="https://img.shields.io/badge/Android-8.0%2B-brightgreen" alt="Min SDK">
   <img src="https://img.shields.io/badge/Kotlin-2.0-purple" alt="Kotlin">
   <img src="https://img.shields.io/badge/Compose-Material%203-ff69b4" alt="Compose">
   <img src="https://img.shields.io/badge/build-passing-success" alt="Build">
-  <a href="https://github.com/5352124/Muse/releases"><img src="https://img.shields.io/github/v/release/5352124/Muse" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="Version">
 </p>
 
 <p align="center">
@@ -92,7 +92,7 @@ Create multiple assistants with distinct personalities and expertise. Delegate t
 <details>
 <summary><b>🔧 Skill System + MCP</b> — infinitely extensible</summary>
 
-- **20+ built‑in tools**: file I/O, web search, knowledge base, calendar, clipboard, calculator, SMS, alarms, stickers, and more
+- **30+ built‑in tools**: file I/O, web search, knowledge base, calendar, clipboard, calculator, SMS, alarms, stickers, image/video generation, and more
 - **`.skill.json` import**: create and share custom skills with parameter schemas
 - **MCP protocol**: connect to external MCP servers for dynamic tool extension (OAuth, SSE transport, auto‑discovery)
 </details>
@@ -102,7 +102,7 @@ Create multiple assistants with distinct personalities and expertise. Delegate t
 <details>
 <summary><b>🎤 Streaming Speech Recognition</b> — talk naturally, see text in real time</summary>
 
-- DashScope Paraformer or Step Whisper API
+- DashScope Paraformer, Step Whisper API, or Vosk offline Chinese recognition
 - Partial results displayed as you speak
 - Gesture interaction: long‑press to record, swipe up to cancel
 - Real‑time amplitude waveform visualization
@@ -199,7 +199,7 @@ Plus 8 color‑blind‑friendly curated palettes for custom themes. Every theme 
 - **Embedded Web server** (Ktor + JWT + mDNS) for LAN API access
 - **Config importer** from CherryStudio / Chatbox
 - **Backup & restore** with local file + S3 / WebDAV cloud sync
-- **Full‑text search** over conversation history (Room FTS5)
+- **Full‑text search** over conversation history (Room FTS)
 - **Scheduled tasks** with WorkManager fallback
 - **Usage statistics** with heatmap visualization
 - **Crash handler** with safe mode — skip Koin init on crash loop, one‑tap log export
@@ -262,14 +262,14 @@ cd Muse
 | Category | Choice |
 |----------|--------|
 | **Language** | Kotlin 2.0 (100% Kotlin) |
-| **UI** | Jetpack Compose + Material 3 (1.4.0-alpha04) |
+| **UI** | Jetpack Compose + Material 3 |
 | **Architecture** | Single‑Activity, MVVM, Koin DI |
-| **Database** | Room (SQLite + FTS5) + DataStore Preferences |
+| **Database** | Room (SQLite + FTS) + DataStore Preferences |
 | **DI** | Koin |
 | **Networking** | OkHttp (SSE), Ktor (embedded server) |
 | **Images** | Coil (SVG + GIF) |
 | **OCR** | ML Kit Chinese text recognition |
-| **ASR** | DashScope Paraformer, Step Whisper |
+| **ASR** | DashScope Paraformer, Step Whisper, Vosk offline |
 | **Serialization** | kotlinx.serialization |
 | **Widgets** | Glance Compose |
 | **PDF** | pdfbox-android |
@@ -291,6 +291,21 @@ Muse is built **offline‑first**:
 
 ---
 
+## 📚 Documentation
+
+- [Overview](01-overview.md) — positioning, core concepts, version info
+- [Tech Stack](02-tech-stack.md) — full technology inventory
+- [Project Structure](03-project-structure.md) — directory organization
+- [Core Flows](04-core-flows.md) — chat flow / Transformer Pipeline
+- [Maintenance Guide](09-maintenance-scenarios.md) — common scenarios / release process
+- [Version History](12-version-history.md) — complete changelog
+- [Known Issues](13-known-issues.md) — technical debt list
+- [Development Standards](15-development-standards.md) — coding/build conventions
+
+Full index: [_sidebar.md](_sidebar.md).
+
+---
+
 ## 🤝 Contributing
 
 - **Bug reports** → [Open an issue](https://github.com/5352124/Muse/issues)
@@ -302,6 +317,6 @@ Muse is built **offline‑first**:
 Since v1.119, Muse is licensed under the **GNU General Public License v3**.
 
 - The entire project (source code, resources, and derivative works) is GPL v3
-- Third‑party dependencies each carry their own licenses — see [NOTICE](NOTICE)
+- Third‑party dependencies each carry their own licenses — see [NOTICE](../NOTICE)
 
-Full license text: [LICENSE](LICENSE)
+Full license text: [LICENSE](../LICENSE)
