@@ -1,0 +1,607 @@
+================================================================================
+  1muse vs openhanako 助手对话完整流程对比报告
+  生成时间: 2026-07-20
+  对比范围: 用户向助手发消息 → 助手回复的完整链路
+================================================================================
+
+【说明】
+本报告从两个维度对 1muse(当前项目) 与 openhanako(参考项目) 的助手对话流程进行
+完整对比:
+  1) 用户消息进入系统后的处理链路
+  2) 系统提示、模型调用、工具调用、流式响应、错误处理等核心机制
+所有关键代码位置均标注了文件路径与函数名,便于回溯。
+
+
+================================================================================
+一、1muse 项目对话完整流程
+================================================================================
+
+1.1 用户消息入口
+--------------------------------------------------------------------------------
+触发条件: 用户在 ChatScreen 点击发送 / 语音输入 / 粘贴图片等
+处理文件: app/src/main/java/io/zer0/muse/ui/ChatViewModel.kt
+关键函数: sendMessage(...)、launchStream(...)
+
+步骤:
+  1) sendMessage 收集用户输入的 text 与 imageBase64List(可能多张)
+  2) 构造 UIMessage(role=USER, content=text, imageBase64List=...)
+  3) 将用户消息追加到 _state.messages 并持久化到 DB(sessionRepository.upsertMessage)
+  4) 在 messages 末尾追加一条空的 ASSISTANT 占位消息
+  5) 调用 launchStream(assistantId, sessionId, isNewBranch)
+
+1.2 视觉辅助处理(发送前)
+--------------------------------------------------------------------------------
+处理文件: app/src/main/java/io/zer0/muse/ui/ChatViewModel.kt (行 2696-2728)
+         app/src/main/java/io/zer0/muse/vision/VisionBridge.kt
+关键函数: VisionBridge.analyzeImages(...)、buildVisionContext(...)、
+         buildFailureNotice(...)
+
+步骤:
+  1) launchStream 解析 effectiveModel(主模型或 toolModel)
+  2) 若 effectiveModel 不支持视觉(!visionBridge.supportsVision(...)),且用户消息
+     带有 imageBase64List,则进入视觉辅助分支
+  3) 调用 visionBridge.analyzeImages(imageBase64List)
+     - VisionBridge 从 SettingsRepository 读取 visionModelId / visionProviderId
+     - 用 ModelRegistry.enhanceModel(...) 增强视觉模型能力识别
+     - 校验视觉模型自身支持视觉输入,否则抛 VisionAnalysisException
+     - 构造 USER 消息(带图片 + 结构化分析提示词 VISION_PROMPT)
+     - 调用 chatService.completeText(...) 获取描述
+     - 返回 "<vision-context>...结构化描述...</vision-context>"
+  4) 成功: 将描述注入到原 USER 消息 content 开头,并清空 imageBase64List
+     失败: 注入 buildFailureNotice(reason) 并清空 imageBase64List
+     (关键修复: 无论成功/失败都要清空,避免向纯文本模型发图导致 HTTP 400)
+  5) 通过 MuseToast 提示用户视觉分析成功/失败
+
+1.3 上下文截断与 Token 预警
+--------------------------------------------------------------------------------
+处理文件: app/src/main/java/io/zer0/muse/ui/ChatViewModel.kt (行 2379-2441)
+关键逻辑:
+  - contextSize 默认取 assistant.contextMessageSize.coerceAtLeast(1) ?: 20
+  - longMemoryCompression 实验开启时减半(最低 5)
+  - rawHistory = _state.messages.dropLast(1) 去掉占位 assistant
+  - truncatedHistory = rawHistory.takeLast(contextSize)
+  - 发送前若 token 占用 >= PRESEND_TOKEN_WARNING_RATIO(0.9),将 contextSize 再减半
+
+1.4 系统提示组装
+--------------------------------------------------------------------------------
+处理文件: app/src/main/java/io/zer0/muse/transformer/SystemPromptAssembler.kt
+关键函数: build(...)、buildPersonaSection、buildStyleSection、buildTimeSection、
+         buildUserProfileSection、buildPinnedMemoriesSection、
+         buildLongTermMemorySection、buildExperienceSection、buildToolManifestSection
+
+注入顺序(用 \n\n---\n\n 分隔):
+  1) 人格定义: AssistantEntity.systemPrompt + messageTemplate
+  2) 输出风格: ChatPreferences.responseStyle / responseTone
+  3) 当前时间: yyyy-MM-dd HH:mm:ss 星期X
+  4) 用户画像: 昵称/助手名/简介/年龄/城市/职业/教育/专业/兴趣/沟通偏好等
+  5) Pinned Memories: filesDir/pinned_memories.json,最多 PINNED_MAX_ENTRIES 条
+  6) 长期记忆摘要: memoryTicker.readCompiledMemoryMarkdown()
+  7) 经验库: settings.experienceEnabledCache 开启时注入最近 20 条
+  8) 可用工具清单: toolRegistry.listTools() + skillRepository.listEnabled()
+                 按 file/web/system/phone/knowledge/agent/skill/built-in 分类
+  9) 多 Agent 协作提示: MultiAgentConfig.enabled 时注入,列出可用助手 id/name
+ 10) Workspace 路径
+ 11) 决策树规则: prompt_loader.render("decision_tree", fallback=...)
+ 12) MOOD 格式要求: chatPrefs.showMoodBlock / experiments.forceMoodBlock
+ 13) 自我反思: experiments.selfReflection 时追加 <reflection> 要求
+ 14) 产物卡片格式: ARTIFACT_FORMAT_SECTION
+
+1.5 RAG 与联网搜索前缀注入
+--------------------------------------------------------------------------------
+处理文件: app/src/main/java/io/zer0/muse/ui/ChatViewModel.kt (行 2444-2525)
+关键逻辑:
+  - prefixMessages = systemMessages + presetMessages + RAG 注入 + webSearch 注入
+  - RAG: 用最后一条 user 消息检索知识库,取 top-k 片段,相似度达标时注入 SYSTEM;
+         支持 @文档名 定向检索;引用列表 pendingRagCitations
+  - 联网搜索: 若 _state.value.webSearchEnabled,用最后一条 user 消息调用
+    webSearchService.search(query, 8);结果格式化为 markdown 并注入 SYSTEM;
+    pendingCitationUrls 用于 [N] 引用渲染
+
+1.6 Transformer 管道
+--------------------------------------------------------------------------------
+处理文件: app/src/main/java/io/zer0/muse/transformer/TransformerPipeline.kt
+         app/src/main/java/io/zer0/muse/ui/ChatViewModel.kt (行 2527-2578)
+关键 Transformer:
+  - LorebookTransformer: 注入与当前助手/模式相关的 lorebook 条目
+  - PromptInjectionTransformer: 注入 modeInjections
+  - TemplateTransformer: 替换 {{user}} / {{char}} 等变量
+  - RegexMessageTransformer: 应用助手级正则规则
+  - MoodTagTransformer / ThinkTagTransformer: 提取/处理 MOOD/reflection/think 标签
+  - ContextCompressTransformer: 长上下文压缩(阈值 20/10,保留最近 15 条)
+
+注意: memory_enabled=false 与 time_reminder_enabled=false 被显式关闭,避免与
+SystemPromptAssembler 重复注入。
+
+1.7 工具定义准备
+--------------------------------------------------------------------------------
+处理文件: app/src/main/java/io/zer0/muse/ui/ChatViewModel.kt (行 2581-2613)
+         app/src/main/java/io/zer0/muse/tools/ToolRegistry.kt
+         app/src/main/java/io/zer0/muse/tools/SkillExecutor.kt
+
+步骤:
+  1) enabledToolIds 从 AssistantEntity.toolIdsJson 解析
+  2) localToolDefs = toolRegistry.listToolsAsToolDefinitions(enabledToolIds)
+  3) enabledSkillIds 从 AssistantEntity.skillIdsJson 解析
+  4) enabledSkills = skillRepository.listEnabledByIds(enabledSkillIds)
+  5) skillToolDefs = enabledSkills 转为 ToolDefinition(name=skill.id,
+     description=skill.description, parametersJsonSchema=skill.parametersJson)
+  6) tools = localToolDefs + skillToolDefs
+  7) 若 stickerEnabled 未命中概率,过滤掉 sticker 相关工具
+
+1.8 模型解析与推理等级
+--------------------------------------------------------------------------------
+处理文件: app/src/main/java/io/zer0/muse/ui/ChatViewModel.kt (行 2615-2654)
+关键逻辑:
+  - assistantModelId / assistantProviderId → resolvedModel
+  - 未配置则回退到 _state.value.selectedModelId
+  - toolModelId 存在且本轮有工具时,优先使用 toolModel 作为 effectiveModel
+  - ModelRegistry.enhanceModel(effectiveModel) 增强能力识别
+  - requestedReasoningLevel:
+      * 深度思考开关开启 → HIGH
+      * 否则取 assistant.reasoningLevel;若为 AUTO 则视为 OFF
+  - 若 effectiveModel 不支持推理,降级到 AUTO/OFF
+
+1.9 LLM 流式调用与事件处理
+--------------------------------------------------------------------------------
+处理文件: app/src/main/java/io/zer0/muse/ui/ChatViewModel.kt (行 2656-2912)
+关键函数: chatService.streamChat(...)
+事件类型: ChatStreamEvent.ContentDelta / ReasoningDelta / ImageDelta /
+          ToolCallDelta / Done / Error
+
+循环: while(hasToolCalls && round < maxToolRounds)
+  - maxToolRounds = MAX_TOOL_ROUNDS(25)
+  - 每轮开始时对 conversationHistory 做工具链截断
+    (保留 baseHistorySize + 最近 MAX_TOOL_CHAIN_MESSAGES,中间用省略提示替换)
+  - 调用 chatService.streamChat(messages, model, providerConfig, tools,
+    temperature, maxTokens, reasoningLevel)
+  - 收集事件:
+      * ContentDelta: 追加到 builder,按 40 字符/80ms 节流更新 UI
+      * ReasoningDelta: 追加到 reasoningBuilder,同步更新
+      * ImageDelta: Gemini 绘图 base64 累积到 imageAccumulator
+      * ToolCallDelta: 累积到 toolCallAccumulator(index → id/name/args)
+      * Done: 正常结束
+      * Error: 记录 streamError
+  - 流式错误自动重试: NETWORK/RATE_LIMIT 最多 2 次,指数退避 1s/4s
+
+1.10 工具调用执行
+--------------------------------------------------------------------------------
+处理文件: app/src/main/java/io/zer0/muse/ui/ChatViewModel.kt (行 3094-3235)
+         app/src/main/java/io/zer0/muse/tools/SkillExecutor.kt
+         app/src/main/java/io/zer0/muse/tools/ToolRegistry.kt
+
+步骤:
+  1) 若 toolCallAccumulator 非空:
+     - 将 assistant 的 tool_calls 消息加入 conversationHistory
+     - 创建 TaskCard(PLANNING → EXECUTING)
+     - 多个 tool call 并行执行(coroutineScope + async/awaitAll)
+  2) 单个工具执行 executeToolCall(idx, tc):
+     - 请求用户审批 requestToolApproval(tc.name, tc.id, tc.arguments.take(200))
+     - 被拒绝: 返回 denied 结果,TaskCard 标记 FAILED
+     - 通过: withTimeoutOrNull(TOOL_TIMEOUT_MS) {
+         * 若 tc.name 在 skillMap → skillExecutor.execute(skill, argumentsJson, onProgress)
+         * 否则 → withContext(Dispatchers.IO) { toolRegistry.executeFromJson(name, args) }
+       }
+     - 失败结果追加"[提示] 此工具调用失败..."引导 LLM 换方案
+     - 结果长度超过 MAX_TOOL_RESULT_CHARS 时截断
+  3) 回填: 每个工具结果构造 UIMessage(role=TOOL, content=finalToolResult,
+     toolCallId=tc.id) 加入 conversationHistory
+  4) UI 显示: 构造 toolDisplay(role=ASSISTANT, toolCallInfo=...) 追加到
+     _state.messages 与 toolCallHistory,但不持久化到 DB
+  5) 连续失败计数 consecutiveToolFailures >= MAX_CONSECUTIVE_TOOL_FAILURES 时
+     强制退出循环
+  6) 全部执行完 TaskCard 切到 DONE,然后追加新的空 ASSISTANT 占位消息,
+     继续下一轮 while 循环
+
+1.11 无工具调用时的收尾
+--------------------------------------------------------------------------------
+处理文件: app/src/main/java/io/zer0/muse/ui/ChatViewModel.kt (行 2994-3047)
+步骤:
+  1) hasToolCalls = false,退出循环
+  2) 将 pendingCitationUrls / pendingRagCitations 附加到最终 assistant 消息
+  3) ArtifactExtractor.extractArtifacts(...) 提取 <artifact> 产物卡片并持久化
+  4) 更新 UI 并将最终 assistant 消息落盘
+  5) branchManager.onAssistantResponse(...) 同步分支状态
+
+1.12 断点续传(Pending Tool Calls)
+--------------------------------------------------------------------------------
+处理文件: app/src/main/java/io/zer0/muse/ui/ChatViewModel.kt (行 3088-3103, 3557-3648)
+         app/src/main/java/io/zer0/muse/chat/PendingToolCallStore.kt
+
+机制:
+  - 收到 tool_calls 后立刻持久化 PendingToolCall 列表
+  - 用户 stop / App 崩溃 / 进程被杀后,下次进入会话可恢复
+  - resumePendingToolCalls(chatId): 读取 pending → 逐个执行 → 构造 TOOL 消息
+    → 追加空 ASSISTANT → 重新 launchStream
+  - discardPendingToolCalls(chatId): 直接清除 pending 记录
+
+1.13 取消与异常处理
+--------------------------------------------------------------------------------
+处理文件: app/src/main/java/io/zer0/muse/ui/ChatViewModel.kt (行 3440-3486)
+  - CancellationException: 调用 persistInterruptedAssistant 持久化部分回复(带[已中断])
+  - Exception: 同样持久化部分回复 + classifyErrorType + 友好中文提示
+  - finally: 停止前台服务 ChatGenerationService.stop(appContext)
+
+
+================================================================================
+二、openhanako 项目对话完整流程
+================================================================================
+
+2.1 用户消息入口
+--------------------------------------------------------------------------------
+处理文件: core/desktop-session-submit.ts
+关键函数: submitDesktopSessionMessage(engine, opts)
+
+步骤:
+  1) 解析 sessionId / sessionPath,检查是否 session_busy
+  2) engine.ensureSessionLoaded(sessionPath) 加载/创建 session
+  3) 处理 displayAttachments / inboundFiles,注册为 session files
+  4) promptText = text + 图片/视频/音频附件标记 + SessionFile 标记 + 提醒块
+  5) recordMessagePresentationEntry / recordMessageOriginEntry 持久化展示投影
+  6) 通过 engine.emitEvent 向前端广播 session_user_message
+  7) 构造 promptOpts = { images, videos, audios, imageAttachmentPaths,
+     videoAttachmentPaths, audioAttachmentPaths, context }
+  8) 调用 engine.promptSession(sessionPath, promptText, promptOpts)
+
+附加: submitDesktopSessionInterjection 用于在已有流式回复中插入用户干预。
+
+2.2 Session 创建与初始化
+--------------------------------------------------------------------------------
+处理文件: core/session-coordinator.ts 中的 createSession(...)
+         core/agent.ts 中的 init()、buildSystemPrompt(...)
+         core/engine.ts 中的 buildTools(...)
+
+步骤:
+  1) 取当前 agent = explicitAgent || getAgentById(agentId) || getAgent()
+  2) 确定 effectiveCwd、effectiveModel、thinkingLevel
+  3) 创建 SessionManager,读取/恢复 session-meta.json、capability snapshot
+  4) 快照 systemPromptSnapshot = agent.buildSystemPrompt({
+       forceMemoryEnabled: frozenMemoryEnabled,
+       forceExperienceEnabled: frozenExperienceEnabled,
+       targetModel: promptPatchModel,
+     })
+  5) 通过 buildAppendSystemPromptSnapshot 组装附加 system prompt
+     (provider patches、workspace scope、locale 等)
+  6) 获取 skillsResultSnapshot、agentsFilesResultSnapshot
+  7) 创建 VisionContextInjectionExtension(视觉辅助注入扩展)
+     与 ReminderAwareTurnContextExtension(turn context 扩展)
+  8) 用 Object.create 包装 resourceLoader,注入:
+     - getSystemPrompt: () => systemPromptSnapshot
+     - getExtensions: turnContext + visionAuxiliaryExtension
+     - getAppendSystemPrompt
+     - getSkills: resolveSessionSkillsForRuntime(skillsResultSnapshot)
+     - getAgentsFiles
+  9) agent.getToolsSnapshot(toolSnapshotOptions) 获取工具快照
+ 10) engine.buildTools(cwd, agentToolsSnapshot, { workspace, workspaceFolders,
+     authorizedFolders, agentDir }) 创建沙盒化工具集合
+     - filterToolObjectsByAvailability: 按 agent config 过滤可用工具
+     - createSandboxedTools: 文件/网络沙盒
+     - wrapWithCheckpoint: 文件备份
+     - wrapWithSessionPermission: 权限/审批包装
+     - wrapWithSessionExecutionCancellation: 会话级取消
+ 11) createAgentSession(sessionOpts) 创建 Pi SDK Session
+     sessionOpts 包含 cwd, sessionManager, settingsManager, authStorage,
+     modelRegistry, thinkingLevel, resourceLoader, tools, customTools, model
+
+2.3 视觉辅助处理
+--------------------------------------------------------------------------------
+处理文件: core/vision-bridge.ts
+         core/visual-context-pipeline.ts
+         core/session-coordinator.ts 中 promptSession 调用
+         prepareVisionInputForTextOnlyModel(...)
+
+流程:
+  1) promptSession 中调用 prepareVisionInputForTextOnlyModel({
+       targetModel: entry.session.model, text, opts, sessionPath,
+       getVisionBridge: () => engine.getVisionBridge(),
+       visionPolicyTarget: engine,
+       signal: abortController.signal,
+     })
+  2) 若目标模型需要视觉辅助(requiresAuxiliaryVision(targetModel)):
+     - VisionBridge.prepare({ sessionPath, targetModel, text, images,
+       imageAttachmentPaths, signal })
+     - 解析 visionConfig.model,校验该模型支持图片输入
+     - 对每张图片调用 _analyzeImage(config, img, i, userRequest, signal, sessionPath)
+     - 视觉模型输出结构化字段: image_overview / visible_text /
+       objects_and_layout / charts_or_data / user_request / user_request_answer /
+       evidence / uncertainty
+     - formatStructuredVisionNote 将输出整理为文本 note
+     - _rememberNote / _persistNote: 按 sessionPath + imagePath 缓存到内存与 sidecar
+     - 返回 { text, images: undefined, visionNotes: notes }
+  3) 之后 VisualContextInjectionExtension 在 Pi SDK 消息构建阶段调用
+     injectNotes(messages, sessionPath): 对每条 USER 消息,从缓存查找对应图片路径
+     的 note,注入 <VISION_CONTEXT_START>...note...<VISION_CONTEXT_END> 块
+  4) 失败时返回 formatInvalidStructuredNote,向模型说明视觉分析不可用
+
+特点:
+  - 视觉辅助结果按 sessionPath+imagePath 缓存,同一会话内重复引用可复用
+  - 缓存持久化到 sidecar,restore session 后仍可用
+  - 用户可见 UI 视野不再自动注入,需通过 current_status(ui_context) 显式查询
+
+2.4 系统提示组装
+--------------------------------------------------------------------------------
+处理文件: core/agent.ts 中 buildSystemPrompt(...)(行 1170-1470+)
+
+注入顺序(静态前缀在前,动态内容在后,利于 prefix cache):
+  1) 平台身份: "你运行在 HanaAgent 平台上..."
+  2) 执行环境: getPlatformPromptNote(process.platform)
+  3) 输出约束: "所有文本输出都会直接展示给用户..."
+  4) 工具使用纪律(轻量优先、exec_command / tty / shell 选择)
+  5) Session 文件与交付规则(fileId / writableLocalRef / stage_files)
+  6) 可见 UI 上下文规则(current_status 获取 ui_context)
+  7) subagent 协作规则(创建/回复/关闭 subagent)
+  8) 本机应用控制(computer 工具优先)
+  9) 失败处理(诊断优先于换方案)
+ 10) 操作安全(可逆性判断)
+ 11) 网页工具优先级(web_search → web_fetch → browser)
+ 12) 主动技能获取(learn_skills 开启时)
+ 13) 团队协作 rosters
+ --- cache 分界线 ---
+ 14) 用户档案(user.md)
+ 15) ishiki / personality / yuan 模板(含 {{userName}} 替换)
+ 16) 记忆使用规则 + Pinned Memories + 长期记忆(memory.md)
+ 17) 当前时间
+
+注意: Skills 注入由 Pi SDK 内部统一处理,在 customPrompt 分支追加
+formatSkillsForPrompt(skills),Agent 层不再重复注入。
+
+2.5 Pi SDK 内部消息构建与模型调用
+--------------------------------------------------------------------------------
+处理文件: 依赖库 lib/pi-sdk/index.ts(代码未在项目内完全展开)
+输入: session.prompt(text, promptOpts)
+
+Pi SDK 内部大致流程(根据事件与接口推断):
+  1) 将 text / attachments 构造为 USER 消息
+  2) 通过 resourceLoader.getSystemPrompt 取 systemPromptSnapshot
+  3) 通过 resourceLoader.getAppendSystemPrompt 取附加 system 消息
+  4) 通过 resourceLoader.getSkills 注入 skills
+  5) 通过 resourceLoader.getExtensions 调用 visionAuxiliaryExtension,
+     将 <VISION_CONTEXT> 注入 USER 消息
+  6) 合并历史消息,做上下文截断/压缩(compaction)
+  7) 根据 modelRegistry 与 session.thinkingLevel 设置 reasoning_effort
+  8) 向模型发起流式请求(SSE)
+  9) 接收 content/parts/tool_calls 事件
+
+2.6 工具调用循环
+--------------------------------------------------------------------------------
+处理文件: 主要在 lib/pi-sdk 内部;openhanako 侧通过 session.subscribe 监听事件
+事件类型: tool_execution_start / tool_execution_end / tool_result / message_update 等
+
+流程:
+  1) LLM 生成 tool_calls 后,Pi SDK 调度工具执行
+  2) 工具已被 engine.buildTools 包装:
+     - sandbox 层: 限制文件/网络访问范围
+     - checkpoint 层: 写文件前自动备份
+     - session-permission 层: 根据 permissionMode(Auto/Ask/ReadOnly) 决定
+       是否需要用户确认,allowHumanApproval / approvalPolicy
+     - session-execution-cancellation 层: 支持按会话取消
+  3) 工具执行结果以 "tool" role 消息回填到会话上下文
+  4) Pi SDK 自动进入下一轮模型调用,循环直到没有 tool_calls 或达到上限
+     (具体 maxRounds 在 Pi SDK 内部配置,openhanako 通过 sessionOpts 传入)
+
+2.7 流式响应与前端广播
+--------------------------------------------------------------------------------
+处理文件: server/routes/chat.ts
+         core/session-coordinator.ts 中 session.subscribe 事件转发
+
+流程:
+  1) session.subscribe 监听 Pi SDK 事件
+  2) session-coordinator 将事件转发给 engine.emitEvent
+  3) chat.ts WebSocket 路由接收 engine 事件,转换为 WS 消息:
+     - text_delta → 前端展示流式文本
+     - tool_execution_start/end → 工具状态/卡片
+     - message_end → 消息结束
+     - session_status → 流式状态
+     - compaction_start/end → 上下文压缩事件
+  4) desktop-session-submit 中调用方也可通过 onDelta 回调获取增量文本
+
+2.8 记忆更新
+--------------------------------------------------------------------------------
+处理文件: core/session-coordinator.ts (promptSession finally 后)
+         lib/memory/memory-ticker.ts
+         lib/memory/fact-store.ts
+         lib/memory/session-summary.ts
+
+流程:
+  - promptSession 完成后调用 agent._memoryTicker.notifyTurn(sessionPath)
+  - memoryTicker 后台执行:
+      * SessionSummaryManager 更新本轮摘要
+      * FactStore 提取事实并写入 SQLite(FTS5 全文索引)
+      * daily/weekly 检查,更新 memory.md
+
+2.9 上下文压缩(compaction)
+--------------------------------------------------------------------------------
+处理文件: core/session-coordinator.ts
+         core/session-compactor.ts
+         lib/extensions/compaction-guard-ext.ts
+
+流程:
+  - token 接近上限时触发 compactSessionWithCachePreservationRecoveringRuntime
+  - 保留最近若干轮消息,较早历史压缩为摘要
+  - 发出 compaction_start / compaction_end 事件给前端
+
+
+================================================================================
+三、逐项对比
+================================================================================
+
+| 维度 | 1muse | openhanako | 备注 |
+|------|-------|-----------|------|
+| 架构层 | Android App,单 VM,Jetpack Compose | Node.js + TypeScript,桌面/Web 前端,Hono + WebSocket | 1muse 是移动 App;openhanako 是跨平台服务端 |
+| 消息入口 | ChatViewModel.sendMessage → launchStream | desktop-session-submit.ts → engine.promptSession | openhanako 有 session 抽象;1muse 直接在 ViewModel 处理 |
+| 会话模型 | 本地 Room 数据库 SessionRepository | Pi SDK Session + JSONL 持久化 | openhanako 的 session 由 Pi SDK 管理 |
+| 视觉辅助 | VisionBridge.analyzeImages 在 launchStream 中同步调用;成功后直接修改 USER 消息 content 并清空图片 | VisionBridge.prepare 在 promptSession 前调用;结果按 sessionPath+imagePath 缓存;VisualContextInjectionExtension 在 Pi SDK 消息构建阶段注入 | 1muse 流程更简单;openhanako 缓存与扩展解耦更彻底 |
+| 视觉辅助失败 | 抛 VisionAnalysisException,注入 buildFailureNotice,Toast 提示 | formatInvalidStructuredNote,注入到 VISION_CONTEXT 块 | 两者都避免向文本模型发图 |
+| 结构化字段 | image_overview / visible_text / objects_and_layout / charts_or_data / user_request_answer / evidence / uncertainty | image_overview / visible_text / objects_and_layout / charts_or_data / user_request / user_request_answer / evidence / uncertainty | 字段几乎一致,openhanako 多 user_request |
+| 系统提示组装 | SystemPromptAssembler 在 launchStream 中动态 build,每次对话重建 | Agent.buildSystemPrompt 在 createSession 时快照,后续通过 resourceLoader 注入 | openhanako 快照利于 prefix cache;1muse 每次重建更灵活但开销大 |
+| 提示顺序 | 人格 → 风格 → 时间 → 用户画像 → Pinned → 记忆 → 经验 → 工具清单 → 多 Agent → Workspace → 决策树 → MOOD → 反思 → Artifact | 平台/环境/输出约束 → 工具纪律/文件/UI/subagent/安全/网页 → 用户档案 → ishiki → 记忆规则 → Pinned → 记忆 → 时间 | openhanako 静态前置内容更多,且明确为 prefix cache 优化 |
+| 记忆系统 | MemoryTicker.readCompiledMemoryMarkdown + PinnedMemories JSON | FactStore(SQLite FTS5) + SessionSummaryManager + memory.md | openhanako 记忆系统更完整,有摘要与事实提取 |
+| RAG | 在 ChatViewModel 中显式注入,支持 @mention | 未在对比代码中显式看到同等级实现 | 1muse 已实现 RAG 注入,openhanako 可能由 skill 或 search 工具覆盖 |
+| 联网搜索 | WebSearchService.search 在 launchStream 中调用,多引擎 Auto fallback,结果过滤 | web_search tool,由 Pi SDK 在工具调用循环中调度 | 1muse 在系统提示前缀中注入搜索结果;openhanako 作为工具让模型主动调用 |
+| 工具系统 | ToolRegistry 本地工具 + SkillExecutor 技能,ChatViewModel 手动调度 | Pi SDK 内部工具循环 + engine.buildTools 包装沙盒/权限/备份 | openhanako 工具执行由 SDK 管理;1muse 在 ViewModel 中显式循环 |
+| 工具审批 | requestToolApproval 在 ChatViewModel.executeToolCall 中调用 | wrapWithSessionPermission 在 buildTools 中统一包装 | openhanako 审批更底层、统一 |
+| 工具超时 | withTimeoutOrNull(TOOL_TIMEOUT_MS) | 由 Pi SDK / 各工具自行处理 | 1muse 统一超时 |
+| 工具并行 | 多个 tool call 用 coroutineScope + async 并行 | Pi SDK 内部调度(可能并行) | 1muse 显式控制 |
+| 工具结果截断 | MAX_TOOL_RESULT_CHARS | 未在对比代码中明确看到 | 1muse 有显式截断 |
+| 工具调用轮次 | maxToolRounds=25,MAX_TOOL_CHAIN_MESSAGES 截断,MAX_CONSECUTIVE_TOOL_FAILURES 早停 | Pi SDK 内部配置(未在对比代码中显式读取) | 1muse 轮次与早停策略明确 |
+| 断点续传 | PendingToolCallStore 持久化未执行 tool calls | 未在对比代码中显式看到同等机制 | 1muse 断点续传是亮点 |
+| 推理模式 | ReasoningLevel(HIGH/DEFAULT/AUTO/OFF),effectiveModel.supportsReasoning 降级 | thinkingLevel 在 session 级别,resolveThinkingLevel 后传给 Pi SDK | openhanako 思考等级与模型 default 绑定更细 |
+| 流式事件 | ContentDelta / ReasoningDelta / ImageDelta / ToolCallDelta / Done / Error | Pi SDK message_update(text_delta) / tool_execution_start/end / message_end | 事件模型不同 |
+| UI 更新 | Jetpack Compose StateFlow,ChatViewModel 直接更新 _state.messages | WebSocket 广播,前端按 sessionPath 路由 | 架构差异 |
+| 取消/中断 | CancellationException 与 Exception 均持久化部分回复并标记[已中断] | abortSession / session 取消 + cleanup sidecars | openhanako 清理更全面(subagent/task/browser/terminal) |
+| 前台服务 | ChatGenerationService 保活 | 无此概念 | 1muse 移动端特有 |
+| 错误重试 | NETWORK/RATE_LIMIT 流式错误最多 2 次指数退避 | 未在对比代码中显式看到 | 1muse 重试明确 |
+| 上下文压缩 | ContextCompressTransformer + 发送前 token 预警截断 | compaction 机制 + session-compactor + 切换模型时自适应 | openhanako 压缩机制更成熟 |
+| 多 Agent | delegate_agent 工具 + SystemPromptAssembler 列出可用助手 | subagent 工具 + team roster 注入 + subagent_reply/close | openhanako subagent 是完整协作模型 |
+| 权限模式 | ToolApprovalState(Denied/Approved) 单工具审批 | session permission mode(Auto/Ask/ReadOnly) + approvalGateway | openhanako 权限体系更完整 |
+| Skills | SkillExecutor 执行工具型 Skill;SystemPromptAssembler 在工具清单中展示 | Pi SDK 内部 formatSkillsForPrompt 注入 skills | 1muse 当前已废弃提示词型 Skill,统一为工具型 |
+| 沙盒 | 文件操作在应用沙盒内 | createSandboxedTools + resourceIO 限制 workspace/authorizedFolders | openhanako 沙盒更贴近桌面开发场景 |
+| 产物/Artifact | ArtifactExtractor 提取 <artifact> 卡片持久化 | stage_files tool + SessionFile 注册 | 机制不同 |
+| 日志/通知 | NotificationManager 进度通知 + debugInfo | WebSocket 事件 + module logger | 1muse 移动端通知更重 |
+
+
+================================================================================
+四、关键差异深度分析
+================================================================================
+
+4.1 视觉辅助链路
+----------------------------------------
+相同点:
+  - 都使用结构化字段描述图片
+  - 失败时都避免把原图发给文本模型
+  - 都用辅助视觉模型中转
+
+不同点:
+  - 1muse 在 ChatViewModel 中同步完成视觉分析,直接修改 USER 消息;
+    openhanako 把分析结果缓存为 sidecar,在 Pi SDK 消息构建阶段通过 extension 注入。
+  - openhanako 的缓存机制支持同一会话内重复引用、session restore 后复用;
+    1muse 每次对话重新分析,无持久化缓存。
+  - openhanako 显式区分了 user_request(用户问题) 与 user_request_answer,
+    1muse 的 VISION_PROMPT 也有 user_request_answer,但没有独立的 user_request。
+
+4.2 系统提示与上下文管理
+----------------------------------------
+相同点:
+  - 都注入人格、时间、用户画像、记忆、工具清单
+  - 都区分了静态/动态内容(虽然 1muse 没有显式快照)
+
+不同点:
+  - openhanako 在 createSession 时快照 system prompt,保护 prefix cache;
+    1muse 每次 launchStream 重建,对 KV cache 不友好。
+  - openhanako 的记忆系统有 FactStore + SessionSummary 两层,能自动提取事实;
+    1muse 主要依赖 MemoryTicker 编译后的 markdown,结构化程度较低。
+  - openhanako 的 tool discipline / safety / web priority 等纪律性提示非常详尽;
+    1muse 的工具清单偏"能力列表",纪律性提示相对简短。
+
+4.3 工具调用架构
+----------------------------------------
+相同点:
+  - 都支持本地工具 + Skill
+  - 都有审批/权限概念
+
+不同点:
+  - 1muse 在 ChatViewModel 中显式实现工具调用循环(25 轮、并行执行、结果回填、
+    断点续传),可控性强但代码量大;
+    openhanako 把工具循环交给 Pi SDK,自己只做工具包装与事件转发,更简洁。
+  - openhanako 的工具包装层(沙盒/备份/权限/取消)更成熟;
+    1muse 的审批是单点,沙盒主要依赖 Android 应用沙盒。
+  - 1muse 有 PendingToolCallStore 断点续传,openhanako 未在对比代码中看到同等能力。
+
+4.4 流式响应与错误处理
+----------------------------------------
+相同点:
+  - 都支持流式文本输出
+  - 都处理取消/中断并保留部分回复
+
+不同点:
+  - 1muse 有 NETWORK/RATE_LIMIT 自动重试与指数退避;
+    openhanako 重试逻辑主要在 Pi SDK 或 provider 层。
+  - 1muse 对切页/切 Tab 做了 detachStreaming 处理,后台生成不停止;
+    openhanako 作为服务端,天然支持多 session 并发,前端切换不影响后端。
+  - openhanako 的 cleanup 更全面:subagent/task/deferred/browser/terminal 等。
+
+4.5 联网搜索
+----------------------------------------
+相同点:
+  - 都支持多搜索引擎
+
+不同点:
+  - 1muse 在 launchStream 中主动调用 webSearchService.search 并把结果注入
+    system context,模型被动接收;
+    openhanako 把 web_search 作为工具,由模型在需要时主动调用,更灵活。
+  - 1muse 的搜索结果通过 [N] 引用渲染,openhanako 通过 tool result 返回。
+
+
+================================================================================
+五、建议
+================================================================================
+
+针对 1muse 可借鉴 openhanako 的方面:
+
+1. 系统提示快照化
+   - 参考 openhanako 在 createSession / loadSession 时快照 system prompt,
+     避免每次 launchStream 重建,提升 prefix cache 命中率与首 token 速度。
+
+2. 视觉辅助结果缓存
+   - 参考 openhanako 的 sidecar note 缓存,同一会话内重复发图/引用历史图片时
+     可直接复用描述,减少 API 调用与延迟。
+
+3. 记忆系统增强
+   - 参考 openhanako 的 FactStore(SQLite + FTS5) + SessionSummaryManager,
+     从对话中自动提取事实并按主题检索,替代单一 markdown 摘要。
+
+4. 工具调用循环下沉
+   - 考虑将工具调用循环从 ChatViewModel 中抽出到独立的服务/协调器,
+     降低 ViewModel 复杂度,便于单元测试与后续接入更复杂的工具编排。
+
+5. 联网搜索工具化
+   - 考虑把 web_search 从"系统前缀注入"改为"工具调用",让模型决定何时搜索、
+     搜索什么,减少无关搜索调用;同时保留当前自动注入作为可选模式。
+
+6. 工具权限体系
+   - 参考 openhanako 的 session permission mode + approvalGateway,
+     将审批从单工具扩展为按会话/按危险等级的统一策略。
+
+7. 提示工程补充
+   - 在 system prompt 中补充更详细的"工具使用纪律""操作安全""网页工具优先级"
+     等纪律性提示,引导模型更合理地利工具。
+
+针对 openhanako 可借鉴 1muse 的方面:
+
+1. 移动端通知与前台服务
+   - 1muse 的 ChatGenerationService 与 NotificationManager 在移动端保活与进度
+     通知上更完整,openhanako 移动端/PWA 可参考。
+
+2. 断点续传
+   - 1muse 的 PendingToolCallStore 可在应用崩溃/被系统杀死后恢复未完成的工具
+     调用,openhanako 桌面端也可考虑类似持久化机制。
+
+3. 自动重试
+   - 1muse 对 NETWORK/RATE_LIMIT 流式错误实现了明确的指数退避重试,
+     可作为 provider 层重试策略的补充。
+
+4. RAG 注入
+   - 1muse 在 launchStream 中显式注入 RAG 上下文并支持 @mention 定向检索,
+     openhanako 若需同等级知识库增强,可参考此模式。
+
+
+================================================================================
+六、结论
+================================================================================
+
+1muse 与 openhanako 的对话流程在"用户发消息 → 视觉辅助 → 系统提示 → LLM 调用 →
+工具调用 → 回复"的主干上是相似的,但实现层级与架构差异显著:
+
+- 1muse 是移动 App,所有流程在 ChatViewModel 中显式实现,控制精细,
+  但在系统提示缓存、视觉辅助缓存、记忆结构化、工具循环下沉等方面有优化空间。
+
+- openhanako 是服务端 + Pi SDK 架构,大量工作(系统提示快照、工具循环、上下文
+  压缩、沙盒、权限)下沉到 SDK 或 engine 层,代码更简洁,架构更可扩展,
+  但某些移动端特性(前台服务、通知、断点续传)不如 1muse 完备。
+
+两者互补性强:1muse 可重点吸收 openhanako 的系统提示快照、视觉辅助缓存、
+记忆系统、工具权限体系;openhanako 若面向移动端可借鉴 1muse 的保活、通知、
+断点续传与 RAG 注入机制。
+
+================================================================================
+报告结束
+================================================================================

@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shared.kt -->
+    <string name="settings_selected_suffix">, Selected</string>
+
+    <!-- ProviderBrandAssets.kt -->
+    <string name="settings_provider_type_openai">OpenAI Compatible</string>
+    <string name="settings_provider_type_anthropic">Claude</string>
+    <string name="settings_provider_type_gemini">Gemini</string>
+
+    <!-- WebSearchSection.kt -->
+    <string name="settings_web_search_section">Web Search</string>
+    <string name="settings_web_search_enable">Enable Web Search</string>
+    <string name="settings_web_search_enable_subtitle">Global default state; when off, the input bar chip can still toggle it temporarily</string>
+    <string name="settings_web_search_engine">Search Engine</string>
+    <string name="settings_web_search_api_key_label">API Key (optional)</string>
+    <string name="settings_saved">Saved</string>
+    <string name="settings_web_search_save_api_key">Save API Key</string>
+    <string name="settings_web_search_endpoint_label">Search API Endpoint</string>
+    <string name="settings_web_search_save_endpoint">Save Endpoint</string>
+    <!-- v1.98: New search provider names (bilingual, for UI display / logs / error hints) -->
+    <string name="settings_web_search_provider_brave">Brave Search</string>
+    <string name="settings_web_search_provider_perplexity">Perplexity Search</string>
+    <string name="settings_web_search_provider_exa">Exa Search</string>
+    <string name="settings_web_search_provider_bocha">Bocha Search</string>
+
+    <!-- ExperimentsSettingsPage.kt -->
+    <string name="settings_experiments_title">Experiments</string>
+    <string name="settings_experiments_hint">Notice</string>
+    <string name="settings_experiments_warning">The following features are experimental and may be unstable or affect your experience</string>
+    <string name="settings_experiments_features">Experimental Features</string>
+    <string name="settings_experiments_force_mood">Force MOOD Output</string>
+    <string name="settings_experiments_force_mood_subtitle">Attempt to require MOOD block output even if the model does not support it</string>
+    <string name="settings_experiments_debug_mode">Debug Mode</string>
+    <string name="settings_experiments_debug_mode_subtitle">Show more internal state (MOOD/tool calls/tokens)</string>
+    <string name="settings_experiments_self_reflection">Self-Reflection</string>
+    <string name="settings_experiments_self_reflection_subtitle">Automatically check quality after replying</string>
+    <string name="settings_experiments_long_memory_compression">Long Memory Compression</string>
+    <string name="settings_experiments_long_memory_compression_subtitle">Auto-summarize very long conversations (enabled by default since v1.55)</string>
+
+    <!-- UserProfileEditPage.kt -->
+    <string name="settings_user_profile_title">User Profile</string>
+    <string name="settings_user_profile_appellation">Appellation</string>
+    <string name="settings_user_profile_assistant_name">Assistant Name</string>
+    <string name="settings_user_profile_assistant_name_hint">e.g. Xiao Miao / JARVIS</string>
+    <string name="settings_user_profile_your_name">Your Name</string>
+    <string name="settings_user_profile_your_name_hint">e.g. Xiao Ming / Boss</string>
+    <string name="settings_user_profile_basic_info">Basic Info</string>
+    <string name="settings_user_profile_age">Age</string>
+    <string name="settings_user_profile_city">City</string>
+    <string name="settings_user_profile_occupation">Occupation</string>
+    <string name="settings_user_profile_profession_field">Professional Field</string>
+    <string name="settings_user_profile_profession_field_hint">e.g. Software Development / Finance / Healthcare</string>
+    <string name="settings_user_profile_interests">Interests &amp; Preferences</string>
+    <string name="settings_user_profile_interests_label">Interests (comma-separated, e.g. reading, coding, travel)</string>
+    <!-- v1.133: Rewritten User Profile — all fields are injected into the system prompt -->
+    <string name="settings_user_profile_intro">Everything you fill in here is injected into the AI\'s system prompt so it truly knows you. All fields are optional.</string>
+    <string name="settings_user_profile_assistant_name_desc">The AI will call itself by this name</string>
+    <string name="settings_user_profile_your_name_desc">The AI will address you by this name</string>
+    <string name="settings_user_profile_bio">Bio</string>
+    <string name="settings_user_profile_bio_hint">A paragraph introducing yourself, giving the AI an overall sense of who you are</string>
+    <string name="settings_user_profile_bio_desc">Highest priority; gives the AI a holistic view of you</string>
+    <string name="settings_user_profile_timezone">Timezone</string>
+    <string name="settings_user_profile_timezone_hint">e.g. Asia/Shanghai / UTC+8</string>
+    <string name="settings_user_profile_background">Background &amp; Expertise</string>
+    <string name="settings_user_profile_education">Education</string>
+    <string name="settings_user_profile_education_hint">e.g. BSc Computer Science / MSc Financial Engineering</string>
+    <string name="settings_user_profile_skills">Skills</string>
+    <string name="settings_user_profile_skills_hint">e.g. Python, Machine Learning, Product Design</string>
+    <string name="settings_user_profile_communication">Communication Preferences</string>
+    <string name="settings_user_profile_comm_style">Communication Style</string>
+    <string name="settings_user_profile_comm_style_hint">e.g. concise / detailed / lively / serious</string>
+    <string name="settings_user_profile_resp_length">Response Length Preference</string>
+    <string name="settings_user_profile_resp_length_hint">e.g. short / medium / long</string>
+    <string name="settings_user_profile_pref_tone">Preferred Tone</string>
+    <string name="settings_user_profile_pref_tone_hint">e.g. friendly / professional / humorous / rigorous</string>
+    <string name="settings_user_profile_pref_lang">Preferred Response Language</string>
+    <string name="settings_user_profile_pref_lang_hint">e.g. English / Chinese / Mixed</string>
+    <string name="settings_user_profile_boundaries">Boundaries &amp; Avoided Topics</string>
+    <string name="settings_user_profile_avoid_topics">Avoided Topics</string>
+    <string name="settings_user_profile_avoid_topics_hint">Comma-separated, e.g. politics, religion</string>
+    <string name="settings_user_profile_avoid_topics_desc">The AI will proactively avoid these topics</string>
+
+    <!-- PresetProviderPickerDialog.kt -->
+    <string name="settings_preset_select_provider">Select Provider</string>
+    <string name="settings_preset_back">Back</string>
+    <string name="settings_preset_subtitle">Covers overseas, domestic official, and relay providers — just enter your API Key after selecting</string>
+    <string name="settings_preset_group_overseas">Overseas Official</string>
+    <string name="settings_preset_group_domestic">Domestic Official</string>
+    <string name="settings_preset_group_relay">Relay</string>
+    <string name="settings_preset_no_match">No matching providers</string>
+    <string name="settings_preset_search_hint">Search providers or domains</string>
+    <string name="settings_preset_clear">Clear</string>
+    <string name="settings_preset_need_baseurl">baseUrl required</string>
+    <string name="settings_preset_model_count">%1$d models</string>
+    <string name="settings_preset_custom">Custom Provider</string>
+    <string name="settings_preset_custom_desc">Manually enter baseUrl, API Key, and model list</string>
+
+    <!-- ProviderModelRow.kt -->
+    <string name="settings_model_action_settings">Settings</string>
+    <string name="settings_model_action_add">Add</string>
+    <string name="settings_model_ability_tool">Tools</string>
+    <string name="settings_model_ability_reasoning">Reasoning</string>
+    <string name="settings_model_ability_streaming">Streaming</string>
+    <string name="settings_model_ability_image">Image</string>
+    <string name="settings_model_ability_multimodal">Multimodal</string>
+    <string name="settings_model_ability_video">Video</string>
+    <string name="settings_model_ability_chat">Chat</string>
+
+    <!-- AssistantSection.kt -->
+    <string name="settings_assistant_section">Assistant</string>
+    <string name="settings_assistant_manage">Assistant Manager</string>
+    <string name="settings_assistant_manage_subtitle">Manage assistants and lorebooks</string>
+    <string name="settings_assistant_favorites">Favorites</string>
+    <string name="settings_assistant_favorites_subtitle">View favorited messages across sessions</string>
+    <string name="settings_assistant_lorebook">Lorebook</string>
+    <string name="settings_assistant_lorebook_subtitle">Keyword-triggered context injection (roleplay/worldbuilding)</string>
+    <string name="settings_assistant_quick_messages">Quick Messages</string>
+    <string name="settings_assistant_quick_messages_subtitle">Preset message templates with variable substitution, insert with one tap</string>
+    <string name="settings_assistant_prompt_injection">Mode Injection</string>
+    <string name="settings_assistant_prompt_injection_subtitle">Auto-inject mode-specific prompts when switching modes (creative/coding/roleplay, etc.)</string>
+    <string name="settings_assistant_skills">Skill Manager</string>
+    <string name="settings_assistant_skills_subtitle">View/enable/disable tools the LLM can call (file I/O, HTTP, etc.)</string>
+    <string name="settings_assistant_long_memory">Long-Term Memory</string>
+    <string name="settings_assistant_memory_enable">Enable Memory System</string>
+    <string name="settings_assistant_memory_enable_subtitle">When off, conversations no longer inject long-term memory and background summarization stops</string>
+
+    <!-- MultiAgentSettingsPage.kt -->
+    <string name="settings_multi_agent_title">Multi-Agent Collaboration</string>
+    <string name="settings_multi_agent_enable">Enable Multi-Agent Collaboration</string>
+    <string name="settings_multi_agent_enable_subtitle">When enabled, the main assistant can delegate tasks to team members</string>
+    <string name="settings_multi_agent_team_list">Team List</string>
+    <string name="settings_multi_agent_no_team">No teams yet</string>
+    <string name="settings_multi_agent_no_team_hint">Tap below to create a team</string>
+    <string name="settings_multi_agent_new_team">New Team</string>
+    <string name="settings_multi_agent_delete_team">Delete Team</string>
+    <string name="settings_multi_agent_unnamed_team">Untitled Team</string>
+    <string name="settings_multi_agent_no_members">No members</string>
+    <string name="settings_multi_agent_delete">Delete</string>
+    <string name="settings_multi_agent_edit_team">Edit Team</string>
+    <string name="settings_multi_agent_team_name">Team Name</string>
+    <string name="settings_multi_agent_team_name_hint">e.g. Writing Group</string>
+    <string name="settings_multi_agent_team_name_empty">Team name cannot be empty</string>
+    <string name="settings_multi_agent_description">Description (optional)</string>
+    <string name="settings_multi_agent_description_hint">Team purpose or collaboration scenario</string>
+    <string name="settings_multi_agent_select_members">Select Members</string>
+    <string name="settings_multi_agent_no_assistants">No assistants available. Please create one in the Assistant page first.</string>
+    <string name="settings_multi_agent_save">Save</string>
+    <string name="settings_multi_agent_cancel">Cancel</string>
+
+    <!-- SettingsTutorialPage.kt -->
+    <string name="settings_tutorial_title">Tutorial</string>
+
+    <!-- Chapter 1 -->
+    <string name="settings_tutorial_ch1_title">Chapter 1: Getting Started (Beginner Required)</string>
+    <string name="settings_tutorial_ch1_s1_title">What is Muse?</string>
+    <string name="settings_tutorial_ch1_s1_content">Muse is an AI smart assistant app. You can think of it as a friend who knows everything — ask it questions anytime, have it help you write, translate, summarize, and more.\n\nIt needs an internet connection and an AI model to work, so you\'ll need to do a quick setup before first use.</string>
+    <string name="settings_tutorial_ch1_s2_title">What to do for first use?</string>
+    <string name="settings_tutorial_ch1_s2_content">Don\'t worry, just three steps to get started:\n\n1. Get an API Key for an AI model (like a pass — see Chapter 2)\n2. Add this Key in Settings\n3. Go back to the chat page, type a message, and press send\n\nIt\'s that simple!</string>
+    <string name="settings_tutorial_ch1_s3_title">How to start your first conversation</string>
+    <string name="settings_tutorial_ch1_s3_content">1. Open the app and go to the chat page\n2. Tap the input box at the bottom of the screen (where it says \"Send message...\")\n3. Type your question, e.g. \"Hello\"\n4. Tap the send button on the right (paper plane icon)\n5. Wait for the AI to reply — text will appear word by word; this is called \"streaming output\"</string>
+
+    <!-- Chapter 2 -->
+    <string name="settings_tutorial_ch2_title">Chapter 2: Configure AI Model (Important)</string>
+    <string name="settings_tutorial_ch2_s1_title">Why do I need to configure a model?</string>
+    <string name="settings_tutorial_ch2_s1_content">Muse itself does not contain AI — it needs to connect to an external AI service. Just like a phone needs a SIM card to make calls, Muse needs an \"API Key\" to connect to AI.\n\nAn API Key is a password made of letters and numbers, obtained from an AI provider.</string>
+    <string name="settings_tutorial_ch2_s2_title">Where to apply for an API Key?</string>
+    <string name="settings_tutorial_ch2_s2_content">Here are some commonly used AI providers (in no particular order):\n\n• DeepSeek — domestic, affordable, great results\n  Website: platform.deepseek.com\n\n• Zhipu AI — domestic, free quota available\n  Website: open.bigmodel.cn\n\n• Alibaba Tongyi Qianwen — domestic, free quota available\n  Website: dashscope.aliyun.com\n\n• Moonshot Kimi — domestic, strong long-context capability\n  Website: platform.moonshot.cn\n\n• OpenAI (ChatGPT) — international, best results but requires overseas payment\n  Website: platform.openai.com\n\nBeginners should start with DeepSeek or Zhipu. After registering, find the \"API Keys\" page in the dashboard, click \"Create new Key\", and copy the code.</string>
+    <string name="settings_tutorial_ch2_s3_title">How to add a provider in Muse</string>
+    <string name="settings_tutorial_ch2_s3_content">1. Tap the bottom-right or top-left to enter \"Settings\"\n2. Find \"Models &amp; Services\" or \"Providers\"\n3. Tap \"Add Provider\"\n4. Select the provider type (e.g. OpenAI Compatible)\n5. Fill in:\n   - Name: anything you like, e.g. \"My DeepSeek\"\n   - API Key: paste the code you just copied\n   - Endpoint: for DeepSeek, enter https://api.deepseek.com\n6. Tap Save\n7. Add the model you want to use in the model list (e.g. deepseek-chat)</string>
+    <string name="settings_tutorial_ch2_s4_title">How to select the current model</string>
+    <string name="settings_tutorial_ch2_s4_content">On the chat page, the model name is displayed near the top or input bar. Tap it to bring up the model selection list, then choose the one you want.</string>
+
+    <!-- Chapter 3 -->
+    <string name="settings_tutorial_ch3_title">Chapter 3: Daily Chat</string>
+    <string name="settings_tutorial_ch3_s1_title">How to start a new conversation</string>
+    <string name="settings_tutorial_ch3_s1_content">On the chat list page (sidebar or conversation list), tap the \"New Chat\" button (usually a plus icon). A new conversation is blank and won\'t be affected by previous conversations.</string>
+    <string name="settings_tutorial_ch3_s2_title">How to switch between conversations</string>
+    <string name="settings_tutorial_ch3_s2_content">Open the sidebar from the chat page (tap the top-left menu or swipe from the left edge) to see all conversation history. Tap any one to switch to it.</string>
+    <string name="settings_tutorial_ch3_s3_title">How to delete a conversation</string>
+    <string name="settings_tutorial_ch3_s3_content">In the conversation history list, long-press the conversation you want to delete. A menu will pop up — select \"Delete\". Note that deletion cannot be undone.</string>
+    <string name="settings_tutorial_ch3_s4_title">How to search message history</string>
+    <string name="settings_tutorial_ch3_s4_content">On the chat page or conversation list, find the search icon (magnifying glass), enter a keyword, and all historical messages containing that word will be shown.</string>
+    <string name="settings_tutorial_ch3_s5_title">What is streaming output</string>
+    <string name="settings_tutorial_ch3_s5_content">When the AI replies, text doesn\'t appear all at once — it comes out word by word, like typing. This is called \"streaming output\". The benefit is you don\'t have to wait long to see the answer; the downside is it requires a stable network. If the network is poor, it may stall — just wait a moment.</string>
+
+    <!-- Chapter 4 -->
+    <string name="settings_tutorial_ch4_title">Chapter 4: Advanced Features</string>
+    <string name="settings_tutorial_ch4_s1_title">What are assistant roles</string>
+    <string name="settings_tutorial_ch4_s1_content">Assistant roles are like putting different \"hats\" on the AI. For example, you can create a \"Translator\" role that focuses on translation, or a \"Writing Assistant\" role that excels at writing articles.\n\nFind the \"Assistant\" entry in Settings or the sidebar, tap to create, fill in the name and system prompt (tell it how it should behave), and it\'s done.</string>
+    <string name="settings_tutorial_ch4_s2_title">How to use web search</string>
+    <string name="settings_tutorial_ch4_s2_content">There\'s a globe icon above the input box. Tap it to highlight it and enable web search. The AI will search the internet for the latest information before answering — great for current events and news. Tap again to turn it off when done to save data.</string>
+    <string name="settings_tutorial_ch4_s3_title">How to use deep thinking mode</string>
+    <string name="settings_tutorial_ch4_s3_content">There\'s a brain icon above the input box. Tap to highlight and enable it. When enabled, the AI will \"think\" before answering — suitable for math problems, logical reasoning, and other complex questions. Not needed for regular chat.</string>
+    <string name="settings_tutorial_ch4_s4_title">Send images for AI recognition</string>
+    <string name="settings_tutorial_ch4_s4_content">Tap the plus icon on the left of the input box, select \"Image\", and pick a photo from your gallery to send. The AI can recognize image content. Note: you need to select a model that supports \"vision\" (e.g. GPT-4o, Gemini, etc.).</string>
+    <string name="settings_tutorial_ch4_s5_title">Voice Input</string>
+    <string name="settings_tutorial_ch4_s5_content">Tap the microphone icon on the right of the input box, speak, and release to automatically convert to text. You need to configure a speech recognition (ASR) service to use this feature.</string>
+    <string name="settings_tutorial_ch4_s6_title">Prompt Template Library</string>
+    <string name="settings_tutorial_ch4_s6_content">Tap the plus icon on the left of the input box and select \"Prompt Template\" to see a list of preset templates (e.g. write email, translate, summarize). Tap a template to auto-fill the input box — just modify the specifics and send.</string>
+    <string name="settings_tutorial_ch4_s7_title">What is conversation fork</string>
+    <string name="settings_tutorial_ch4_s7_content">If you\'re unsatisfied with one of the AI\'s replies and want to restart from that message, long-press that message and select \"Fork Conversation\". A new conversation will be created, copying all previous content, and you can take the conversation in a different direction from there.</string>
+
+    <!-- Chapter 5 -->
+    <string name="settings_tutorial_ch5_title">Chapter 5: Personalization</string>
+    <string name="settings_tutorial_ch5_s1_title">Switch dark/light mode</string>
+    <string name="settings_tutorial_ch5_s1_content">Settings → Appearance → Theme Mode, choose \"Follow System\" (auto-follows phone settings), \"Light\", or \"Dark\". Dark mode is easier on the eyes at night.</string>
+    <string name="settings_tutorial_ch5_s2_title">Adjust font size</string>
+    <string name="settings_tutorial_ch5_s2_content">Settings → Appearance → Text Size, choose Small/Medium/Large/Extra Large. Medium is the default size.</string>
+    <string name="settings_tutorial_ch5_s3_title">Switch language</string>
+    <string name="settings_tutorial_ch5_s3_content">Settings → Appearance → Language, choose \"Follow System\", \"Chinese\", or \"English\". The interface changes immediately after switching.</string>
+
+    <!-- Chapter 6 -->
+    <string name="settings_tutorial_ch6_title">Chapter 6: Data Management</string>
+    <string name="settings_tutorial_ch6_s1_title">Backup chat history</string>
+    <string name="settings_tutorial_ch6_s1_content">Settings → Data &amp; Backup lets you configure cloud backup (WebDAV or S3). Once configured, chat history will be automatically backed up to the cloud — no worries about losing data when switching phones.</string>
+    <string name="settings_tutorial_ch6_s2_title">Import data from other apps</string>
+    <string name="settings_tutorial_ch6_s2_content">Settings → Data Import supports importing from RikkaHub or Kelivo. After selecting the source, follow the prompts to export a backup file from that app, then select it here. Import content includes provider configs, assistants, and conversation records.</string>
+    <string name="settings_tutorial_ch6_s3_title">Export character cards</string>
+    <string name="settings_tutorial_ch6_s3_content">On the Assistant Manager page, long-press an assistant and select \"Export Character Card\" to generate a file you can share with friends. Friends can import it in Muse to use an assistant with the same configuration.</string>
+
+    <!-- Chapter 7 -->
+    <string name="settings_tutorial_ch7_title">Chapter 7: FAQ</string>
+    <string name="settings_tutorial_ch7_s1_title">No response in conversation?</string>
+    <string name="settings_tutorial_ch7_s1_content">Most common causes:\n1. Wrong API Key — check in Settings\n2. No network — try a different network\n3. Insufficient balance — top up on the provider\'s website\n4. Wrong endpoint — check against the official documentation</string>
+    <string name="settings_tutorial_ch7_s2_title">Slow responses?</string>
+    <string name="settings_tutorial_ch7_s2_content">1. Switch to a faster model (smaller models are usually faster)\n2. Check your network connection\n3. Turn off \"Deep Thinking\" mode (thinking takes time)\n4. If using OpenAI in China, you need a proxy</string>
+    <string name="settings_tutorial_ch7_s3_title">Want to save money?</string>
+    <string name="settings_tutorial_ch7_s3_content">1. Configure \"Tool Model Routing\" in Settings to use cheaper small models for tool calls\n2. Turn off unnecessary web search\n3. Choose domestic models (DeepSeek/Zhipu, etc.) — much cheaper than OpenAI</string>
+    <string name="settings_tutorial_ch7_s4_title">How to clear all data</string>
+    <string name="settings_tutorial_ch7_s4_content">Settings → Security &amp; Sharing may have relevant options. Or clear Muse\'s data in your phone\'s \"App Management\" system settings. Note: this deletes all conversations and configs and cannot be undone.</string>
+</resources>

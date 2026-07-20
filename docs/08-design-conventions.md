@@ -1,0 +1,27 @@
+# 关键设计约定
+
+- 版本号规则:`versionCode` = `versionName` 去小数点(如 1.37 → 137)。
+- APK 输出目录:`D:\1test\`,文件名格式 `Muse_v{version}_debug.apk`。
+- 禁止 emoji:全应用用 Material Icons 表达语义,不使用 emoji 字符(包括代码、注释、UI 文案、本文档)。
+- Android 16 `execSQL` 限制:涉及 SQL 的操作走 Room DAO 抽象,避免直接 `execSQL`(Android 16 收紧了 raw SQL 权限)。
+- edge-to-edge + `imePadding`:全应用启用 edge-to-edge 布局,输入区域用 `imePadding` 适配 IME,保证键盘弹出不遮挡。
+- 全屏页面替代 Dialog:`ModalBottomSheet` 在嵌套滚动 + IME 场景下会卡死,涉及长表单/选择的功能(Provider 编辑、Assistant 子页等)一律用全屏 Page 替代 Dialog/BottomSheet。
+- 模型 ID 动态拉取:不在本地维护模型清单,首次使用 Provider 时从上游 `/models` 接口拉取并保存,避免模型列表过期。
+- 协程容错:应用级 scope 加 `GlobalCoroutineExceptionHandler`,防止协程内未捕获异常导致应用崩溃;所有后台启动用 `runCatching` + `onFailure` 记日志,失败不阻塞启动。
+- 配置缓存模式:hot path 配置用 `@Volatile` 字段 + `getConfig = { settings.xxxCache }` 闭包,避免每次都走 suspend 的 DataStore 读取,保证用户改完设置页立即生效。
+- KDoc 注释规范:每个类/函数有 KDoc,标注版本号(如 `v0.22` / `Phase 8.8` / `P1-7`)说明引入背景,便于追溯演进。
+- 本地优先工具:Skill 用 Kotlin 直实现而非 QuickJS/JS 引擎,避免沙箱复杂度与任意代码执行风险。
+- 启动时序:`MuseApp.onCreate` 严格按序执行 — `MuseCrashHandler.install`(必须早于 `startKoin`)→ `Logger.initFileLog` → `startKoin` 装载三模块 → `notificationManager.ensureChannels()` → `memoryTicker.start()` → `appScope` 内 fire-and-forget 启动 `ensureDefaultExists` / 内置 Skills seed / `seedDevDocs` / WebServer → `ScheduledTaskRunner.start()` / `ProactiveMessageRunner.start()` → 订阅各 Flow。任一步失败仅记日志不阻塞后续。
+- 配置即时生效:用户在设置页改配置后,通过 `@Volatile` 缓存 + Flow 订阅立即影响业务(如 `keepAwake` → WAKE_LOCK、`autoLaunch` → BootReceiver 启停、`mediaConfig` → TTS/音频路由、`defaultSearchEngine` → WebSearchConfig),无需重启 App。
+- v1.97 URL 安全:消息气泡中的 URL(含纯文本自动识别的 URL)点击时不直接打开浏览器,先弹 `MuseDialog` 二次确认(打开/复制链接),避免误触。URL 高亮色用 `primary`(主题色)。纯文本 URL 自动识别正则 `URL_AUTOLINK_REGEX` 排除尾部中文标点(。、,;:!?」』),参考 openhanako trimAutoLinkifiedSuffixes。
+- v1.97 称呼注入双路径:引导页填的助手名/用户名通过两条独立路径注入 system prompt —(a)`SystemPromptAssembler` 的"用户画像" section 显式注入"请称呼用户为「X」""你叫「Y」";(b)`TemplateTransformer` 的模板变量 `{{user_name}}`/`{{char}}` 替换。`TemplateTransformer` 同时支持 snake_case 和 camelCase 别名(`userName`/`assistantName`),`user_nickname` 为空时兜底为"你"。
+- v1.97 默认助手三层人设:默认 prompt 采用身份层("你叫 Muse")+ 关系层("灵感伙伴")+ 风格层(说话方式)结构,参考 openhanako 三层人设架构(identity/yuan/ishiki)。仅对新用户首次创建生效(INSERT OR IGNORE,已有数据不覆盖)。
+- v1.97 devdocs 丰富:`assets/devdocs/` 下 14 个 markdown 文档(中文 7 + 英文 7),新增 `user_guide.md`/`personalization_guide.md`/`user_guide_en.md`/`app_features_overview_en.md`,扩充 `app_features_overview.md`,供 LLM 通过 `knowledge_search` 查询,覆盖功能总览/用户指南/个性化/聊天特性/工具/Skill/记忆/搜索/主动消息/多 Agent/助手配置/富媒体等主题。英文版面向英文环境用户的 LLM 查询需求(中英同义但不互译,各自独立维护)。
+- v1.97 阶段二 老用户 prompt 自动迁移:`AssistantRepository.migrateDefaultPromptIfNeeded()` 在 `ensureDefaultExists()` 末尾调用,精确匹配 `LEGACY_SYSTEM_PROMPT_V1_95` 旧版 prompt 才自动升级到三层人设新版(身份/关系/风格);用户自定义过的不动(避免覆盖用户配置)。迁移逻辑只对 default 助手生效,不扫描其他助手。
+- v1.97 阶段二 MOOD 内心独白四池:`SystemPromptAssembler` 的 MOOD 格式从"每字段 1 句"增强为 Vibe(1 句直觉感受)/ Sparks(2-3 句意识流闪念)/ Reflections(2-3 句自我观察)/ Will(1 句行动意图),并增加"自然影响回答、不要机械列出"的引导规则。参考 openhanako 意识流内心独白,让助手"有内心戏"但不喧宾夺主。
+- v1.97 阶段二 斜杠命令:`SlashCommandRegistry`(枚举 + `parse`/`isSlashCommand`/`allCommandNames`)定义 `/new` `/compact` `/reset` `/pin` `/archive` 5 个客户端命令;`ChatViewModel.executeSlashCommand(text): Boolean` 复用现有 `createNewSession`/`manualCompress`/`togglePinned`/`setSessionArchived` 等方法;`ChatScreen.onSend` 在发送前先经 `SlashCommand.isSlashCommand` 拦截,命中则调 `executeSlashCommand` 并消费输入(不进入 LLM 管道)。新增 13 条字符串(命令名 + 描述,中英)。
+- v1.97 阶段二 URL 双手势:`MarkdownText` 的 `LinkableText` 改用 `detectTapGestures` 双手势 — `onTap` 弹 `MuseDialog` 二次确认(打开/复制链接/"本会话不再确认" Checkbox),`onLongPress` 直接打开浏览器并启用 `skipConfirm`(本会话后续 URL 直接打开不再确认)。参考 openhanako 双手势交互,平衡误触防护与高效访问。
+- v1.97 阶段二 翻译历史:`TranslateViewModel.State` 新增 `history: List<TranslateHistoryItem>` 字段(内存保留最近 20 条,不持久化,退出页面即清空),翻译成功后追加到历史头部;`loadHistoryItem(item)` 加载历史项到输入框,`clearHistory()` 清空。`TranslateScreen` 在结果卡片下方新增 `TranslateHistorySection` UI(顶部标题行 + 清空按钮、空状态 placeholder、历史卡片含语言 chip + 相对时间 + 原文/译文单行省略号),点击卡片调 `loadHistoryItem`,清空走 `MuseDialog` 二次确认(destructive)。
+- v1.97 阶段二 引导页强引导 Provider:`OnboardingScreen` 的个性化称呼步骤,"添加模型供应商"按钮从 `TextButton` 提升为 `OutlinedButton`(显眼次要操作),并在按钮上方加 `onboarding_provider_hint` 提示文案。避免新用户跳过 Provider 配置直接进入聊天后无法对话。
+- v1.97 阶段二 自定义主题精选配色:`ThemeSection` 的 `CustomThemeEditDialog` 在名称输入框后、颜色选择器前新增"精选配色"横向滚动行,内置 8 套色盲友好精选配色(月桂绿/深海蓝/暮色紫/赤霞红/琥珀橙/青瓷青/墨纸灰/樱花粉),每套含 primary/container/onContainer 三色,一键填充自定义主题三色。降低普通用户的配色门槛,同时保留完全自定义能力。
+- v1.97 阶段二 devdocs 英文版:`assets/devdocs/` 新增 `user_guide_en.md` 与 `app_features_overview_en.md`,与中文版同义但不互译(各自独立维护),供英文环境用户的 LLM 查询。

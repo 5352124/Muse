@@ -1,0 +1,147 @@
+package io.zer0.ai.core
+
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * 流式推理过程中产生的增量事件。
+ * UI 层消费这些事件来更新气泡内容、推理过程、错误提示。
+ */
+sealed class ChatStreamEvent {
+    /**
+     * 推理过程增量(o1 / thinking 模型)。
+     *
+     * v1.80 (M-ANT4): [signature] 携带 Anthropic thinking 块的签名(可选),
+     * 用于多轮 thinking 对话回放(signature_delta 事件发出)。
+     * 非 thinking 模型 / OpenAI 等其他 Provider 该字段为 null。
+     * 消费方(如 ChatViewModel)应将其存入 [UIMessage.thinkingSignature],
+     * 并在下一轮请求时回传给 Anthropic(否则多轮 thinking 会失败)。
+     */
+    data class ReasoningDelta(
+        val delta: String,
+        val signature: String? = null,
+    ) : ChatStreamEvent()
+
+    /** 正文增量。 */
+    data class ContentDelta(val delta: String) : ChatStreamEvent()
+
+    /**
+     * Phase 8.6: 图片增量(Gemini 绘图返回的 inlineData)。
+     *
+     * @param imageBase64 图片 base64 数据(无 data: 前缀)
+     * @param mimeType MIME 类型,如 "image/png"
+     */
+    data class ImageDelta(val imageBase64: String, val mimeType: String = "image/png") : ChatStreamEvent()
+
+    /**
+     * 工具调用增量(Phase 7 function calling)。
+     *
+     * OpenAI 流式协议中,tool_calls 是数组,每个元素有 index/id/function{name/arguments}。
+     * 同一个 tool_call 可能跨多个 SSE chunk 发送(arguments 分片),需按 index 累积。
+     *
+     * @param index 工具调用在数组中的下标(用于累积)
+     * @param id 工具调用 id(首个 chunk 携带,后续片段为 null)
+     * @param name 函数名(首个 chunk 携带,后续片段为 null)
+     * @param argumentsDelta 参数 JSON 增量片段
+     */
+    data class ToolCallDelta(
+        val index: Int,
+        val id: String? = null,
+        val name: String? = null,
+        val argumentsDelta: String? = null,
+    ) : ChatStreamEvent()
+
+    /** 一轮正常结束,带可选的停止原因。 */
+    data class Done(val finishReason: String? = null) : ChatStreamEvent()
+
+    /** 出错,流被中断。 */
+    data class Error(val message: String, val throwable: Throwable? = null) : ChatStreamEvent()
+}
+
+/**
+ * 一次聊天请求的入参。
+ *
+ * @param messages 完整对话历史(含 system / user / assistant),由调用方裁剪
+ * @param model 目标模型
+ * @param temperature 采样温度,null 表示走服务端默认
+ * @param maxTokens 输出上限,null 表示走服务端默认
+ * @param abortSignal 由调用方持有的取消标志,置 true 后尽快中断流
+ * @param tools 可选的工具定义列表(Phase 7 function calling),null 表示不启用工具调用
+ * @param reasoningLevel 推理等级(Phase 8.1 M11),null 表示用 [ReasoningLevel.DEFAULT]
+ *   各 Provider 根据 [Model.supportsReasoning] 和此字段决定是否发 thinking 字段
+ */
+data class ChatRequest(
+    val messages: List<UIMessage>,
+    val model: Model,
+    val temperature: Float? = null,
+    val maxTokens: Int? = null,
+    val abortSignal: AbortSignal = AbortSignal(),
+    val tools: List<ToolDefinition>? = null,
+    val reasoningLevel: ReasoningLevel = ReasoningLevel.DEFAULT,
+)
+
+/**
+ * 工具定义(Provider 无关的中间表示)。
+ *
+ * @param name 函数名
+ * @param description 描述(LLM 据此决定是否调用)
+ * @param parametersJsonSchema 参数的 JSON Schema 字符串(OpenAI 兼容格式)
+ */
+data class ToolDefinition(
+    val name: String,
+    val description: String,
+    val parametersJsonSchema: String,
+)
+
+/** 协作式取消信号。UI 点"停止"时把 [aborted] 置 true。 */
+class AbortSignal {
+    @Volatile
+    var aborted: Boolean = false
+        private set
+
+    fun abort() { aborted = true }
+}
+
+/**
+ * 非流式调用的结果。memory 模块等后台任务用 [completeText] 拿完整文本,
+ * 不需要逐步消费增量事件。
+ *
+ * Phase 7: [toolCalls] 用于非流式场景的工具调用结果。
+ *
+ * v1.80 (M-OAI8): 新增 [reasoningContent] 字段,承载推理模型的推理内容。
+ * 部分推理模型(o1/DeepSeek-R1 等)在非流式响应中可能只返回 reasoning_content
+ * 而 content 为空,此时调用方需据此判断响应是否有效,避免误报"空文本"错误。
+ */
+data class ChatCompletion(
+    val text: String,
+    val finishReason: String? = null,
+    val toolCalls: List<ToolCall>? = null,
+    val reasoningContent: String? = null,
+)
+
+/**
+ * Provider 抽象。每个具体厂商(OpenAI / Google / Anthropic)实现一份,
+ * 负责把统一 [ChatRequest] 翻译成自家 HTTP API 调用并以 [Flow] 形式返回流式事件。
+ */
+interface Provider {
+    val id: String
+    val displayName: String
+
+    /** 流式聊天。返回的 Flow 在收集时执行网络请求,完成或出错时关闭。 */
+    fun streamChat(request: ChatRequest): Flow<ChatStreamEvent>
+
+    /**
+     * 非流式聊天。一次性返回完整结果,适用于 memory 编译、fact 抽取等后台任务。
+     * 默认抛 [UnsupportedOperationException],由具体 Provider 按需实现。
+     */
+    suspend fun completeText(request: ChatRequest): ChatCompletion =
+        throw UnsupportedOperationException("$displayName does not implement completeText")
+
+    /**
+     * 拉取上游模型列表。
+     *
+     * 各具体 Provider 调用上游 /models 接口返回可用模型,供 UI 编辑页"拉取上游模型"使用。
+     * [config] 由调用方传入(可能含未保存的编辑值),实现按其解析 baseUrl/apiKey。
+     * 默认返回空列表,表示该 Provider 未实现拉取(如自定义中转可走 OpenAI 兼容)。
+     */
+    suspend fun listModels(config: ProviderConfig): List<Model> = emptyList()
+}

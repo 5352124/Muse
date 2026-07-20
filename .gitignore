@@ -1,0 +1,16 @@
+﻿# Git ignore for Muse project submodule
+.gradle/
+.idea/
+.kotlin/
+build/
+*.iml
+*.ipr
+*.iws
+local.properties
+keystore.properties
+*.keystore
+*.jks
+*.env
+*.log
+.DS_Store
+Thumbs.db

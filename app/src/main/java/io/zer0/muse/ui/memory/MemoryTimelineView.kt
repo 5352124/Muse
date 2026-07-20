@@ -1,0 +1,242 @@
+package io.zer0.muse.ui.memory
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material.icons.filled.Circle
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import io.zer0.muse.ui.theme.AmberWarmth
+import io.zer0.muse.ui.theme.CoralWhisper
+import io.zer0.muse.ui.theme.LavenderDream
+import io.zer0.muse.ui.theme.SageCalm
+import io.zer0.muse.ui.theme.MuseShapes
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+/**
+ * Phase 2 2A: 记忆时间轴视图 — 按月分组 + 时间轴节点 + 事件卡片。
+ *
+ * @param items 记忆条目列表 (MemoryItem from ViewModel)
+ * @param modifier 修饰符
+ */
+@Composable
+fun MemoryTimelineView(
+    items: List<TimelineItem>,
+    modifier: Modifier = Modifier,
+) {
+    // 按月份分组
+    val grouped = remember(items) {
+        items.groupBy { item ->
+            try {
+                val instant = Instant.parse(item.createdAt)
+                val dt = instant.atZone(ZoneId.systemDefault())
+                "${dt.year}-${dt.monthValue.toString().padStart(2, '0')}"
+            } catch (_: Exception) {
+                "Unknown"
+            }
+        }.toSortedMap(compareByDescending { it })
+    }
+
+    var selectedFilter by remember { mutableStateOf("all") }
+    val filters = listOf("all" to "全部", "fact" to "事实", "summary" to "摘要", "milestone" to "里程碑")
+
+    Column(modifier = modifier) {
+        // FilterChip row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            filters.forEach { (key, label) ->
+                FilterChip(
+                    selected = selectedFilter == key,
+                    onClick = { selectedFilter = key },
+                    label = { Text(label) },
+                )
+            }
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                horizontal = 16.dp,
+                vertical = 8.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            grouped.forEach { (month, monthItems) ->
+                val filtered = if (selectedFilter == "all") monthItems
+                else monthItems.filter { it.source == selectedFilter }
+
+                if (filtered.isNotEmpty()) {
+                    // Month header
+                    item(key = "month_$month") {
+                        MonthHeader(month = month)
+                    }
+                    // Timeline items
+                    items(filtered, key = { it.id }) { item ->
+                        TimelineEventCard(item = item)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MonthHeader(month: String) {
+    Text(
+        text = month,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
+    )
+}
+
+@Composable
+private fun TimelineEventCard(item: TimelineItem) {
+    val nodeColor = when (item.importance) {
+        2 -> CoralWhisper
+        1 -> LavenderDream
+        else -> SageCalm
+    }
+    val nodeIcon = when (item.importance) {
+        2 -> Icons.Filled.Star
+        else -> if (item.importance >= 1) Icons.Filled.Circle else Icons.Outlined.Circle
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 8.dp),
+    ) {
+        // Timeline node
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.width(24.dp),
+        ) {
+            Icon(
+                imageVector = nodeIcon,
+                contentDescription = null,
+                tint = nodeColor,
+                modifier = Modifier.size(12.dp),
+            )
+            // Vertical line
+            Box(
+                modifier = Modifier
+                    .width(2.dp)
+                    .height(40.dp)
+                    .background(MaterialTheme.colorScheme.outlineVariant),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        // Event card
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MuseShapes.medium,
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                // Type tag + importance stars
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    // Source tag
+                    Surface(
+                        shape = MuseShapes.small,
+                        color = nodeColor.copy(alpha = 0.15f),
+                    ) {
+                        Text(
+                            text = item.source,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = nodeColor,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                    // Importance stars
+                    if (item.importance > 0) {
+                        Row {
+                            repeat(item.importance) {
+                                Icon(
+                                    Icons.Filled.Star,
+                                    contentDescription = null,
+                                    tint = AmberWarmth,
+                                    modifier = Modifier.size(12.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+                // Content (max 3 lines)
+                Text(
+                    text = item.content,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                // Time
+                val timeStr = remember(item.createdAt) {
+                    try {
+                        val dt = Instant.parse(item.createdAt).atZone(ZoneId.systemDefault())
+                        DateTimeFormatter.ofPattern("MM-dd HH:mm").format(dt)
+                    } catch (_: Exception) {
+                        ""
+                    }
+                }
+                if (timeStr.isNotBlank()) {
+                    Text(
+                        text = timeStr,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Simplified timeline item data class (mapped from MemoryItem in ViewModel).
+ */
+data class TimelineItem(
+    val id: String,
+    val content: String,
+    val source: String,
+    val importance: Int,
+    val createdAt: String?,
+    val tags: List<String> = emptyList(),
+)

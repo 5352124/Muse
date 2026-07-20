@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shared.kt -->
+    <string name="settings_selected_suffix">，已选中</string>
+
+    <!-- ProviderBrandAssets.kt -->
+    <string name="settings_provider_type_openai">OpenAI 兼容</string>
+    <string name="settings_provider_type_anthropic">Claude</string>
+    <string name="settings_provider_type_gemini">Gemini</string>
+
+    <!-- WebSearchSection.kt -->
+    <string name="settings_web_search_section">联网搜索</string>
+    <string name="settings_web_search_enable">启用联网搜索</string>
+    <string name="settings_web_search_enable_subtitle">全局默认状态;关闭后输入栏 chip 仍可临时开启</string>
+    <string name="settings_web_search_engine">搜索引擎</string>
+    <string name="settings_web_search_api_key_label">API Key(可选)</string>
+    <string name="settings_saved">已保存</string>
+    <string name="settings_web_search_save_api_key">保存 API Key</string>
+    <string name="settings_web_search_endpoint_label">搜索 API endpoint</string>
+    <string name="settings_web_search_save_endpoint">保存 endpoint</string>
+    <!-- v1.98: 新增搜索 Provider 名称(中英双语,供 UI 显示 / 日志 / 错误提示引用) -->
+    <string name="settings_web_search_provider_brave">Brave 搜索</string>
+    <string name="settings_web_search_provider_perplexity">Perplexity 搜索</string>
+    <string name="settings_web_search_provider_exa">Exa 搜索</string>
+    <string name="settings_web_search_provider_bocha">博查搜索</string>
+
+    <!-- ExperimentsSettingsPage.kt -->
+    <string name="settings_experiments_title">实验性</string>
+    <string name="settings_experiments_hint">提示</string>
+    <string name="settings_experiments_warning">以下功能为实验性,可能不稳定或影响体验</string>
+    <string name="settings_experiments_features">实验功能</string>
+    <string name="settings_experiments_force_mood">强制 MOOD 输出</string>
+    <string name="settings_experiments_force_mood_subtitle">即使模型不支持也尝试要求输出 MOOD 块</string>
+    <string name="settings_experiments_debug_mode">调试模式</string>
+    <string name="settings_experiments_debug_mode_subtitle">显示更多内部状态(MOOD/工具调用/Token)</string>
+    <string name="settings_experiments_self_reflection">自我反思</string>
+    <string name="settings_experiments_self_reflection_subtitle">回复后自动检查质量</string>
+    <string name="settings_experiments_long_memory_compression">长记忆压缩</string>
+    <string name="settings_experiments_long_memory_compression_subtitle">超长对话自动摘要(v1.55 起默认启用)</string>
+
+    <!-- UserProfileEditPage.kt -->
+    <string name="settings_user_profile_title">用户画像</string>
+    <string name="settings_user_profile_appellation">称呼</string>
+    <string name="settings_user_profile_assistant_name">助手名字</string>
+    <string name="settings_user_profile_assistant_name_hint">如:小缪 / JARVIS</string>
+    <string name="settings_user_profile_your_name">你的称呼</string>
+    <string name="settings_user_profile_your_name_hint">如:小明 / 老板</string>
+    <string name="settings_user_profile_basic_info">基本信息</string>
+    <string name="settings_user_profile_age">年龄</string>
+    <string name="settings_user_profile_city">城市</string>
+    <string name="settings_user_profile_occupation">职业</string>
+    <string name="settings_user_profile_profession_field">专业领域</string>
+    <string name="settings_user_profile_profession_field_hint">如:软件开发 / 金融 / 医疗</string>
+    <string name="settings_user_profile_interests">兴趣与偏好</string>
+    <string name="settings_user_profile_interests_label">兴趣爱好(逗号分隔,如:阅读,编程,旅行)</string>
+    <!-- v1.133: 重写用户画像 — 新增字段全部注入 system prompt -->
+    <string name="settings_user_profile_intro">填写的信息会注入到 AI 的 system prompt,让 AI 真正了解你。所有字段均为可选。</string>
+    <string name="settings_user_profile_assistant_name_desc">AI 会用此名字自称</string>
+    <string name="settings_user_profile_your_name_desc">AI 会用此称呼叫你</string>
+    <string name="settings_user_profile_bio">个人简介</string>
+    <string name="settings_user_profile_bio_hint">一段话介绍自己,让 AI 对你有整体认知</string>
+    <string name="settings_user_profile_bio_desc">优先级最高,让 AI 整体了解你</string>
+    <string name="settings_user_profile_timezone">时区</string>
+    <string name="settings_user_profile_timezone_hint">如:Asia/Shanghai / UTC+8</string>
+    <string name="settings_user_profile_background">背景与专长</string>
+    <string name="settings_user_profile_education">教育背景</string>
+    <string name="settings_user_profile_education_hint">如:本科 计算机科学 / 硕士 金融工程</string>
+    <string name="settings_user_profile_skills">技能专长</string>
+    <string name="settings_user_profile_skills_hint">如:Python, 机器学习, 产品设计</string>
+    <string name="settings_user_profile_communication">沟通偏好</string>
+    <string name="settings_user_profile_comm_style">沟通风格</string>
+    <string name="settings_user_profile_comm_style_hint">如:简洁 / 详细 / 活泼 / 严肃</string>
+    <string name="settings_user_profile_resp_length">回复长度偏好</string>
+    <string name="settings_user_profile_resp_length_hint">如:短 / 中 / 长</string>
+    <string name="settings_user_profile_pref_tone">偏好语气</string>
+    <string name="settings_user_profile_pref_tone_hint">如:友好 / 专业 / 幽默 / 严谨</string>
+    <string name="settings_user_profile_pref_lang">偏好回复语言</string>
+    <string name="settings_user_profile_pref_lang_hint">如:中文 / 英文 / 中英混合</string>
+    <string name="settings_user_profile_boundaries">边界与忌讳</string>
+    <string name="settings_user_profile_avoid_topics">忌讳话题</string>
+    <string name="settings_user_profile_avoid_topics_hint">逗号分隔,如:政治,宗教</string>
+    <string name="settings_user_profile_avoid_topics_desc">AI 会主动避开这些话题</string>
+
+    <!-- PresetProviderPickerDialog.kt -->
+    <string name="settings_preset_select_provider">选择供应商</string>
+    <string name="settings_preset_back">返回</string>
+    <string name="settings_preset_subtitle">覆盖海外、国产官方与中转站,选中后只需填入 API Key</string>
+    <string name="settings_preset_group_overseas">海外官方</string>
+    <string name="settings_preset_group_domestic">国产官方</string>
+    <string name="settings_preset_group_relay">中转站</string>
+    <string name="settings_preset_no_match">没有匹配的供应商</string>
+    <string name="settings_preset_search_hint">搜索供应商或域名</string>
+    <string name="settings_preset_clear">清除</string>
+    <string name="settings_preset_need_baseurl">需填 baseUrl</string>
+    <string name="settings_preset_model_count">%1$d 模型</string>
+    <string name="settings_preset_custom">自定义供应商</string>
+    <string name="settings_preset_custom_desc">手动填写 baseUrl、API Key 和模型列表</string>
+
+    <!-- ProviderModelRow.kt -->
+    <string name="settings_model_action_settings">设置</string>
+    <string name="settings_model_action_add">添加</string>
+    <string name="settings_model_ability_tool">工具</string>
+    <string name="settings_model_ability_reasoning">推理</string>
+    <string name="settings_model_ability_streaming">流式</string>
+    <string name="settings_model_ability_image">画图</string>
+    <string name="settings_model_ability_multimodal">多模态</string>
+    <string name="settings_model_ability_video">视频</string>
+    <string name="settings_model_ability_chat">聊天</string>
+
+    <!-- AssistantSection.kt -->
+    <string name="settings_assistant_section">助手</string>
+    <string name="settings_assistant_manage">助手管理</string>
+    <string name="settings_assistant_manage_subtitle">助手管理世界书</string>
+    <string name="settings_assistant_favorites">收藏夹</string>
+    <string name="settings_assistant_favorites_subtitle">跨会话查看收藏的消息</string>
+    <string name="settings_assistant_lorebook">世界书 Lorebook</string>
+    <string name="settings_assistant_lorebook_subtitle">关键词触发的上下文注入(角色扮演/世界观设定)</string>
+    <string name="settings_assistant_quick_messages">快捷消息</string>
+    <string name="settings_assistant_quick_messages_subtitle">预设消息模板,支持变量替换,一键插入输入框</string>
+    <string name="settings_assistant_prompt_injection">模式注入</string>
+    <string name="settings_assistant_prompt_injection_subtitle">切换模式时自动注入对应提示词(创意/编程/角色扮演等)</string>
+    <string name="settings_assistant_skills">Skill 管理</string>
+    <string name="settings_assistant_skills_subtitle">查看/启用/禁用 LLM 可调用的工具(读写文件/HTTP 等)</string>
+    <string name="settings_assistant_long_memory">长期记忆</string>
+    <string name="settings_assistant_memory_enable">启用记忆系统</string>
+    <string name="settings_assistant_memory_enable_subtitle">关闭后对话不再注入长期记忆,后台也不再生成摘要</string>
+
+    <!-- MultiAgentSettingsPage.kt -->
+    <string name="settings_multi_agent_title">多 Agent 协作</string>
+    <string name="settings_multi_agent_enable">启用多 Agent 协作</string>
+    <string name="settings_multi_agent_enable_subtitle">开启后主助手可把任务委托给团队成员</string>
+    <string name="settings_multi_agent_team_list">团队列表</string>
+    <string name="settings_multi_agent_no_team">还没有团队</string>
+    <string name="settings_multi_agent_no_team_hint">点击下方新建团队</string>
+    <string name="settings_multi_agent_new_team">新建团队</string>
+    <string name="settings_multi_agent_delete_team">删除团队</string>
+    <string name="settings_multi_agent_unnamed_team">未命名团队</string>
+    <string name="settings_multi_agent_no_members">暂无成员</string>
+    <string name="settings_multi_agent_delete">删除</string>
+    <string name="settings_multi_agent_edit_team">编辑团队</string>
+    <string name="settings_multi_agent_team_name">团队名称</string>
+    <string name="settings_multi_agent_team_name_hint">例如:写作小组</string>
+    <string name="settings_multi_agent_team_name_empty">团队名称不能为空</string>
+    <string name="settings_multi_agent_description">描述(选填)</string>
+    <string name="settings_multi_agent_description_hint">团队用途或协作场景</string>
+    <string name="settings_multi_agent_select_members">选择成员</string>
+    <string name="settings_multi_agent_no_assistants">暂无可选助手,请先在「助手」页面创建。</string>
+    <string name="settings_multi_agent_save">保存</string>
+    <string name="settings_multi_agent_cancel">取消</string>
+
+    <!-- SettingsTutorialPage.kt -->
+    <string name="settings_tutorial_title">使用教程</string>
+
+    <!-- 第一章 -->
+    <string name="settings_tutorial_ch1_title">第一章:开始使用(新手必读)</string>
+    <string name="settings_tutorial_ch1_s1_title">Muse 是什么?</string>
+    <string name="settings_tutorial_ch1_s1_content">Muse 是一款 AI 智能助手应用。您可以把它想象成一个什么都知道的朋友,随时可以问它问题、让它帮忙写东西、翻译、总结等等。\n\n它需要连接互联网和 AI 模型才能工作,所以第一次使用前需要简单配置一下。</string>
+    <string name="settings_tutorial_ch1_s2_title">第一次使用该做什么?</string>
+    <string name="settings_tutorial_ch1_s2_content">别担心,只需要三步就能开始用:\n\n1. 准备一个 AI 模型的 API Key(就像一张通行证,见第二章)\n2. 在设置里添加这个 Key\n3. 回到聊天页面,输入消息,按发送按钮\n\n就这么简单!</string>
+    <string name="settings_tutorial_ch1_s3_title">如何开始第一次对话</string>
+    <string name="settings_tutorial_ch1_s3_content">1. 打开应用,看到聊天页面\n2. 点击屏幕下方的输入框(显示“发送消息...”的地方)\n3. 输入您想问的问题,比如“你好”\n4. 点击右侧的发送按钮(纸飞机图标)\n5. 等待 AI 回复,文字会一个一个冒出来,这叫“流式输出”</string>
+
+    <!-- 第二章 -->
+    <string name="settings_tutorial_ch2_title">第二章:配置 AI 模型(重要)</string>
+    <string name="settings_tutorial_ch2_s1_title">为什么需要配置模型?</string>
+    <string name="settings_tutorial_ch2_s1_content">Muse 本身不包含 AI,它需要连接外部的 AI 服务。就像手机需要插 SIM 卡才能打电话一样,Muse 需要“API Key”才能连接 AI。\n\nAPI Key 是一串字母和数字组成的密码,从 AI 供应商那里获取。</string>
+    <string name="settings_tutorial_ch2_s2_title">去哪里申请 API Key?</string>
+    <string name="settings_tutorial_ch2_s2_content">以下是一些常用的 AI 供应商(排名不分先后):\n\n• DeepSeek(深度求索)— 国产,价格便宜,效果很好\n  网站:platform.deepseek.com\n\n• 智谱 AI(智谱清言)— 国产,有免费额度\n  网站:open.bigmodel.cn\n\n• 阿里通义千问 — 国产,有免费额度\n  网站:dashscope.aliyun.com\n\n• 月之暗面 Kimi — 国产,长文本能力强\n  网站:platform.moonshot.cn\n\n• OpenAI(ChatGPT)— 国际,效果最好但需要海外支付\n  网站:platform.openai.com\n\n建议新手从 DeepSeek 或智谱开始,注册后在后台找到“API Keys”页面,点击“创建新 Key”,复制那串代码就行。</string>
+    <string name="settings_tutorial_ch2_s3_title">如何在 Muse 中添加供应商</string>
+    <string name="settings_tutorial_ch2_s3_content">1. 点击右下角或左上角进入“设置”\n2. 找到“模型与服务”或“供应商”\n3. 点击“添加供应商”\n4. 选择供应商类型(如 OpenAI 兼容)\n5. 填写:\n   - 名称:随便起,比如“我的 DeepSeek”\n   - API Key:粘贴你刚才复制的代码\n   - 接口地址:DeepSeek 填 https://api.deepseek.com\n6. 点击保存\n7. 在模型列表中添加你要用的模型(如 deepseek-chat)</string>
+    <string name="settings_tutorial_ch2_s4_title">如何选择当前使用的模型</string>
+    <string name="settings_tutorial_ch2_s4_content">在聊天页面,顶部或输入栏附近会有模型名称显示。点击它,会弹出模型选择列表,选择你想用的那个即可。</string>
+
+    <!-- 第三章 -->
+    <string name="settings_tutorial_ch3_title">第三章:日常聊天</string>
+    <string name="settings_tutorial_ch3_s1_title">如何新建对话</string>
+    <string name="settings_tutorial_ch3_s1_content">在聊天列表页面(侧边栏或返回到会话列表),点击“新建对话”按钮(通常是一个加号图标)。新对话是空白的,不会受之前对话影响。</string>
+    <string name="settings_tutorial_ch3_s2_title">如何切换历史对话</string>
+    <string name="settings_tutorial_ch3_s2_content">从聊天页面打开侧边栏(点击左上角菜单或从左边缘右滑),会看到所有历史对话列表,点击任意一个即可切换过去。</string>
+    <string name="settings_tutorial_ch3_s3_title">如何删除对话</string>
+    <string name="settings_tutorial_ch3_s3_content">在历史对话列表中,长按你想删除的对话,会弹出菜单,选择“删除”即可。注意删除后无法恢复。</string>
+    <string name="settings_tutorial_ch3_s4_title">如何搜索历史消息</string>
+    <string name="settings_tutorial_ch3_s4_content">在聊天页面或会话列表中,找到搜索图标(放大镜),输入关键词,会显示所有包含这个词的历史消息。</string>
+    <string name="settings_tutorial_ch3_s5_title">流式输出是什么</string>
+    <string name="settings_tutorial_ch3_s5_content">AI 回复时,文字不是一下子全出现,而是像打字一样一个字一个字冒出来。这叫“流式输出”。好处是不用等很久就能看到回答,坏处是需要稳定网络。如果网络不好,可能会卡住,稍等片刻即可。</string>
+
+    <!-- 第四章 -->
+    <string name="settings_tutorial_ch4_title">第四章:高级功能</string>
+    <string name="settings_tutorial_ch4_s1_title">助手角色是什么</string>
+    <string name="settings_tutorial_ch4_s1_content">助手角色就像给 AI 戴上不同的“帽子”。比如你可以创建一个“翻译官”角色,它就会专注于翻译;创建一个“写作助手”角色,它就擅长写文章。\n\n在设置或侧边栏找到“助手”入口,点击新建,填写名称和系统提示词(告诉它应该怎么表现),就创建好了。</string>
+    <string name="settings_tutorial_ch4_s2_title">联网搜索怎么用</string>
+    <string name="settings_tutorial_ch4_s2_content">在输入框上方有一个地球图标,点击它让它变成高亮,就开启了联网搜索。AI 回答时会先上网搜索最新信息,适合问时事、新闻类问题。用完后再点一下关闭,避免消耗流量。</string>
+    <string name="settings_tutorial_ch4_s3_title">深度思考模式怎么用</string>
+    <string name="settings_tutorial_ch4_s3_content">输入框上方有一个大脑图标,点击高亮即开启。开启后 AI 会先“思考”再回答,适合数学题、逻辑推理等复杂问题。普通聊天不需要开。</string>
+    <string name="settings_tutorial_ch4_s4_title">发送图片给 AI 识别</string>
+    <string name="settings_tutorial_ch4_s4_content">点击输入框左侧的加号,选择“图片”,从相册选一张图发送。AI 可以识别图片内容。注意:需要选择支持“视觉”的模型(如 GPT-4o、Gemini 等)。</string>
+    <string name="settings_tutorial_ch4_s5_title">语音输入</string>
+    <string name="settings_tutorial_ch4_s5_content">点击输入框右侧的麦克风图标,说话,松开后会自动转成文字。需要配置语音识别(ASR)服务才能使用。</string>
+    <string name="settings_tutorial_ch4_s6_title">Prompt 模板库</string>
+    <string name="settings_tutorial_ch4_s6_content">点击输入框左侧加号,选择“Prompt 模板”,会弹出预置的模板列表(如写邮件、翻译、总结等)。点击一个模板,内容会自动填入输入框,你只需修改具体细节即可发送。</string>
+    <string name="settings_tutorial_ch4_s7_title">对话分叉(Fork)是什么</string>
+    <string name="settings_tutorial_ch4_s7_content">如果你对 AI 的某个回答不满意,想从那条消息开始重新对话,长按那条消息,选择“分叉对话”。会创建一个新对话,复制之前所有内容,然后你可以从那里换个方向聊。</string>
+
+    <!-- 第五章 -->
+    <string name="settings_tutorial_ch5_title">第五章:个性化设置</string>
+    <string name="settings_tutorial_ch5_s1_title">切换深色/浅色模式</string>
+    <string name="settings_tutorial_ch5_s1_content">设置 → 外观 → 主题模式,选择“跟随系统”(自动跟随手机设置)、“浅色”或“深色”。深色模式在晚上看比较护眼。</string>
+    <string name="settings_tutorial_ch5_s2_title">调整字体大小</string>
+    <string name="settings_tutorial_ch5_s2_content">设置 → 外观 → 文字大小,选择小/中/大/特大。中号是默认大小。</string>
+    <string name="settings_tutorial_ch5_s3_title">切换语言</string>
+    <string name="settings_tutorial_ch5_s3_content">设置 → 外观 → 语言,选择“跟随系统”、“中文”或“英文”。切换后界面会立即变化。</string>
+
+    <!-- 第六章 -->
+    <string name="settings_tutorial_ch6_title">第六章:数据管理</string>
+    <string name="settings_tutorial_ch6_s1_title">备份聊天记录</string>
+    <string name="settings_tutorial_ch6_s1_content">设置 → 数据与备份,可以配置云备份(WebDAV 或 S3)。配置好后,聊天记录会自动备份到云端,换手机也不怕丢。</string>
+    <string name="settings_tutorial_ch6_s2_title">从其他应用导入数据</string>
+    <string name="settings_tutorial_ch6_s2_content">设置 → 数据导入,支持从 RikkaHub 或 Kelivo 导入。选择来源后,按提示导出那边的备份文件,然后在这里选择该文件即可。导入内容包括供应商配置、助手、对话记录。</string>
+    <string name="settings_tutorial_ch6_s3_title">导出角色卡</string>
+    <string name="settings_tutorial_ch6_s3_content">在助手管理页面,长按某个助手,选择“导出角色卡”,会生成一个文件,可以分享给朋友。朋友在 Muse 中导入即可使用相同配置的助手。</string>
+
+    <!-- 第七章 -->
+    <string name="settings_tutorial_ch7_title">第七章:常见问题</string>
+    <string name="settings_tutorial_ch7_s1_title">对话没反应?</string>
+    <string name="settings_tutorial_ch7_s1_content">最常见的原因:\n1. API Key 填错了 — 去设置检查\n2. 网络不通 — 换个网络试试\n3. 余额不足 — 去供应商网站充值\n4. 接口地址填错了 — 对照官网说明检查</string>
+    <string name="settings_tutorial_ch7_s2_title">回答很慢?</string>
+    <string name="settings_tutorial_ch7_s2_content">1. 换一个更快的模型(小模型通常更快)\n2. 检查网络连接\n3. 关闭“深度思考”模式(思考过程会花时间)\n4. 如果在国内用 OpenAI,需要代理</string>
+    <string name="settings_tutorial_ch7_s3_title">想省钱?</string>
+    <string name="settings_tutorial_ch7_s3_content">1. 在设置中配置“工具模型路由”,用便宜的小模型处理工具调用\n2. 关闭不必要的联网搜索\n3. 选择国产模型(DeepSeek/智谱等),价格比 OpenAI 便宜很多</string>
+    <string name="settings_tutorial_ch7_s4_title">如何清除所有数据</string>
+    <string name="settings_tutorial_ch7_s4_content">设置 → 安全与分享 中可能有相关选项。或在手机系统的“应用管理”中清除 Muse 的数据。注意:这会删除所有对话和配置,不可恢复。</string>
+</resources>

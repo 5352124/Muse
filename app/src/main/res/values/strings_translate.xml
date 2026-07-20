@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- v1.97 gap8: 独立翻译页面(TranslateScreen)字符串 -->
+    <string name="translate_page_title">翻译</string>
+    <string name="translate_page_input_placeholder">输入要翻译的文本...</string>
+    <string name="translate_page_result_placeholder">翻译结果将显示在这里</string>
+    <string name="translate_page_translate">翻译</string>
+    <string name="translate_page_cancel">取消</string>
+    <string name="translate_page_copy">复制结果</string>
+    <string name="translate_page_paste">粘贴</string>
+    <string name="translate_page_clear">清空</string>
+    <string name="translate_page_target_language">目标语言</string>
+    <string name="translate_page_translating">翻译中...</string>
+    <string name="translate_page_error_no_provider">请先在设置中配置 AI 供应商</string>
+    <string name="translate_page_error_empty_input">请输入要翻译的文本</string>
+    <string name="translate_page_error_failed">翻译失败: %1$s</string>
+    <string name="translate_page_copied">已复制到剪贴板</string>
+    <string name="translate_page_pasted">已粘贴</string>
+    <string name="translate_page_clipboard_empty">剪贴板为空</string>
+    <string name="translate_page_swap">清空并重新输入</string>
+    <!-- v1.97: 翻译历史记录(内存保留最近 20 条,不持久化) -->
+    <string name="translate_page_history_section">历史记录</string>
+    <string name="translate_page_history_empty">暂无翻译历史</string>
+    <string name="translate_page_history_clear">清空历史</string>
+    <string name="translate_page_history_clear_confirm">清空翻译历史?</string>
+    <string name="translate_page_history_clear_confirm_msg">将清除本次会话保留的全部翻译历史,此操作不可恢复。</string>
+    <string name="translate_page_history_loaded">已加载到输入框</string>
+    <string name="translate_page_history_cleared">历史已清空</string>
+    <string name="translate_page_history_source_label">原文</string>
+    <string name="translate_page_history_translated_label">译文</string>
+</resources>
