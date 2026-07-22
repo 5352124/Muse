@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.ViewWeek
+import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,8 +41,10 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -65,8 +68,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.zer0.muse.R
+import io.zer0.muse.data.quota.QuotaManager
+import io.zer0.muse.data.quota.QuotaState
 import io.zer0.muse.ui.theme.MuseShapes
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.TextStyle
@@ -197,6 +203,12 @@ fun StatsScreen(
                     TopSessionsCard(
                         topSessions = state.topSessions,
                         onOpenSession = onOpenSession,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                }
+                // v1.0.4: 每日配额仪表盘(QuotaManager 后端能力接入)
+                item(key = "quota_dashboard") {
+                    QuotaDashboardCard(
                         modifier = Modifier.padding(horizontal = 16.dp),
                     )
                 }
@@ -1036,4 +1048,116 @@ private fun EmptyStatsHint() {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.outline,
     )
+}
+
+/**
+ * v1.0.4: 每日配额仪表盘卡片 — 接入 [QuotaManager] 后端能力。
+ *
+ * 展示:
+ *  - 当前套餐(免费 / Pro)
+ *  - 聊天 / 图片 / 搜索 三类资源的当日使用量与上限
+ *  - 进度条 + 警告色(80%+ 黄色,100%+ 红色)
+ *  - 重置时间(次日 00:00)
+ */
+@Composable
+private fun QuotaDashboardCard(modifier: Modifier = Modifier) {
+    val quotaManager: QuotaManager = koinInject()
+    val state by quotaManager.quotaStateFlow.collectAsStateWithLifecycle(initialValue = QuotaState())
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MuseShapes.large,
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Speed,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp),
+                )
+                Text(
+                    text = stringResource(R.string.quota_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.weight(1f))
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = if (state.isPro) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Text(
+                        text = if (state.isPro) stringResource(R.string.quota_plan_pro)
+                            else stringResource(R.string.quota_plan_free),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (state.isPro) MaterialTheme.colorScheme.onPrimaryContainer
+                            else MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
+            QuotaRow(
+                label = stringResource(R.string.quota_chats),
+                count = state.chatCount,
+                limit = state.chatLimit(),
+            )
+            QuotaRow(
+                label = stringResource(R.string.quota_images),
+                count = state.imageCount,
+                limit = state.imageLimit(),
+            )
+            QuotaRow(
+                label = stringResource(R.string.quota_searches),
+                count = state.searchCount,
+                limit = state.searchLimit(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuotaRow(label: String, count: Int, limit: Int) {
+    val ratio = if (limit > 0) count.toFloat() / limit else 0f
+    val color = when {
+        ratio >= 1.0f -> MaterialTheme.colorScheme.error
+        ratio >= 0.8f -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.primary
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "$count / $limit",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = color,
+            )
+        }
+        LinearProgressIndicator(
+            progress = { ratio.coerceIn(0f, 1f) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(MaterialTheme.shapes.small),
+            color = color,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+        )
+    }
 }

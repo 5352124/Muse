@@ -390,4 +390,7 @@
     <string name="settings_chat_24h_subtitle">时间戳显示格式</string>
     <string name="settings_chat_default_deep_thinking">默认深度思考</string>
     <string name="settings_chat_default_deep_thinking_subtitle">新建或切换会话时默认启用深度思考</string>
+    <!-- v1.0.4 P3-4: 性能模式(MessagePaginator 接入) -->
+    <string name="settings_chat_performance_mode">性能模式</string>
+    <string name="settings_chat_performance_mode_subtitle">超长会话仅渲染最近 50 条消息,上滑加载更多,降低列表卡顿</string>
 </resources>

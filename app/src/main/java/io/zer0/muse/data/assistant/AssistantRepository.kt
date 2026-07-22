@@ -161,7 +161,7 @@ class AssistantRepository(
         //   1) 模板变量 {{user_name}} — 用户称呼(引导页填写,见 UserProfile.userNickName)
         //   2) SystemPromptAssembler 的"用户画像" section — 显式注入"你的名字: 你叫「X」"
         // 设计参考:openhanako-orig 三层人设(identity 身份 / ishiki 人格 / 关系定位)
-        private const val DEFAULT_SYSTEM_PROMPT = """你是 {{char}},{{user_name}}的灵感伙伴。
+        const val DEFAULT_SYSTEM_PROMPT = """你是 {{char}},{{user_name}}的灵感伙伴。
 
 # 身份
 你叫 {{char}}。以此自称。

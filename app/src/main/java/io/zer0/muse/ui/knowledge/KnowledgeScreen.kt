@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material3.CircularProgressIndicator
@@ -534,6 +535,13 @@ private fun DocDetailDialog(
     onDismiss: () -> Unit,
     onReindex: () -> Unit,
 ) {
+    // v1.0.4 P2-2:从 doc.content 中分离 PDF 元数据块 / 目录块 / 正文,
+    // 让用户在详情弹窗里看到结构化的文档信息卡片(而不是混在等宽正文中)。
+    // DocumentParser 输出格式:[文档信息]\n字段: 值\n...\n\n[目录]\n• 条目\n...\n\n<正文>
+    val parsed by remember(doc.id, doc.content) {
+        mutableStateOf(parsePdfStructuredContent(doc.content, doc.fileType))
+    }
+
     MuseDialog(
         onDismissRequest = onDismiss,
         title = doc.title,
@@ -552,8 +560,22 @@ private fun DocDetailDialog(
                     color = MaterialTheme.colorScheme.outline,
                 )
                 Spacer(Modifier.height(8.dp))
+
+                // v1.0.4 P2-2:PDF 元数据卡片(仅在有元数据时展示)
+                if (parsed.metadata.isNotEmpty()) {
+                    PdfMetadataCard(metadata = parsed.metadata)
+                    Spacer(Modifier.height(8.dp))
+                }
+                // v1.0.4 P2-2:PDF 目录卡片(可折叠,仅在有目录时展示)
+                if (parsed.outline.isNotEmpty()) {
+                    PdfOutlineCard(outline = parsed.outline)
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                // 正文(无元数据/目录时退化为原始 content 展示,保持兼容)
+                val bodyText = parsed.body
                 Text(
-                    doc.content,
+                    bodyText,
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = MuseMonoFontFamily),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -568,6 +590,171 @@ private fun DocDetailDialog(
             onDismiss()
         },
     )
+}
+
+/**
+ * v1.0.4 P2-2:从 DocumentParser 输出的拼接文本中分离 PDF 元数据 / 目录 / 正文。
+ *
+ * DocumentParser.readPdf 的输出格式(见 doc/DocumentParser.kt:242-258):
+ * ```
+ * [文档信息]
+ * 标题: xxx
+ * 作者: xxx
+ *
+ * [目录]
+ * • 第一章
+ *   • 1.1 节
+ *
+ * <正文>
+ * ```
+ * 本函数把三块拆开,供 UI 分别结构化渲染。非 PDF 文档(fileType != "pdf")
+ * 直接把整个 content 当作 body 返回,保持原有展示行为。
+ */
+private fun parsePdfStructuredContent(content: String, fileType: String): ParsedPdfContent {
+    if (fileType.lowercase(Locale.getDefault()) != "pdf" || content.isBlank()) {
+        return ParsedPdfContent(body = content)
+    }
+    // 仅在 content 以 [文档信息] 或 [目录] 开头时才解析(避免误吞普通正文)
+    if (!content.startsWith("[文档信息]") && !content.startsWith("[目录]")) {
+        return ParsedPdfContent(body = content)
+    }
+
+    val metadata = LinkedHashMap<String, String>()
+    val outline = mutableListOf<String>()
+    val bodyBuilder = StringBuilder()
+
+    var section = "meta" // meta / outline / body
+    content.lineSequence().forEach { line ->
+        when {
+            line == "[文档信息]" -> section = "meta"
+            line == "[目录]" -> section = "outline"
+            // 空行作为 section 切换的隐式分隔(DocumentParser 在块之间会输出空行)
+            line.isBlank() && section != "body" -> {
+                // 不立即切换:等遇到非 [xxx] 且非空行时再决定
+            }
+            section == "meta" && line.contains(": ") -> {
+                val idx = line.indexOf(": ")
+                if (idx > 0) {
+                    metadata[line.substring(0, idx).trim()] = line.substring(idx + 2).trim()
+                }
+            }
+            section == "outline" && line.startsWith("•") -> {
+                outline.add(line.trimStart(' ', '•').trim())
+            }
+            section == "outline" && line.startsWith("  •") -> {
+                outline.add("  " + line.trimStart(' ', '•').trim())
+            }
+            else -> {
+                // 遇到非元数据/非目录条目,切换到 body 模式
+                if (section != "body") section = "body"
+                bodyBuilder.appendLine(line)
+            }
+        }
+    }
+
+    return ParsedPdfContent(
+        metadata = metadata,
+        outline = outline,
+        body = bodyBuilder.toString().trim(),
+    )
+}
+
+/** [parsePdfStructuredContent] 的解析结果。 */
+private data class ParsedPdfContent(
+    val metadata: Map<String, String> = emptyMap(),
+    val outline: List<String> = emptyList(),
+    val body: String = "",
+)
+
+/**
+ * PDF 元数据卡片 — 字段名 + 值成对展示,limit 8 行避免过长。
+ */
+@Composable
+private fun PdfMetadataCard(metadata: Map<String, String>) {
+    Surface(
+        shape = MuseShapes.small,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.size(6.dp))
+                Text(
+                    text = "文档信息",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            metadata.forEach { (k, v) ->
+                Text(
+                    text = "$k: $v",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * PDF 目录卡片 — 默认折叠(避免占用过多弹窗空间),点击标题切换展开/折叠。
+ */
+@Composable
+private fun PdfOutlineCard(outline: List<String>) {
+    var expanded by remember { mutableStateOf(false) }
+    Surface(
+        shape = MuseShapes.small,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            // 标题行可点击,切换展开/折叠
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.size(6.dp))
+                Text(
+                    text = "目录(${outline.size} 条)",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = if (expanded) "收起" else "展开",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            if (expanded) {
+                Spacer(Modifier.height(6.dp))
+                outline.forEach { item ->
+                    val indent = if (item.startsWith("  ")) 16.dp else 0.dp
+                    Text(
+                        text = "• " + item.trimStart(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = indent),
+                    )
+                }
+            }
+        }
+    }
 }
 
 /**

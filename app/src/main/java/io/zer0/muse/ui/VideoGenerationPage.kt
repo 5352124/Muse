@@ -108,7 +108,7 @@ fun VideoGenerationPage(
 
     // 表单状态(rememberSaveable 保证旋转/配置变更后保留)
     var prompt by rememberSaveable { mutableStateOf("") }
-    var selectedModel by rememberSaveable { mutableStateOf("kling-v1") }
+    var selectedModel by rememberSaveable { mutableStateOf("") }
     var duration by rememberSaveable { mutableStateOf(5) }
     var resolution by rememberSaveable { mutableStateOf("720p") }
     var imageUrl by rememberSaveable { mutableStateOf("") }
@@ -127,6 +127,19 @@ fun VideoGenerationPage(
             enabledProviders.none { it.id == selectedProviderId }
         ) {
             selectedProviderId = enabledProviders.firstOrNull()?.id ?: ""
+        }
+    }
+
+    // 当前供应商下支持视频输出的模型列表
+    val videoModels = remember(selectedProvider) {
+        selectedProvider?.models?.filter { it.supportsVideoOutput() } ?: emptyList()
+    }
+    // 自动选中第一个视频模型
+    LaunchedEffect(videoModels) {
+        if (selectedModel.isBlank() && videoModels.isNotEmpty()) {
+            selectedModel = videoModels.first().id
+        } else if (selectedModel.isNotBlank() && videoModels.none { it.id == selectedModel }) {
+            selectedModel = videoModels.firstOrNull()?.id ?: ""
         }
     }
 
@@ -171,14 +184,63 @@ fun VideoGenerationPage(
                 )
             }
 
-            // ── 模型选择 ──
+            // ── 模型选择(动态:从当前供应商中筛选支持视频输出的模型)──
             FormSection(label = stringResource(R.string.video_gen_model)) {
-                SegmentedOptions(
-                    options = listOf("kling-v1" to "Kling v1", "kling-v2" to "Kling v2"),
-                    selected = selectedModel,
-                    onSelect = { selectedModel = it },
-                    enabled = !isGenerating,
-                )
+                if (videoModels.isEmpty()) {
+                    Surface(
+                        shape = MuseShapes.semiLarge,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = "当前供应商没有支持视频输出的模型。请在「设置→模型与服务」中为模型开启「视频输出」能力。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(MusePaddings.cardInner),
+                        )
+                    }
+                } else {
+                    Surface(
+                        shape = MuseShapes.semiLarge,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(MusePaddings.tightGap),
+                            verticalArrangement = Arrangement.spacedBy(MusePaddings.tightGap),
+                        ) {
+                            videoModels.forEach { model ->
+                                val isSelected = model.id == selectedModel
+                                Surface(
+                                    shape = MuseShapes.medium,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.surface,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(enabled = !isGenerating) {
+                                            selectedModel = model.id
+                                        },
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(MusePaddings.cardInner),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            text = model.name,
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                fontWeight = FontWeight.SemiBold,
+                                            ),
+                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                            else MaterialTheme.colorScheme.onSurface,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // ── 时长选择 ──
@@ -298,14 +360,14 @@ fun VideoGenerationPage(
             // ── 生成视频按钮(Surface + clickable,不用 Material3 Button)──
             Surface(
                 shape = MuseShapes.medium,
-                color = if (isGenerating || selectedProvider == null) {
+                color = if (isGenerating || selectedProvider == null || videoModels.isEmpty()) {
                     MaterialTheme.colorScheme.surfaceVariant
                 } else {
                     MaterialTheme.colorScheme.primary
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = !isGenerating && selectedProvider != null) {
+                    .clickable(enabled = !isGenerating && selectedProvider != null && videoModels.isNotEmpty()) {
                         if (prompt.isBlank()) {
                             MuseToast.show(context.getString(R.string.video_gen_prompt))
                             return@clickable
@@ -318,6 +380,7 @@ fun VideoGenerationPage(
                             errorMessage = ""
                             videoUrl = ""
 
+                            val specific = provider.resolvedSpecific() as? io.zer0.ai.core.ProviderSpecificConfig.OpenAI
                             val request = VideoGenerationRequest(
                                 prompt = prompt,
                                 model = selectedModel,
@@ -325,10 +388,12 @@ fun VideoGenerationPage(
                                 duration = duration,
                                 resolution = resolution,
                                 apiKey = provider.apiKey,
+                                baseUrl = provider.resolvedBaseUrl(),
+                                videoGenerationsPath = specific?.videoGenerationsPath,
                             )
-                            // v1.132: 仍走 "kling" providerId 路由(目前仅 KlingVideoProvider 实现),
-                            // apiKey 来自用户选择的供应商。后续扩展 Runway/Pika 时可改成路由到对应实现。
-                            val result = videoService.generateVideo("kling", request)
+                            // v1.136: 使用供应商 ID 作为路由 key,Kling 继续走 KlingVideoProvider,
+                            // 其他 OpenAI 兼容供应商走 GenericOpenAiVideoProvider 兜底。
+                            val result = videoService.generateVideo(provider.id, request)
                             isGenerating = false
                             result.onSuccess { url ->
                                 taskStatus = VideoTaskStatus.SUCCESS

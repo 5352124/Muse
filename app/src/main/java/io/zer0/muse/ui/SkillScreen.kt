@@ -13,8 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FileUpload
@@ -389,10 +387,9 @@ private fun SkillDetailDialog(
         onDismissRequest = onDismiss,
         title = skill.name.ifBlank { unnamedText },
         content = {
+            // v1.0.7 修复崩溃:MuseDialog 的 content 区已自带 verticalScroll,嵌套会崩溃
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (skill.description.isNotEmpty()) {

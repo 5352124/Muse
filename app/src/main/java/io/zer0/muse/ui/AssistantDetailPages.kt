@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.Tune
@@ -66,6 +67,8 @@ import io.zer0.muse.data.assistant.AssistantEntity
 import io.zer0.muse.data.assistant.AssistantRepository
 import io.zer0.muse.data.assistant.AvatarStorage
 import io.zer0.muse.data.assistant.CharacterCardExporter
+import io.zer0.muse.data.sharing.CharacterSharer
+import io.zer0.muse.data.sharing.ShareableAssistant
 import io.zer0.muse.data.lorebook.LorebookEntity
 import io.zer0.muse.data.lorebook.LorebookRepository
 import io.zer0.muse.data.promptinjection.PromptInjectionEntity
@@ -75,6 +78,7 @@ import io.zer0.muse.data.quickmsg.QuickMessageRepository
 import io.zer0.muse.data.skill.SkillEntity
 import io.zer0.muse.data.skill.SkillRepository
 import io.zer0.muse.mcp.McpServerConfig
+import io.zer0.muse.tools.AgentCapability
 import io.zer0.muse.tools.ToolRegistry
 import io.zer0.muse.ui.common.AssistantAvatar
 import io.zer0.muse.ui.common.ChevronRight
@@ -344,6 +348,65 @@ fun AssistantDetailPage(
                     leadingContent = { io.zer0.muse.ui.common.IosSettingsIcon(Icons.AutoMirrored.Outlined.Article) },
                     headlineContent = { Text(stringResource(R.string.assistant_detail_export_json)) },
                     supportingContent = { Text(stringResource(R.string.assistant_detail_export_json_desc)) },
+                    trailingContent = { ChevronRight() },
+                )
+            }
+        }
+        // Muse 角色卡分享(系统分享 Intent)
+        item {
+            CardGroup(
+                title = { Text(stringResource(R.string.assistant_detail_share_section)) },
+            ) {
+                item(
+                    onClick = {
+                        val a = assistant ?: return@item
+                        val shareable = ShareableAssistant(
+                            name = a.name.ifBlank { "Assistant" },
+                            description = a.systemPrompt.take(200),
+                            systemPrompt = a.systemPrompt,
+                            temperature = a.temperature ?: 0.8f,
+                            topP = a.topP ?: 0.95f,
+                            maxTokens = a.maxTokens ?: 2048,
+                            emoji = a.avatarEmoji,
+                        )
+                        val uri = CharacterSharer.generateCardPng(context, shareable)
+                        if (uri != null) {
+                            CharacterSharer.shareCard(context, uri)
+                        } else {
+                            MuseToast.show(
+                                context.getString(
+                                    R.string.assistant_detail_share_muse_failed,
+                                    "card generation"
+                                ),
+                                3000,
+                            )
+                        }
+                    },
+                    leadingContent = { io.zer0.muse.ui.common.IosSettingsIcon(Icons.Outlined.Share) },
+                    headlineContent = { Text(stringResource(R.string.assistant_detail_share_muse_card)) },
+                    supportingContent = { Text(stringResource(R.string.assistant_detail_share_muse_card_desc)) },
+                    trailingContent = { ChevronRight() },
+                )
+                item(
+                    onClick = {
+                        val a = assistant ?: return@item
+                        val shareable = ShareableAssistant(
+                            name = a.name.ifBlank { "Assistant" },
+                            description = a.systemPrompt.take(200),
+                            systemPrompt = a.systemPrompt,
+                            temperature = a.temperature ?: 0.8f,
+                            topP = a.topP ?: 0.95f,
+                            maxTokens = a.maxTokens ?: 2048,
+                            emoji = a.avatarEmoji,
+                        )
+                        val json = CharacterSharer.exportToJson(shareable)
+                        val safeName = a.name.ifBlank { "assistant" }
+                            .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                        CharacterSharer.shareJson(context, json, "${safeName}_muse.json")
+                    },
+                    leadingContent = { io.zer0.muse.ui.common.IosSettingsIcon(Icons.AutoMirrored.Outlined.Article) },
+                    headlineContent = { Text(stringResource(R.string.assistant_detail_share_muse_json)) },
+                    supportingContent = { Text(stringResource(R.string.assistant_detail_share_muse_json_desc)) },
                     trailingContent = { ChevronRight() },
                 )
             }
@@ -1370,6 +1433,13 @@ fun AssistantAdvancedPage(
                 )
             }
         }
+        // 卡片组 3b: 多 Agent 能力标签
+        item {
+            CapabilityChipsSection(
+                capabilitiesJson = a.capabilitiesJson,
+                onCapabilitiesChange = { newJson -> update { it.copy(capabilitiesJson = newJson) } },
+            )
+        }
         // 卡片组 4: v1.97 正则替换规则
         item {
             RegexRulesSection(
@@ -1657,6 +1727,91 @@ private fun RegexRuleEditDialog(
         dismissText = stringResource(R.string.action_cancel),
         onDismiss = onDismiss,
     )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CapabilityChipsSection(
+    capabilitiesJson: String,
+    onCapabilitiesChange: (String) -> Unit,
+) {
+    val selected = remember(capabilitiesJson) {
+        AgentCapability.parseCapabilitiesJson(capabilitiesJson).toSet()
+    }
+    var customInput by remember { mutableStateOf("") }
+
+    CardGroup(
+        title = { Text(stringResource(R.string.assistant_detail_capabilities_title)) },
+    ) {
+        item(
+            headlineContent = {
+                Text(
+                    text = stringResource(R.string.assistant_detail_capabilities_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            },
+        )
+        item(
+            headlineContent = {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AgentCapability.ALL_CAPABILITIES.forEach { capability ->
+                        val isSelected = capability in selected
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                val current = AgentCapability.parseCapabilitiesJson(capabilitiesJson)
+                                val updated = if (isSelected) current - capability else current + capability
+                                onCapabilitiesChange(AgentCapability.toJson(updated))
+                            },
+                            label = { Text(AgentCapability.displayName(capability)) },
+                            shape = MuseShapes.large,
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            ),
+                        )
+                    }
+                }
+            },
+        )
+        item(
+            headlineContent = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = customInput,
+                        onValueChange = { customInput = it },
+                        label = { Text(stringResource(R.string.assistant_detail_custom_capability)) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        shape = MuseShapes.medium,
+                    )
+                    TextButton(
+                        onClick = {
+                            val id = customInput.trim().lowercase().replace(Regex("[^a-z0-9_]"), "_")
+                            if (id.isNotBlank() && id !in selected) {
+                                val current = AgentCapability.parseCapabilitiesJson(capabilitiesJson)
+                                onCapabilitiesChange(AgentCapability.toJson(current + id))
+                            }
+                            customInput = ""
+                        },
+                    ) {
+                        Text(stringResource(R.string.assistant_detail_add))
+                    }
+                }
+            },
+        )
+    }
 }
 
 /** 把 tagsJson (["a","b"]) 转为逗号分隔字符串便于编辑。 */

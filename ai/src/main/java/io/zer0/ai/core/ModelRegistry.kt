@@ -818,8 +818,9 @@ object ModelRegistry {
      * 给定一个 [Model](通常只有 id/name),根据注册表自动补全:
      *  - [Model.abilities]:若为空,从注册表填充
      *  - [Model.inputModalities]:若仅含默认 "text",从注册表填充(可能加 "image")
-     *  - [Model.outputModalities]:若仅含默认 "text",从注册表填充(可能加 "image")
+     *  - [Model.outputModalities]:若仅含默认 "text",从注册表填充(可能加 "image"/"video")
      *  - [Model.supportsVision]:若注册表判定支持图片输入,设为 true
+     *  - [Model.supportsVideo]:若 outputModalities 含 "video",设为 true
      *  - [Model.contextWindow]:若为空,委托 [ModelContextWindowRegistry] 兜底
      *  - [Model.maxOutputTokens]:若为空,优先从 [KnownModels] 兜底
      *
@@ -829,6 +830,9 @@ object ModelRegistry {
      *  3. [ModelRegistry] token 推断 + [ModelContextWindowRegistry] 上下文窗口兜底
      *
      * 已显式设置过(非空/非默认值)的字段不会被覆盖,避免破坏用户手动调整。
+     *
+     * v1.0.8: 增加 supportsVideo 补全,并调整 abilities 优先级为 Model > Registry > KnownModels,
+     * 与 [io.zer0.ai.registry.ModelRegistry.enhanceModel] 保持一致。
      */
     fun enrich(model: Model): Model {
         val id = model.id
@@ -841,11 +845,12 @@ object ModelRegistry {
         val detectedInput = lookupInputModalities(id)
         val detectedOutput = lookupOutputModalities(id)
 
-        // abilities: Model 已有 → KnownModels → ModelRegistry token 推断
+        // abilities: Model 已有 → Registry → KnownModels
         val newAbilities = when {
             model.abilities.isNotEmpty() -> model.abilities
+            detectedAbilities.isNotEmpty() -> detectedAbilities
             !knownInfo?.abilities.isNullOrEmpty() -> knownInfo.abilities
-            else -> detectedAbilities
+            else -> emptySet()
         }
 
         // inputModalities: 仅当为默认 ["text"] 时才尝试覆盖
@@ -874,6 +879,8 @@ object ModelRegistry {
 
         // supportsVision: 若已显式 true 则保留,否则按检测补全
         val newSupportsVision = model.supportsVision || ("image" in newInput)
+        // v1.0.8: 同步 supportsVideo 与 outputModalities
+        val newSupportsVideo = model.supportsVideo || ("video" in newOutput)
 
         // contextWindow: Model 已有 → KnownModels → ModelContextWindowRegistry
         val newContextWindow = model.contextWindow
@@ -888,6 +895,7 @@ object ModelRegistry {
             inputModalities = newInput,
             outputModalities = newOutput,
             supportsVision = newSupportsVision,
+            supportsVideo = newSupportsVideo,
             contextWindow = newContextWindow,
             maxOutputTokens = newMaxOutputTokens,
         )

@@ -247,6 +247,25 @@ object KnownModels {
             pricingCompletionPer1M = 1.50,
             description = "OpenAI GPT-5 mini",
         ))
+        // v1.0.6: 新增 GPT-5.1 / Codex(对齐 openhanako known-models)
+        put("gpt-5.1", KnownModelInfo(
+            contextWindow = 400000,
+            maxOutputTokens = 128000,
+            inputModalities = VISION_IN,
+            outputModalities = TEXT_OUT,
+            abilities = setOf(TOOL, REASONING),
+            pricingPromptPer1M = 5.00,
+            pricingCompletionPer1M = 15.00,
+            description = "OpenAI GPT-5.1",
+        ))
+        put("gpt-5-codex", KnownModelInfo(
+            contextWindow = 400000,
+            maxOutputTokens = 128000,
+            inputModalities = TEXT_IN,
+            outputModalities = TEXT_OUT,
+            abilities = setOf(TOOL, REASONING),
+            description = "OpenAI GPT-5 Codex 代码模型",
+        ))
 
         // ── Anthropic Claude 系列 ──
         put("claude-3-opus", KnownModelInfo(
@@ -328,6 +347,37 @@ object KnownModels {
             pricingPromptPer1M = 15.00,
             pricingCompletionPer1M = 75.00,
             description = "Anthropic Claude Opus 4",
+        ))
+        // v1.0.6: 新增 Claude 4.5 / 4.1 系列(对齐 openhanako known-models)
+        put("claude-sonnet-4-5", KnownModelInfo(
+            contextWindow = 200000,
+            maxOutputTokens = 64000,
+            inputModalities = VISION_IN,
+            outputModalities = TEXT_OUT,
+            abilities = setOf(TOOL, REASONING),
+            pricingPromptPer1M = 3.00,
+            pricingCompletionPer1M = 15.00,
+            description = "Anthropic Claude Sonnet 4.5",
+        ))
+        put("claude-opus-4-1", KnownModelInfo(
+            contextWindow = 200000,
+            maxOutputTokens = 32000,
+            inputModalities = VISION_IN,
+            outputModalities = TEXT_OUT,
+            abilities = setOf(TOOL, REASONING),
+            pricingPromptPer1M = 15.00,
+            pricingCompletionPer1M = 75.00,
+            description = "Anthropic Claude Opus 4.1",
+        ))
+        put("claude-haiku-4-5", KnownModelInfo(
+            contextWindow = 200000,
+            maxOutputTokens = 16384,
+            inputModalities = VISION_IN,
+            outputModalities = TEXT_OUT,
+            abilities = setOf(TOOL, REASONING),
+            pricingPromptPer1M = 1.00,
+            pricingCompletionPer1M = 5.00,
+            description = "Anthropic Claude Haiku 4.5",
         ))
 
         // ── Google Gemini 系列 ──
@@ -644,6 +694,39 @@ object KnownModels {
             outputModalities = TEXT_OUT,
             abilities = setOf(TOOL, REASONING),
             description = "xAI Grok 4",
+        ))
+        // v1.0.6: 新增 Grok 4.5 / 4.3 系列(对齐 openhanako known-models,主要走 xAI OAuth Responses)
+        put("grok-4.5", KnownModelInfo(
+            contextWindow = 500000,
+            maxOutputTokens = 128000,
+            inputModalities = VISION_IN,
+            outputModalities = TEXT_OUT,
+            abilities = setOf(TOOL, REASONING),
+            description = "xAI Grok 4.5",
+        ))
+        put("grok-4.5-latest", KnownModelInfo(
+            contextWindow = 500000,
+            maxOutputTokens = 128000,
+            inputModalities = VISION_IN,
+            outputModalities = TEXT_OUT,
+            abilities = setOf(TOOL, REASONING),
+            description = "xAI Grok 4.5 Latest",
+        ))
+        put("grok-build-latest", KnownModelInfo(
+            contextWindow = 500000,
+            maxOutputTokens = 128000,
+            inputModalities = VISION_IN,
+            outputModalities = TEXT_OUT,
+            abilities = setOf(TOOL, REASONING),
+            description = "xAI Grok Build Latest",
+        ))
+        put("grok-4.3", KnownModelInfo(
+            contextWindow = 1000000,
+            maxOutputTokens = 128000,
+            inputModalities = VISION_IN,
+            outputModalities = TEXT_OUT,
+            abilities = setOf(TOOL, REASONING),
+            description = "xAI Grok 4.3(1M 上下文)",
         ))
 
         // ── MiniMax abab 系列 ──

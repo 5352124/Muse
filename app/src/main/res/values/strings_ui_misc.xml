@@ -90,6 +90,8 @@
     <string name="model_switch_refresh">刷新</string>
     <string name="model_switch_fetching_upstream">正在从上游拉取模型...</string>
     <string name="model_switch_no_models">当前 Provider 没有模型\n点击右上角刷新拉取上游列表</string>
+    <!-- v1.0.4 (P2): 模型拉取失败重试按钮 -->
+    <string name="model_switch_retry">重试</string>
     <string name="model_switch_default">%1$s(默认)</string>
     <string name="model_switch_not_configured">未配置</string>
     <string name="model_switch_selected_cd">已选中</string>

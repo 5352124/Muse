@@ -18,6 +18,12 @@
     <string name="settings_agent_proactive_section">主动消息</string>
     <string name="settings_agent_proactive_title">主动消息</string>
     <string name="settings_agent_proactive_subtitle">Agent 像真人一样主动给你发消息</string>
+    <!-- v1.0.4 (P3-5): 开机自启开关 — 启用后系统开机完成时自动拉起 Muse,
+         配合主动消息功能让 Agent 在重启后仍能按时发送。 -->
+    <string name="settings_agent_boot_section">开机自启</string>
+    <string name="settings_agent_boot_title">开机后自动启动</string>
+    <string name="settings_agent_boot_subtitle">开机完成后自动打开 Muse,确保主动消息与定时任务正常运行</string>
+    <string name="settings_agent_boot_warning">部分品牌手机需在系统设置中额外授予"自启动"权限,否则系统会拦截开机广播</string>
     <string name="settings_agent_send_interval">发送间隔</string>
     <string name="settings_agent_random_offset">随机偏移</string>
     <string name="settings_agent_send_agent">发送 Agent</string>
@@ -200,6 +206,15 @@
     <string name="settings_import_conversations_count">会话: %1$d 个</string>
     <string name="settings_import_messages_count">消息: %1$d 条</string>
     <string name="settings_import_errors_count">部分错误(%1$d 个):</string>
+    <!-- P3-1: CherryStudio / Chatbox JSON 导入(复用 ConfigImporter) -->
+    <string name="settings_import_cherrystudio_title">CherryStudio / Chatbox</string>
+    <string name="settings_import_cherrystudio_desc">桌面端 AI 客户端(JSON 配置)</string>
+    <string name="settings_import_cherrystudio_step1">1. 在 CherryStudio / Chatbox 中打开设置</string>
+    <string name="settings_import_cherrystudio_step2">2. 找到「数据导出」或「导出配置」选项</string>
+    <string name="settings_import_cherrystudio_step3">3. 导出 JSON 格式的供应商配置文件</string>
+    <string name="settings_import_json_skipped_count">跳过(冲突或字段缺失): %1$d 个</string>
+    <string name="settings_import_json_names">供应商列表: %1$s</string>
+    <string name="settings_import_json_no_result">未识别到任何供应商,请检查 JSON 格式是否为 CherryStudio / Chatbox 导出</string>
 
     <!-- 语音识别 ASR -->
     <string name="settings_asr_provider_hint">SYSTEM 走系统 Intent(国产 ROM 可能不可用);DashScope 走阿里 Paraformer WebSocket 流式;Step 走阶跃星辰 OpenAI 兼容接口</string>

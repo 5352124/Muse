@@ -125,7 +125,7 @@ class OpenAIEmbeddingProvider(
 
     /** 根据 Provider 类型返回默认 embedding 模型(cloudModel 为空时调用)。 */
     private fun defaultModel(): String = when (config.type) {
-        io.zer0.ai.core.ProviderType.OPENAI -> "text-embedding-3-small"
+        io.zer0.ai.core.ProviderType.OPENAI, io.zer0.ai.core.ProviderType.OPENAI_RESPONSES -> "text-embedding-3-small"
         io.zer0.ai.core.ProviderType.ANTHROPIC ->
             throw IllegalStateException(
                 "Anthropic does not provide an OpenAI-compatible embedding API. Please specify an embedding model in RAG settings or switch to an OpenAI-compatible Provider"

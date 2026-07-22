@@ -18,6 +18,12 @@
     <string name="settings_agent_proactive_section">Proactive Messages</string>
     <string name="settings_agent_proactive_title">Proactive Messages</string>
     <string name="settings_agent_proactive_subtitle">Agent proactively messages you like a real person</string>
+    <!-- v1.0.4 (P3-5): Boot auto-launch toggle — when enabled Muse auto-launches after boot,
+         ensuring proactive messages and scheduled tasks keep running after device restart. -->
+    <string name="settings_agent_boot_section">Boot Auto-launch</string>
+    <string name="settings_agent_boot_title">Auto-launch after boot</string>
+    <string name="settings_agent_boot_subtitle">Automatically open Muse after boot completes, keeping proactive messages and scheduled tasks running</string>
+    <string name="settings_agent_boot_warning">Some brands require an additional \"autostart\" permission in system settings; otherwise the system blocks the boot broadcast</string>
     <string name="settings_agent_send_interval">Send Interval</string>
     <string name="settings_agent_random_offset">Random Offset</string>
     <string name="settings_agent_send_agent">Sending Agent</string>
@@ -179,6 +185,15 @@
     <string name="settings_import_conversations_count">Conversations: %1$d</string>
     <string name="settings_import_messages_count">Messages: %1$d</string>
     <string name="settings_import_errors_count">Some errors (%1$d):</string>
+    <!-- P3-1: CherryStudio / Chatbox JSON import (reuses ConfigImporter) -->
+    <string name="settings_import_cherrystudio_title">CherryStudio / Chatbox</string>
+    <string name="settings_import_cherrystudio_desc">Desktop AI client (JSON config)</string>
+    <string name="settings_import_cherrystudio_step1">1. Open Settings in CherryStudio / Chatbox</string>
+    <string name="settings_import_cherrystudio_step2">2. Find \"Data Export\" or \"Export Config\"</string>
+    <string name="settings_import_cherrystudio_step3">3. Export provider configuration as a JSON file</string>
+    <string name="settings_import_json_skipped_count">Skipped (conflict or missing fields): %1$d</string>
+    <string name="settings_import_json_names">Providers: %1$s</string>
+    <string name="settings_import_json_no_result">No providers detected. Please verify the JSON is exported from CherryStudio / Chatbox.</string>
 
     <!-- Speech Recognition (ASR) -->
     <string name="settings_asr_provider_hint">SYSTEM uses the system Intent (may be unavailable on Chinese ROMs); DashScope uses Alibaba Paraformer WebSocket streaming; Step uses Stepfun\'s OpenAI-compatible API</string>

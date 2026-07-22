@@ -18,9 +18,7 @@
 
     <!-- Splash & Onboarding -->
     <string name="splash_tagline">Your inspiration, gently unfolded</string>
-    <string name="onboarding_welcome_title">Welcome to Muse</string>
     <string name="onboarding_welcome_desc">Your private AI assistant — chat, memory, and creation in one place</string>
-    <string name="onboarding_provider_title">Configure Provider</string>
     <string name="onboarding_provider_desc">Go to Settings to add your OpenAI / Anthropic / Gemini key</string>
     <string name="onboarding_ready_title">Ready to go</string>
     <string name="onboarding_ready_desc">Start your first conversation</string>
@@ -109,6 +107,8 @@
     <string name="action_send">Send</string>
     <string name="action_stop">Stop</string>
     <string name="action_copy">Copy</string>
+    <string name="action_translate">Translate</string>
+    <string name="action_share">Share</string>
     <string name="action_expand">Expand</string>
     <string name="action_collapse">Collapse</string>
 
@@ -226,4 +226,23 @@
     <string name="err_stream_interrupted">Stream was interrupted. Response may be incomplete.</string>
     <string name="err_vertex_ai_config_invalid">Vertex AI configuration is invalid.</string>
     <string name="err_vertex_ai_token_failed">Failed to obtain Vertex AI access token.</string>
+
+    <!-- Assistant detail: capabilities -->
+    <string name="assistant_detail_capabilities_title">Capabilities</string>
+    <string name="assistant_detail_capabilities_desc">Tag this assistant’s strengths for auto-routing</string>
+    <string name="assistant_detail_custom_capability">Custom capability</string>
+    <string name="assistant_detail_add">Add</string>
+
+    <!-- Multi-Agent team workflow -->
+    <string name="settings_multi_agent_workflow">Workflow</string>
+    <string name="settings_multi_agent_workflow_desc">Define execution order, dependencies and aggregation strategy</string>
+    <string name="settings_multi_agent_aggregation">Aggregation</string>
+    <string name="settings_multi_agent_no_workflow">No workflow configured; members will run sequentially</string>
+    <string name="settings_multi_agent_add_node">Add node</string>
+    <string name="settings_multi_agent_edit_node">Edit node</string>
+    <string name="settings_multi_agent_node_name">Node name</string>
+    <string name="settings_multi_agent_node_task">Task template</string>
+    <string name="settings_multi_agent_node_assistant">Agent</string>
+    <string name="settings_multi_agent_node_mode">Mode</string>
+    <string name="settings_multi_agent_node_dependencies">Dependencies</string>
 </resources>

@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.Height
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.SmartButton
 import androidx.compose.material.icons.outlined.Thermostat
 import androidx.compose.material.icons.outlined.TouchApp
@@ -371,6 +372,15 @@ fun ChatSettingsPage(
                     subtitle = stringResource(R.string.settings_chat_default_deep_thinking_subtitle),
                     checked = prefs.defaultDeepThinking,
                     onCheckedChange = { v -> update { it.copy(defaultDeepThinking = v) } },
+                )
+                SettingsGroupDivider()
+                // v1.0.4 (P3-4): 性能模式 — 接入 MessagePaginator,超长会话仅渲染最近 N 条
+                SettingsSwitchRow(
+                    icon = Icons.Outlined.Speed,
+                    title = stringResource(R.string.settings_chat_performance_mode),
+                    subtitle = stringResource(R.string.settings_chat_performance_mode_subtitle),
+                    checked = prefs.performanceMode,
+                    onCheckedChange = { v -> update { it.copy(performanceMode = v) } },
                 )
             }
         }

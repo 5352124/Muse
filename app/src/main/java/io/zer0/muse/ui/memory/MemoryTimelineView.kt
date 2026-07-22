@@ -51,6 +51,8 @@ import java.time.format.DateTimeFormatter
 fun MemoryTimelineView(
     items: List<TimelineItem>,
     modifier: Modifier = Modifier,
+    // v1.0.4: 顶部 header(列表/时间轴切换 + 作用域筛选)随列表一起滚动
+    headerContent: @Composable () -> Unit = {},
 ) {
     // 按月份分组
     val grouped = remember(items) {
@@ -68,44 +70,52 @@ fun MemoryTimelineView(
     var selectedFilter by remember { mutableStateOf("all") }
     val filters = listOf("all" to "全部", "fact" to "事实", "summary" to "摘要", "milestone" to "里程碑")
 
-    Column(modifier = modifier) {
-        // FilterChip row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            filters.forEach { (key, label) ->
-                FilterChip(
-                    selected = selectedFilter == key,
-                    onClick = { selectedFilter = key },
-                    label = { Text(label) },
-                )
+    // v1.0.3 修复崩溃: 去掉外层 Column,直接用 LazyColumn(modifier)。
+    // 原结构 Column(fillMaxSize) { LazyColumn(fillMaxWidth) } 会让 LazyColumn 拿到
+    // maxHeight = infinity(Column 允许子组件无限堆叠),触发
+    // "Vertically scrollable component was measured with an infinity maximum height constraints" 崩溃。
+    // LazyColumn 直接用传入的 modifier(从 MemoryScreen 传入 Modifier.fillMaxSize()),
+    // 会拿到 Column 父级分配的有限剩余高度,符合 Compose 嵌套滚动约束。
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            horizontal = 16.dp,
+            vertical = 8.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        // v1.0.4: 顶部 header(外层列表/时间轴切换 + 作用域筛选)
+        // 与下方"时间轴内部筛选 + 时间轴列表"一起向上滚动
+        item { headerContent() }
+        // 时间轴内部 FilterChip row(全部 / 事实 / 摘要 / 里程碑)
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                filters.forEach { (key, label) ->
+                    FilterChip(
+                        selected = selectedFilter == key,
+                        onClick = { selectedFilter = key },
+                        label = { Text(label) },
+                    )
+                }
             }
         }
+        grouped.forEach { (month, monthItems) ->
+            val filtered = if (selectedFilter == "all") monthItems
+            else monthItems.filter { it.source == selectedFilter }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                horizontal = 16.dp,
-                vertical = 8.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            grouped.forEach { (month, monthItems) ->
-                val filtered = if (selectedFilter == "all") monthItems
-                else monthItems.filter { it.source == selectedFilter }
-
-                if (filtered.isNotEmpty()) {
-                    // Month header
-                    item(key = "month_$month") {
-                        MonthHeader(month = month)
-                    }
-                    // Timeline items
-                    items(filtered, key = { it.id }) { item ->
-                        TimelineEventCard(item = item)
-                    }
+            if (filtered.isNotEmpty()) {
+                // Month header
+                item(key = "month_$month") {
+                    MonthHeader(month = month)
+                }
+                // Timeline items
+                items(filtered, key = { it.id }) { item ->
+                    TimelineEventCard(item = item)
                 }
             }
         }

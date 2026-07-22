@@ -16,7 +16,10 @@ import io.zer0.muse.data.assistant.AssistantEntity
 import io.zer0.muse.data.assistant.AssistantRepository
 import io.zer0.muse.data.groupchat.GroupChatMessageEntity
 import io.zer0.muse.data.groupchat.GroupChatRepository
+import io.zer0.muse.rag.RagConfig
+import io.zer0.muse.rag.RagService
 import io.zer0.muse.transformer.SystemPromptAssembler
+import io.zer0.muse.vision.VisionBridge
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -68,6 +71,8 @@ class GroupChatScheduler(
     private val appScope: CoroutineScope,
     private val appContext: Context,
     private val chatGenerationManager: ChatGenerationManager,
+    private val visionBridge: VisionBridge,
+    private val ragService: RagService,
 ) {
 
     /**
@@ -383,7 +388,7 @@ class GroupChatScheduler(
         val recentMessages = groupChatRepository.getRecentMessages(chatId, contextSize)
 
         // b. 构造消息列表: system + user(含 @mention / 决策修复提示)
-        val messages = buildMessages(chat.name, assistant, memberNames, recentMessages, model, isMentioned, isRepair)
+        val messages = buildMessages(chatId, chat.name, assistant, memberNames, recentMessages, model, isMentioned, isRepair)
 
         // c. 调 LLM(流式,60s 超时)
         // v1.134 P1-4: 改为 streamChat 累积 ContentDelta,消除 completeText 的整包阻塞。
@@ -465,10 +470,16 @@ class GroupChatScheduler(
      * 构造发给 LLM 的消息列表。
      *
      * - System: assistant.systemPrompt + 群聊身份提示
+     * - System: v1.137 RAG 注入(知识库命中片段,@mention 定向检索)
      * - User: 群聊最近消息 transcript + 发言引导
      *
      * v1.97: 新增 isMentioned / isRepair 参数,在 user message 中注入 @提及和决策修复提示。
+     * v1.137: 新增 RAG 注入与视觉辅助(VisionBridge)处理:
+     *  - RAG:解析最近用户消息中的 @mention,检索知识库,将命中片段作为 SYSTEM 消息注入。
+     *  - 视觉:模型不支持视觉但有图片时,调用 [VisionBridge.prepare] 把图片描述注入文本,
+     *    而非直接丢弃图片(参考单聊 ChatViewModel 的处理)。
      *
+     * @param chatId 群聊 id(用于 VisionBridge 缓存 key)
      * @param chatName 群聊名称
      * @param assistant 当前 agent 配置
      * @param memberNames 群聊所有成员显示名
@@ -478,7 +489,8 @@ class GroupChatScheduler(
      * @param isRepair 是否为决策修复重试
      * @return UIMessage 列表
      */
-    private fun buildMessages(
+    private suspend fun buildMessages(
+        chatId: String,
         chatName: String,
         assistant: AssistantEntity,
         memberNames: List<String>,
@@ -510,6 +522,25 @@ class GroupChatScheduler(
         }
         messages.add(UIMessage(role = MessageRole.SYSTEM, content = systemContent))
 
+        // v1.137: RAG 注入 — 解析最近用户消息中的 @mention,检索知识库,
+        // 将命中片段作为 SYSTEM 消息注入(参考单聊 ChatViewModel 的 RAG 注入逻辑)。
+        // 失败不阻断主流程(resultOf 降级)。
+        val lastUserMsg = recentMessages.lastOrNull { it.senderType == "user" }
+        val ragQuery = lastUserMsg?.body?.takeIf { it.isNotBlank() }
+        if (ragQuery != null) {
+            val ragConfig = resultOf { settings.getRagConfig() }.getOrNull() ?: RagConfig()
+            if (ragConfig.enabled) {
+                val scopeDocIds = resultOf { ragService.resolveMentionToDocIds(ragQuery) }
+                    .getOrNull()?.takeIf { it.isNotEmpty() }
+                val injection = resultOf {
+                    ragService.buildInjectionContextWithCitations(ragQuery, ragConfig, scopeDocIds)
+                }.getOrNull()
+                if (injection != null && injection.text.isNotBlank()) {
+                    messages.add(UIMessage(role = MessageRole.SYSTEM, content = injection.text))
+                }
+            }
+        }
+
         // User message: 群聊最近消息 transcript + 发言引导
         val userContent = buildString {
             if (recentMessages.isNotEmpty()) {
@@ -531,20 +562,47 @@ class GroupChatScheduler(
         }
         // v1.136: 把最近一条用户消息的图片作为多模态输入传给模型,
         // 避免群聊图片只存不看不回复的问题。
-        // 仅当模型明确支持视觉时才附加图片,避免向纯文本模型发图导致 400。
-        val latestUserImages = if (model != null && model.supportsVisionInput()) {
-            recentMessages.lastOrNull { it.senderType == "user" }
-                ?.let { msg ->
-                    resultOf {
-                        AppJson.decodeFromString(ListSerializer(String.serializer()), msg.imageBase64Json)
-                    }.getOrNull()?.map { stripDataUriPrefix(it) }?.filter { it.isNotEmpty() }
-                } ?: emptyList()
-        } else emptyList()
+        // v1.137: 模型不支持视觉时,改用 VisionBridge 将图片描述注入文本(而非丢弃图片),
+        // 避免向纯文本模型发图导致 HTTP 400。
+        val latestUserImages = lastUserMsg?.let { msg ->
+            resultOf {
+                AppJson.decodeFromString(ListSerializer(String.serializer()), msg.imageBase64Json)
+            }.getOrNull()?.map { stripDataUriPrefix(it) }?.filter { it.isNotEmpty() }
+        } ?: emptyList()
+
+        val finalUserContent: String
+        val finalImages: List<String>
+        if (model != null && model.supportsVisionInput()) {
+            // 模型支持视觉:直接传图片(保持现有逻辑)
+            finalUserContent = userContent
+            finalImages = latestUserImages
+        } else if (latestUserImages.isNotEmpty()) {
+            // 模型不支持视觉但有图片:调用 VisionBridge 将图片描述注入文本,清空图片避免 HTTP 400
+            val prepared = resultOf {
+                visionBridge.prepare(
+                    text = userContent,
+                    images = latestUserImages,
+                    userRequest = userContent,
+                    sessionId = chatId,
+                )
+            }.getOrNull()
+            if (prepared != null) {
+                finalUserContent = prepared.text
+                finalImages = prepared.images
+            } else {
+                // VisionBridge 失败:降级不传图片(避免向纯文本模型发图导致 400)
+                finalUserContent = userContent
+                finalImages = emptyList()
+            }
+        } else {
+            finalUserContent = userContent
+            finalImages = emptyList()
+        }
         messages.add(
             UIMessage(
                 role = MessageRole.USER,
-                content = userContent,
-                imageBase64List = latestUserImages,
+                content = finalUserContent,
+                imageBase64List = finalImages,
             ),
         )
 

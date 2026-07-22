@@ -94,6 +94,7 @@ import io.zer0.common.resultOf
 import io.zer0.muse.R
 import io.zer0.muse.data.assistant.AssistantEntity
 import io.zer0.muse.data.groupchat.GroupChatMessageEntity
+import io.zer0.muse.doc.DocumentParser
 import io.zer0.muse.ui.SmartImage
 import io.zer0.muse.ui.common.AssistantAvatar
 import io.zer0.muse.ui.common.MuseBottomSheet
@@ -208,7 +209,11 @@ fun GroupChatDetailScreen(
         }
     }
 
+    // v1.137: 注入 DocumentParser(与单聊一致,支持 PDF 二进制解析)
+    val documentParser: DocumentParser = org.koin.compose.koinInject()
+
     // v1.112 (C2): 文件附件选择器 — 读取文本内容追加到输入框
+    // v1.137: 改用 DocumentParser 解析(替代 bufferedReader 字符流,支持 PDF)
     val documentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
@@ -216,34 +221,25 @@ fun GroupChatDetailScreen(
         scope.launch {
             resultOf {
                 withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        // v1.114: 限制读取 10MB,防止超大文件 OOM
-                        val MAX_READ_BYTES = 10L * 1024 * 1024
-                        val sb = StringBuilder()
-                        val buffer = CharArray(8192)
-                        var total = 0L
-                        input.bufferedReader().use { reader ->
-                            while (true) {
-                                val read = reader.read(buffer)
-                                if (read <= 0) break
-                                total += read
-                                if (total > MAX_READ_BYTES) {
-                                    error("文件过大,超过 ${MAX_READ_BYTES / 1024 / 1024}MB 限制")
-                                }
-                                sb.append(buffer, 0, read)
-                            }
-                        }
-                        sb.toString()
-                    } ?: throw IllegalStateException("无法读取文件")
+                    documentParser.parse(uri, context)
                 }
             }.onSuccess { text ->
                 if (text.isNotBlank()) {
+                    // 截断到 8000 字符(与单聊 ChatDocumentCoordinator 一致,避免输入框爆炸)
+                    val DOC_MAX_CHARS = 8000
+                    val truncated = if (text.length > DOC_MAX_CHARS) {
+                        text.take(DOC_MAX_CHARS) + "\n…(已截断)"
+                    } else {
+                        text
+                    }
                     val current = state.inputText
-                    val newText = if (current.isBlank()) text else "$current\n\n$text"
-                    viewModel.updateInput(newText)
+                    val merged = if (current.isBlank()) truncated else "$current\n\n---\n\n$truncated"
+                    viewModel.updateInput(merged)
+                } else {
+                    Logger.w("GroupChatDetail", "文档内容为空或不支持的格式")
                 }
             }.onError { msg, t ->
-                Logger.w("GroupChatDetail", "文件读取失败: $msg", t)
+                Logger.w("GroupChatDetail", "文档解析失败: $msg", t)
             }
         }
     }

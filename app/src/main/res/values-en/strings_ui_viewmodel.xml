@@ -161,6 +161,11 @@
     <string name="assistant_detail_export_png_desc">SillyTavern format (with metadata)</string>
     <string name="assistant_detail_export_json">Export as JSON character card</string>
     <string name="assistant_detail_export_json_desc">SillyTavern V2 JSON</string>
+    <string name="assistant_detail_share_muse_card">Share Muse Character Card</string>
+    <string name="assistant_detail_share_muse_card_desc">Generate visual card and share via system</string>
+    <string name="assistant_detail_share_muse_json">Share Muse JSON</string>
+    <string name="assistant_detail_share_muse_json_desc">Share Muse JSON via system</string>
+    <string name="assistant_detail_share_muse_failed">Share failed: %1$s</string>
     <!-- Toast -->
     <string name="assistant_toast_sillytavern_imported">SillyTavern character card imported: %1$s</string>
     <string name="assistant_toast_sillytavern_import_failed">SillyTavern import failed: %1$s</string>

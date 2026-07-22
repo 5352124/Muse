@@ -9,6 +9,8 @@ import io.zer0.common.resultOf
 import io.zer0.muse.data.SettingsRepository
 import io.zer0.muse.data.assistant.AssistantEntity
 import io.zer0.muse.data.assistant.AssistantRepository
+import io.zer0.muse.data.proactive.ProactiveScoreEngine
+import io.zer0.muse.data.proactive.ScoreContext
 import io.zer0.muse.data.session.SessionRepository
 import io.zer0.muse.notification.MuseNotificationManager
 import io.zer0.muse.util.GlobalCoroutineExceptionHandler
@@ -49,6 +51,7 @@ class ProactiveMessageRunner(
     private val sessionRepository: SessionRepository,
     private val assistantRepository: AssistantRepository,
     private val notificationManager: MuseNotificationManager,
+    private val scoreEngine: ProactiveScoreEngine,
     private val context: Context,
     private val appScope: CoroutineScope,
 ) {
@@ -145,6 +148,21 @@ class ProactiveMessageRunner(
         val recentMessages = allMessages
             .filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
             .takeLast(5)
+
+        // v1.0.4: ProactiveScoreEngine 预筛选 — 评分低于阈值直接跳过 LLM 调用(节省 token)
+        // 评分综合:时间衰减 × 沉默期 × 情绪 × 新鲜度;shouldSend 还会检查静默时段 + 每日上限
+        val scoreCtx = ScoreContext(
+            hoursSinceLastMessage = (elapsed / 3_600_000f).coerceAtLeast(0f),
+            accountAgeDays = 7, // 简化:暂用默认值,后续可从账户首次启动时间计算
+            todaySentCount = 0, // 简化:暂不持久化每日计数
+            hasNewMemories = recentMessages.isNotEmpty(),
+            hasNewTopics = recentMessages.isNotEmpty(),
+        )
+        if (!scoreEngine.shouldSend(scoreCtx)) {
+            Logger.i(TAG, "ScoreEngine 预筛选未通过,跳过 LLM 调用")
+            settings.saveProactiveMessageConfig(config.copy(lastTriggeredAt = now))
+            return
+        }
 
         // 构造让 LLM 决定是否发主动消息的 prompt 并调用 LLM
         val promptMessages = buildDecisionPrompt(assistant, recentMessages)

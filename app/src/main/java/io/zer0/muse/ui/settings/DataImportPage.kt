@@ -42,6 +42,7 @@ import io.zer0.muse.data.`import`.ThirdPartyImporter
 import io.zer0.muse.data.SettingsRepository
 import io.zer0.muse.data.assistant.AssistantRepository
 import io.zer0.muse.data.session.SessionRepository
+import io.zer0.muse.importer.ConfigImporter
 import io.zer0.muse.ui.theme.MuseShapes
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -49,14 +50,16 @@ import org.koin.compose.koinInject
 /**
  * v1.61-A: 第三方数据导入页。
  *
- * 引导用户从 RikkaHub 或 Kelivo 的备份 ZIP 文件导入 Provider 配置、助手、会话和消息。
+ * 引导用户从 RikkaHub / Kelivo 备份 ZIP,或 CherryStudio / Chatbox JSON 导入 Provider 配置、助手、会话和消息。
  * 页面结构:
  *  1. 顶部说明卡片
- *  2. 选择来源(RikkaHub / Kelivo),每个卡片含导出步骤折叠说明
+ *  2. 选择来源(RikkaHub / Kelivo / CherryStudio / Chatbox),每个卡片含导出步骤折叠说明
  *  3. 选择备份文件按钮
  *  4. 导入中进度
  *  5. 导入结果(数量统计 + 错误列表)
  *  6. 底部温馨提示
+ *
+ * P3-1: 新增 CherryStudio / Chatbox JSON 入口,复用 [ConfigImporter](自动嗅探两种 JSON 格式)。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,10 +70,13 @@ fun SettingsDataImportPage(
     val settings: SettingsRepository = koinInject()
     val assistantRepo: AssistantRepository = koinInject()
     val sessionRepo: SessionRepository = koinInject()
+    val configImporter: ConfigImporter = koinInject()
     val scope = rememberCoroutineScope()
 
     var isImporting by remember { mutableStateOf(false) }
     var importResult by remember { mutableStateOf<ImportResult?>(null) }
+    // P3-1: CherryStudio / Chatbox JSON 导入结果(与 ThirdPartyImporter.ImportResult 结构不同,独立状态)
+    var jsonImportResult by remember { mutableStateOf<ConfigImporter.Result?>(null) }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -85,6 +91,19 @@ fun SettingsDataImportPage(
                     assistantRepo = assistantRepo,
                     sessionRepo = sessionRepo,
                 )
+                isImporting = false
+            }
+        }
+    }
+
+    // P3-1: JSON 文件 picker,调用 ConfigImporter(自动嗅探 CherryStudio / Chatbox 格式)
+    val jsonFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                isImporting = true
+                jsonImportResult = configImporter.importFromUri(context, uri)
                 isImporting = false
             }
         }
@@ -156,6 +175,22 @@ fun SettingsDataImportPage(
                 },
             )
         }
+        // P3-1: CherryStudio / Chatbox JSON 导入入口(复用 ConfigImporter,只导入 Provider 配置)
+        item {
+            ImportSourceCard(
+                title = stringResource(R.string.settings_import_cherrystudio_title),
+                description = stringResource(R.string.settings_import_cherrystudio_desc),
+                steps = listOf(
+                    stringResource(R.string.settings_import_cherrystudio_step1),
+                    stringResource(R.string.settings_import_cherrystudio_step2),
+                    stringResource(R.string.settings_import_cherrystudio_step3),
+                    stringResource(R.string.settings_import_step_remember),
+                ),
+                onSelect = {
+                    jsonFilePicker.launch(arrayOf("application/json", "text/plain", "*/*"))
+                },
+            )
+        }
 
         // ── 第二步:选择备份文件 ──
         item {
@@ -204,6 +239,13 @@ fun SettingsDataImportPage(
         importResult?.let { result ->
             item {
                 ImportResultCard(result)
+            }
+        }
+
+        // P3-1: CherryStudio / Chatbox JSON 导入结果
+        jsonImportResult?.let { result ->
+            item {
+                ImportJsonResultCard(result)
             }
         }
 
@@ -316,6 +358,51 @@ private fun ImportResultCard(result: ImportResult) {
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * P3-1: CherryStudio / Chatbox JSON 导入结果卡片。
+ *
+ * 与 [ImportResultCard] 分离:[ConfigImporter.Result] 只含 Provider 维度数据
+ * (imported / skipped / providers 名称列表),无助手/会话/消息。
+ */
+@Composable
+private fun ImportJsonResultCard(result: ConfigImporter.Result) {
+    val hasImport = result.imported > 0
+    Surface(
+        shape = MuseShapes.large,
+        color = if (hasImport) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        } else {
+            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(stringResource(R.string.settings_import_complete), style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            Text(stringResource(R.string.settings_import_providers_count, result.imported))
+            Text(stringResource(R.string.settings_import_json_skipped_count, result.skipped))
+            if (result.providers.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(
+                        R.string.settings_import_json_names,
+                        result.providers.joinToString(", "),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (!hasImport) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.settings_import_json_no_result),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         }
     }

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Folder
@@ -40,6 +41,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Psychology
@@ -136,6 +138,8 @@ fun SettingsScreen(
     onOpenProxySettings: () -> Unit = {},
     onOpenAboutSettings: () -> Unit = {},
     onOpenStats: () -> Unit = {},
+    /** v1.0.4: 打开我的报告页(周报/月报)。 */
+    onOpenReports: () -> Unit = {},
     onOpenRagSettings: () -> Unit = {},
     onOpenDataImport: () -> Unit = {},
     /** v1.61-B: 打开使用教程页(新手引导)。 */
@@ -167,6 +171,10 @@ fun SettingsScreen(
     onOpenMcp: () -> Unit = {},
     /** v1.133: 打开助手资源页(从「助手与 Agent」分组进入,容纳收藏夹/世界书/快捷消息/模式注入/Skills/记忆开关)。 */
     onOpenAssistantResources: () -> Unit = {},
+    /** v1.0.4: 打开通知监听页(从「助手与 Agent」分组进入,引导用户授权通知使用权)。 */
+    onOpenNotificationListener: () -> Unit = {},
+    /** v1.0.4: 打开 AI 工具管理页(从「助手与 Agent」分组进入,展示 ToolRegistry 中全部工具)。 */
+    onOpenTools: () -> Unit = {},
 ) {
     val settings: SettingsRepository = koinInject()
     val updateNotifier: UpdateNotifier = koinInject()
@@ -239,6 +247,8 @@ fun SettingsScreen(
     val experimentsDesc = stringResource(R.string.settings_screen_experiments_desc)
     val statsTitle = stringResource(R.string.settings_screen_stats)
     val statsDesc = stringResource(R.string.settings_screen_stats_desc)
+    val reportsTitle = stringResource(R.string.settings_screen_reports)
+    val reportsDesc = stringResource(R.string.settings_screen_reports_desc)
     val tutorialTitle = stringResource(R.string.settings_screen_tutorial)
     val tutorialDesc = stringResource(R.string.settings_screen_tutorial_desc)
     val aboutTitle = stringResource(R.string.settings_screen_about)
@@ -258,6 +268,12 @@ fun SettingsScreen(
     val mcpEntryDesc = stringResource(R.string.settings_screen_mcp_desc)
     val assistantResourcesTitle = stringResource(R.string.settings_screen_assistant_resources)
     val assistantResourcesDesc = stringResource(R.string.settings_screen_assistant_resources_desc)
+    // v1.0.4: 通知监听入口
+    val notificationListenerTitle = stringResource(R.string.settings_screen_notification_listener)
+    val notificationListenerDesc = stringResource(R.string.settings_screen_notification_listener_desc)
+    // v1.0.4: AI 工具入口
+    val toolsTitle = stringResource(R.string.settings_screen_tools)
+    val toolsDesc = stringResource(R.string.settings_screen_tools_desc)
     val searchHint = stringResource(R.string.settings_search_hint)
     val noResults = stringResource(R.string.settings_search_no_results)
 
@@ -289,6 +305,8 @@ fun SettingsScreen(
                 SearchEntry(imageGenEntryTitle, imageGenEntryDesc, Icons.Outlined.Image, onOpenImageGen),
                 SearchEntry(mcpEntryTitle, mcpEntryDesc, Icons.Outlined.Hub, onOpenMcp),
                 SearchEntry(assistantResourcesTitle, assistantResourcesDesc, Icons.Outlined.AutoAwesome, onOpenAssistantResources),
+                SearchEntry(notificationListenerTitle, notificationListenerDesc, Icons.Outlined.Notifications, onOpenNotificationListener),
+                SearchEntry(toolsTitle, toolsDesc, Icons.Outlined.Build, onOpenTools),
                 SearchEntry(memoryTitle, memoryDesc, Icons.Outlined.Psychology, onOpenMemorySettings),
                 SearchEntry(ragTitle, ragDesc, Icons.AutoMirrored.Outlined.MenuBook, onOpenRagSettings),
                 SearchEntry(dataManagementTitle, dataManagementDesc, Icons.Outlined.Storage, onOpenDataManagement),
@@ -301,6 +319,7 @@ fun SettingsScreen(
                 SearchEntry(proxyTitle, proxySubtitle, Icons.Outlined.Tune, onOpenProxySettings),
                 SearchEntry(experimentsTitle, experimentsDesc, Icons.Outlined.Science, onOpenExperimentsSettings),
                 SearchEntry(statsTitle, statsDesc, Icons.Outlined.BarChart, onOpenStats),
+                SearchEntry(reportsTitle, reportsDesc, Icons.Outlined.AutoAwesome, onOpenReports),
                 SearchEntry(tutorialTitle, tutorialDesc, Icons.Outlined.School, onOpenTutorial),
                 SearchEntry(aboutTitle, aboutDesc, Icons.Outlined.Info, onOpenAboutSettings),
                 SearchEntry(checkUpdateTitle, checkUpdateDesc, Icons.Outlined.Refresh, {}),
@@ -599,6 +618,22 @@ fun SettingsScreen(
                             supportingContent = { Text(stringResource(R.string.settings_screen_assistant_resources_desc)) },
                             trailingContent = { ChevronRight() },
                         )
+                        // v1.0.4: 通知监听(授权后 AI 可在聊天中查询其他 App 的通知)
+                        item(
+                            onClick = onOpenNotificationListener,
+                            leadingContent = { IosSettingsIcon(Icons.Outlined.Notifications) },
+                            headlineContent = { Text(stringResource(R.string.settings_screen_notification_listener)) },
+                            supportingContent = { Text(stringResource(R.string.settings_screen_notification_listener_desc)) },
+                            trailingContent = { ChevronRight() },
+                        )
+                        // v1.0.4: AI 工具管理(展示 ToolRegistry 中全部工具 + 风险等级)
+                        item(
+                            onClick = onOpenTools,
+                            leadingContent = { IosSettingsIcon(Icons.Outlined.Build) },
+                            headlineContent = { Text(stringResource(R.string.settings_screen_tools)) },
+                            supportingContent = { Text(stringResource(R.string.settings_screen_tools_desc)) },
+                            trailingContent = { ChevronRight() },
+                        )
                     }
                 }
 
@@ -883,6 +918,13 @@ fun SettingsScreen(
                             leadingContent = { IosSettingsIcon(Icons.Outlined.BarChart) },
                             headlineContent = { Text(stringResource(R.string.settings_screen_stats)) },
                             supportingContent = { Text(stringResource(R.string.settings_screen_stats_desc)) },
+                            trailingContent = { ChevronRight() },
+                        )
+                        item(
+                            onClick = onOpenReports,
+                            leadingContent = { IosSettingsIcon(Icons.Outlined.AutoAwesome) },
+                            headlineContent = { Text(stringResource(R.string.settings_screen_reports)) },
+                            supportingContent = { Text(stringResource(R.string.settings_screen_reports_desc)) },
                             trailingContent = { ChevronRight() },
                         )
                     }

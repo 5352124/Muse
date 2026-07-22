@@ -67,20 +67,28 @@ class ImageService(
         val config = providerConfig ?: configStore.get()
             ?: error(ErrorCode.NO_PROVIDER_CONFIGURED.toMessage())
         if (config.apiKey.isBlank()) error(ErrorCode.IMAGE_API_KEY_MISSING.toMessage())
-        if (config.type != ProviderType.OPENAI) {
+        // v1.136: OPENAI_RESPONSES 也走 OpenAI 兼容 Image API(与 chat 端点分离)
+        if (config.type != ProviderType.OPENAI && config.type != ProviderType.OPENAI_RESPONSES) {
             error(ErrorCode.IMAGE_UNSUPPORTED_MODEL.toMessage(config.type.toString()))
         }
 
-        // L-IMG7: 关键参数日志
-        Logger.i("ImageService", "generate: model=${params.model} size=${params.size} n=${params.n}")
+        // v1.136: 解决 model 为空导致部分自定义端点 404 的问题。
+        // 优先级:1) Skill/调用方显式传入;2) ProviderSpecificConfig.OpenAI.imageModel;
+        // 3) ImageModelCatalog 默认模型(dall-e-3)
+        val specific = (config.resolvedSpecific() as? ProviderSpecificConfig.OpenAI)
+            ?: ProviderSpecificConfig.OpenAI()
+        val effectiveModelId = params.model.takeIf { it.isNotBlank() }
+            ?: specific.imageModel.takeIf { it.isNotBlank() }
+            ?: ImageModelCatalog.DEFAULT_MODEL_ID
 
-        val model = ImageModelCatalog.resolveById(params.model)
-        val validated = validateParams(params, model)
+        // L-IMG7: 关键参数日志
+        Logger.i("ImageService", "generate: model=$effectiveModelId size=${params.size} n=${params.n}")
+
+        val model = ImageModelCatalog.resolveById(effectiveModelId)
+        val validated = validateParams(params.copy(model = effectiveModelId), model)
         val hasReference = !validated.referenceImageUri.isNullOrBlank()
 
         // M-IMG1: 读取 ProviderSpecificConfig.OpenAI.imagesPath 拼接端点(替代硬编码)
-        val specific = (config.resolvedSpecific() as? ProviderSpecificConfig.OpenAI)
-            ?: ProviderSpecificConfig.OpenAI()
         val generationsPath = specific.imagesPath.trim().trim('/').ifBlank { "images/generations" }
         // edits 路径:把末尾 generations 段替换为 edits;无法识别时回退 images/edits
         val editsPath = if (generationsPath.endsWith("generations")) {
@@ -219,7 +227,8 @@ class ImageService(
             // L-IMG5: 不再重复 coerce n,信任 validateParams
             put("n", params.n)
             put("size", params.size)
-            if (params.model.isNotBlank()) put("model", params.model)
+            // v1.136: model 已在上层 fallback 为非空,始终下发,避免自定义端点 404
+            put("model", params.model)
             if (params.quality.isNotBlank()) put("quality", params.quality)
             if (params.style.isNotBlank()) put("style", params.style)
             // H-IMG2: responseFormat 为空时不 put(gpt-image-1 不支持 response_format)
@@ -258,7 +267,8 @@ class ImageService(
             .addFormDataPart("size", params.size)
         // H-IMG2: responseFormat 为空时不 put
         if (params.responseFormat.isNotBlank()) builder.addFormDataPart("response_format", params.responseFormat)
-        if (params.model.isNotBlank()) builder.addFormDataPart("model", params.model)
+        // v1.136: model 已 fallback 为非空,始终下发
+        builder.addFormDataPart("model", params.model)
 
         return Request.Builder()
             .url(url)

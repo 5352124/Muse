@@ -161,6 +161,15 @@ object MuseRoutes {
     /** v1.133: 设置二级页 — 助手资源(从 SettingsModelPage 拆出:收藏夹/世界书/快捷消息/模式注入/Skills/记忆开关)。 */
     const val SETTINGS_ASSISTANT_RESOURCES = "settings_assistant_resources"
 
+    /** v1.0.4: 我的报告(周报/月报/年报,从设置页进入)。 */
+    const val REPORTS = "reports"
+
+    /** v1.0.4: 通知监听页(从设置 → 助手与 Agent 进入,引导用户授权通知使用权 + 查看最近通知)。 */
+    const val NOTIFICATION_LISTENER = "notification_listener"
+
+    /** v1.0.4: AI 工具管理页(从设置 → 助手与 Agent 进入,展示 ToolRegistry 中全部工具)。 */
+    const val TOOLS = "tools"
+
     /**
      * v1.30: 构造群聊详情页路由(带 chatId 参数)。
      *

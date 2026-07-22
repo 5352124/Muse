@@ -14,6 +14,14 @@ data class AgentPlan(
     val title: String,
     val steps: List<AgentPlanStep>,
     val createdAt: Long = System.currentTimeMillis(),
+    /**
+     * v1.137: 关联创建此计划的助手消息 ID。
+     *
+     * 用于将计划卡固定到创建它的消息上,随该消息一起滚动,
+     * 而不是始终"跳"到最后一条助手消息(用户反馈"列表固定在底部不跟随滚动")。
+     * null 表示未关联(向后兼容),UI 回退到旧逻辑(显示在最后一条助手消息上)。
+     */
+    val messageId: String? = null,
 ) {
     val totalSteps: Int get() = steps.size
     val completedSteps: Int get() = steps.count { it.status == AgentPlanStepStatus.DONE }

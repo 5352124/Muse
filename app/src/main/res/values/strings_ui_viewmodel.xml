@@ -161,6 +161,12 @@
     <string name="assistant_detail_export_png_desc">SillyTavern 格式 (含元数据)</string>
     <string name="assistant_detail_export_json">导出为 JSON 角色卡</string>
     <string name="assistant_detail_export_json_desc">SillyTavern V2 JSON</string>
+    <!-- 助手详情页: Muse 角色卡分享(系统分享) -->
+    <string name="assistant_detail_share_muse_card">分享 Muse 角色卡</string>
+    <string name="assistant_detail_share_muse_card_desc">生成视觉化卡片并通过系统分享</string>
+    <string name="assistant_detail_share_muse_json">分享 Muse JSON</string>
+    <string name="assistant_detail_share_muse_json_desc">通过系统分享 Muse 格式 JSON</string>
+    <string name="assistant_detail_share_muse_failed">分享失败:%1$s</string>
     <!-- Toast -->
     <string name="assistant_toast_sillytavern_imported">已导入 SillyTavern 角色卡: %1$s</string>
     <string name="assistant_toast_sillytavern_import_failed">SillyTavern 角色卡导入失败: %1$s</string>

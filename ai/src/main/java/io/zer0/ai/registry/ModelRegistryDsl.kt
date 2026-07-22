@@ -2,6 +2,7 @@ package io.zer0.ai.registry
 
 import io.zer0.ai.core.BuiltInTool
 import io.zer0.ai.core.ModelAbility
+import io.zer0.ai.core.VisionCapabilities
 
 /**
  * Model capability registry DSL (RikkaHub ModelDsl.kt port).
@@ -35,6 +36,8 @@ class ModelDefinition(
     val outputModalities: Set<String>,
     val abilities: Set<ModelAbility>,
     val builtInTools: Set<BuiltInTool>,
+    /** v1.0.4: 视觉 grounding 能力声明(null 表示未声明,不覆盖 Model 已有值)。 */
+    val visionCapabilities: VisionCapabilities? = null,
 ) : ModelSelector {
     override fun match(modelId: String): Boolean {
         val tokens = tokenize(modelId)
@@ -72,6 +75,8 @@ class ModelDefinitionBuilder {
     private val outputModalities = mutableSetOf("text")
     private val abilities = mutableSetOf<ModelAbility>()
     private val builtInTools = mutableSetOf<BuiltInTool>()
+    /** v1.0.4: 视觉 grounding 能力。 */
+    private var visionCapabilities: VisionCapabilities? = null
 
     fun tokens(vararg specs: String) {
         matchers += SequenceMatcher(specs.map(::parseTokenSpec))
@@ -126,6 +131,15 @@ class ModelDefinitionBuilder {
         builtInTools.addAll(tools)
     }
 
+    /**
+     * v1.0.4: 声明模型支持视觉 grounding(坐标定位)。
+     *
+     * @param outputFormat 坐标输出格式:"gemini"(yxyx)/"qwen"(bbox_2d)/"anchor"(visual_anchors)/"hanako"(xyxy 默认)
+     */
+    fun visionGrounding(outputFormat: String = "hanako") {
+        visionCapabilities = VisionCapabilities(grounding = true, outputFormat = outputFormat)
+    }
+
     fun build(): ModelDefinition {
         val matcher = when {
             matchers.isEmpty() -> MatchNone
@@ -138,6 +152,7 @@ class ModelDefinitionBuilder {
             outputModalities = outputModalities.toSet(),
             abilities = abilities.toSet(),
             builtInTools = builtInTools.toSet(),
+            visionCapabilities = visionCapabilities,
         )
     }
 }

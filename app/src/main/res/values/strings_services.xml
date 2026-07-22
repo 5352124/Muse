@@ -52,6 +52,7 @@
     <string name="skill_installed">已安装 skill: %1$s(id=%2$s,实现=%3$s)。用户可在设置→Skill 中查看/启停。</string>
     <string name="skill_install_validate_failed">skill 定义校验失败: %1$s</string>
     <string name="skill_unknown_error">未知错误</string>
+    <string name="chat_auto_route_prefix">已自动委派给「%1$s」</string>
     <string name="skill_assistant_not_found">未找到 id 为 %1$s 的子助手,请在助手管理中创建</string>
     <string name="skill_delegate_failed">子助手 %1$s 调用失败: %2$s</string>
     <string name="skill_delegate_timeout">子助手 %1$s 调用超时(%2$d s)</string>

@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -408,9 +406,8 @@ private fun LicenseTextDialog(
                         color = MaterialTheme.colorScheme.outline,
                     )
                     else -> Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState()),
+                        // v1.0.7 修复:去掉嵌套 verticalScroll(MuseDialog content 已自带滚动)
+                        modifier = Modifier.fillMaxSize(),
                     ) {
                         Text(
                             text = text,

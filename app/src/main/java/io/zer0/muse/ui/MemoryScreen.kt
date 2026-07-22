@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -105,6 +106,9 @@ fun MemoryScreen(
     viewModel: MemoryViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // v8: 作用域筛选状态(从 ViewModel 直接 collect,与 state 同级更新)
+    val selectedScope by viewModel.selectedScope.collectAsStateWithLifecycle()
+    val availableScopes by viewModel.availableScopes.collectAsStateWithLifecycle()
     // Phase 2 2D: Export dialog state (declared before Scaffold for topBar access)
     var showExportDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -160,24 +164,38 @@ fun MemoryScreen(
             // Phase 2 2A: View mode state (list vs timeline)
             var showTimelineView by rememberSaveable { mutableStateOf(false) }
 
-            // Phase 2 2A: View mode toggle (below search bar)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                FilterChip(
-                    selected = !showTimelineView,
-                    onClick = { showTimelineView = false },
-                    label = { Text("列表") },
-                )
-                FilterChip(
-                    selected = showTimelineView,
-                    onClick = { showTimelineView = true },
-                    label = { Text("时间轴") },
-                )
+            // v1.0.4: 把"列表/时间轴切换 + 作用域筛选"从 Column 顶部固定改为
+            // 各分支 LazyColumn 顶部 item,实现"搜索框固定 + 下方整体滚动"。
+            // 之前这些组件固定占位,导致 4 层卡片可视区域被挤压。
+            val headerContent: @Composable () -> Unit = {
+                // Phase 2 2A: View mode toggle (列表 / 时间轴)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FilterChip(
+                        selected = !showTimelineView,
+                        onClick = { showTimelineView = false },
+                        label = { Text("列表") },
+                    )
+                    FilterChip(
+                        selected = showTimelineView,
+                        onClick = { showTimelineView = true },
+                        label = { Text("时间轴") },
+                    )
+                }
+                // v8: 作用域筛选器(FlowRow + FilterChip,可换行)
+                // 始终显示,即使在搜索状态下也可用 — 切换 scope 会触发 loadAll,刷新 factItems + searchResults
+                if (availableScopes.isNotEmpty()) {
+                    ScopeFilterChipRow(
+                        options = availableScopes,
+                        selectedScope = selectedScope,
+                        onSelect = viewModel::selectScope,
+                    )
+                }
             }
 
             if (state.isLoading) {
@@ -210,6 +228,7 @@ fun MemoryScreen(
                     results = state.searchResults,
                     isSearching = state.isSearching,
                     onDelete = viewModel::deleteFact,
+                    headerContent = headerContent,
                 )
             } else if (showTimelineView) {
                 // Phase 2 2A: 时间轴视图
@@ -228,6 +247,7 @@ fun MemoryScreen(
                 io.zer0.muse.ui.memory.MemoryTimelineView(
                     items = timelineItems,
                     modifier = Modifier.fillMaxSize(),
+                    headerContent = headerContent,
                 )
             } else {
                 // v0.51: 4 层折叠状态提升到此(原 FourLayerMemoryList 内部 rememberSaveable 移到外层,
@@ -251,43 +271,6 @@ fun MemoryScreen(
                 var editExperienceItem by remember { mutableStateOf<MemoryItem?>(null) }
                 var pendingDeleteExperience by remember { mutableStateOf<MemoryItem?>(null) }
 
-                // v2.0: 筛选条件芯片行
-                if (state.query.isBlank()) {
-                    FilterChipRow(
-                        importanceFilter = state.importanceFilter,
-                        timeFilter = state.timeFilter,
-                        typeFilter = state.typeFilter,
-                        onImportanceChange = viewModel::setImportanceFilter,
-                        onTimeChange = viewModel::setTimeFilter,
-                        onTypeChange = viewModel::setTypeFilter,
-                    )
-                }
-                // 手动新增元事实 + 立即编译入口
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    OutlinedButton(
-                        onClick = { showAddFactDialog = true },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.memory_screen_add_fact_cd), modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.memory_add_fact))
-                    }
-                    // v1.78 (#7): 立即编译入口,不等待 ticker 自动调度
-                    OutlinedButton(
-                        onClick = { viewModel.compileNow() },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.memory_screen_compile_now_cd), modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.memory_screen_compile_now))
-                    }
-                }
-
                 // v2.0: 根据筛选条件过滤记忆条目
                 val filteredFactItems = remember(state.factItems, state.importanceFilter, state.timeFilter, state.typeFilter) {
                     filterMemoryItems(state.factItems, state.importanceFilter, state.timeFilter, state.typeFilter)
@@ -307,6 +290,49 @@ fun MemoryScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    // v1.0.4: 顶部"列表/时间轴切换 + 作用域筛选"作为 item,
+                    // 与下方"筛选条件 + 新增/编译按钮 + 4 层卡片"一起滚动。
+                    item { headerContent() }
+                    // v2.0: 筛选条件芯片行
+                    if (state.query.isBlank()) {
+                        item {
+                            FilterChipRow(
+                                importanceFilter = state.importanceFilter,
+                                timeFilter = state.timeFilter,
+                                typeFilter = state.typeFilter,
+                                onImportanceChange = viewModel::setImportanceFilter,
+                                onTimeChange = viewModel::setTimeFilter,
+                                onTypeChange = viewModel::setTypeFilter,
+                            )
+                        }
+                    }
+                    // 手动新增元事实 + 立即编译入口
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 0.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedButton(
+                                onClick = { showAddFactDialog = true },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.memory_screen_add_fact_cd), modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.memory_add_fact))
+                            }
+                            // v1.78 (#7): 立即编译入口,不等待 ticker 自动调度
+                            OutlinedButton(
+                                onClick = { viewModel.compileNow() },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.memory_screen_compile_now_cd), modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.memory_screen_compile_now))
+                            }
+                        }
+                    }
                     // v0.51: 顶部 dashboard 概览卡片 + AI 理解摘要卡片
                     item { MemoryDashboardCard(state = state) }
                     item { MemorySummaryCard(markdown = state.compiledMarkdown) }
@@ -646,6 +672,80 @@ private fun FilterChipRow(
 }
 
 /**
+ * v8: 作用域筛选行 — FlowRow + FilterChip,自动换行展示"全部 / 主助手 / 各子助手"。
+ *
+ * 设计意图:用户在记忆页可按 Agent 作用域筛选事实,避免不同 Agent 的记忆混淆。
+ *  - 主助手 chip 选中时使用默认 chip 色(MaterialTheme.colorScheme.primary 系)
+ *  - 子助手 chip 选中时使用 tertiary 色,与 MemoryRow 中 scope 徽章颜色一致
+ *  - "全部" chip 选中时使用默认色,与普通 FilterChip 行为一致
+ *
+ * FlowRow 在 chip 数量超出屏幕宽度时自动换行,避免横向滚动条。
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun ScopeFilterChipRow(
+    options: List<ScopeOption>,
+    selectedScope: String?,
+    onSelect: (String?) -> Unit,
+) {
+    // v8: 作用域标签(顶部小标题,左对齐,outline 色,与 FilterChip 同行不显示)
+    // 此处用一行 FlowRow + FilterChip 实现,标签放在 chip 行上方更直观。
+    Text(
+        text = stringResource(R.string.memory_scope_label),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.outline,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+    )
+    FlowRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        options.forEach { option ->
+            val isSelected = selectedScope == option.id
+            FilterChip(
+                selected = isSelected,
+                onClick = { onSelect(option.id) },
+                label = { Text(option.displayName, style = MaterialTheme.typography.labelSmall) },
+                shape = MuseShapes.large,
+            )
+        }
+    }
+}
+
+/**
+ * v8: 单条 Fact 项的 scope 徽章 — 显示在 MemoryRow 标签行旁。
+ *
+ *  - scope == "main"(主助手):不显示徽章(主助手是默认作用域,不额外标注,避免噪音)
+ *  - scope != "main"(子助手):显示 tertiary 色小徽章,文案取自 R.string.memory_scope_assistant
+ *    + scope id 前 6 位(便于用户识别具体助手)
+ *  - scope 为 null(非 Fact 层):不显示
+ *
+ * 设计依据:主助手是默认场景,徽章应仅出现在需要区分的子助手记忆上,
+ * 与 iOS 风格的"默认隐藏,异常显式"原则一致。
+ */
+@Composable
+private fun ScopeBadge(scope: String?) {
+    if (scope.isNullOrBlank() || scope == "main") return
+    val label = stringResource(R.string.memory_scope_assistant) + " · " + scope.take(6)
+    Surface(
+        shape = MuseShapes.large,
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onTertiaryContainer,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        )
+    }
+}
+
+/**
  * 搜索结果列表 — iOS 风格 SettingsGroup 容器。
  */
 @Composable
@@ -653,6 +753,8 @@ private fun SearchResultsList(
     results: List<MemoryItem>,
     isSearching: Boolean,
     onDelete: (String) -> Unit,
+    // v1.0.4: 顶部 header(列表/时间轴切换 + 作用域筛选)随列表一起滚动
+    headerContent: @Composable () -> Unit = {},
 ) {
     if (isSearching) {
         Box(
@@ -691,6 +793,8 @@ private fun SearchResultsList(
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // v1.0.4: 顶部 header(列表/时间轴切换 + 作用域筛选)与搜索结果一起滚动
+        item { headerContent() }
         item {
             Text(
                 text = stringResource(R.string.memory_screen_search_results, results.size),
@@ -1003,8 +1107,10 @@ private fun MemoryRow(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        // 标签 + 时间行
-        if (item.tags.isNotEmpty() || item.time != null) {
+        // 标签 + 时间 + 作用域徽章行
+        // v8: 条件加入 scope 徽章判断,确保子助手作用域的事实即使无 tags/time 也能显示徽章
+        val showScopeBadge = !item.scope.isNullOrBlank() && item.scope != "main"
+        if (item.tags.isNotEmpty() || item.time != null || showScopeBadge) {
             Spacer(Modifier.size(8.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1025,6 +1131,8 @@ private fun MemoryRow(
                         color = MaterialTheme.colorScheme.outline,
                     )
                 }
+                // v8: 子助手作用域徽章(主助手/null 不显示)
+                ScopeBadge(scope = item.scope)
             }
         }
         // v4: 来源会话 + 入库时间行(仅 Fact 层有值时显示)

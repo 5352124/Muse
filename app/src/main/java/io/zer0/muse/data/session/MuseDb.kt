@@ -142,6 +142,8 @@ abstract class MuseDb : RoomDatabase() {
     // v1.134 P1-1/P1-2: 孤儿组件接入所需 DAO
     abstract fun autoBackupLogDao(): AutoBackupLogDao
     abstract fun statsCacheDao(): StatsCacheDao
+    // P3-3: 数据库完整性校验 DAO(IntegrityChecker 使用)
+    abstract fun integrityLogDao(): DbIntegrityLogDao
 
     companion object {
         @Volatile

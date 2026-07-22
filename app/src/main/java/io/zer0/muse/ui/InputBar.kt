@@ -1168,6 +1168,9 @@ internal fun InputBar(
             ) {
                 when {
                     asrStatus == ASRStatus.Stopping -> LoadingDots(text = stringResource(R.string.voice_recognizing))
+                    // v1.0.4 (P2): Connecting 阶段尚未开始录音,显示"正在连接识别服务…"而不是空白波形
+                    // (isRecording 包含 Connecting,必须先短路匹配 Connecting 才能落到正确的分支)
+                    asrStatus == ASRStatus.Connecting -> LoadingDots(text = stringResource(R.string.voice_connecting))
                     isRecording -> {
                         RecordingWaveform(amplitudes = recordingAmplitudes)
                         Spacer(modifier = Modifier.width(8.dp))

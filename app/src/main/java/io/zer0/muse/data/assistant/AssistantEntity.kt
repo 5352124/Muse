@@ -67,6 +67,9 @@ data class AssistantEntity(
     // ── 标签 ──
     @ColumnInfo(defaultValue = "[]") val tagsJson: String = "[]",
 
+    // ── v1.200: 多 Agent 能力标签(JSON 数组,如 ["code","write","research"]) ──
+    @ColumnInfo(defaultValue = "[]") val capabilitiesJson: String = "[]",
+
     // ── 扩展(后续 Phase 实现) ──
     @ColumnInfo(defaultValue = "[]") val quickMessageIdsJson: String = "[]",
     @ColumnInfo(defaultValue = "[]") val lorebookIdsJson: String = "[]",

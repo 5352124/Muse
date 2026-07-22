@@ -56,6 +56,23 @@ data class OAuthConfig(
         )
 
         /**
+         * v1.0.6: xAI OAuth Responses 预设(对齐 openhanako xai-oauth)。
+         *
+         * 与 [XAI_PRESET] 区别:此预设走 OpenAI Responses 协议(openai-responses),
+         * baseUrl 指向 xAI OAuth 代理端点 https://cli-chat-proxy.grok.com,
+         * 用户授权后拿到 access_token 调用 /v1/responses 端点访问 Grok 4.5+ 模型。
+         *
+         * 真实端点以 xAI 官方文档为准,如不符可在 ProviderEditPage 手动覆盖。
+         */
+        val XAI_OAUTH_PRESET = OAuthConfig(
+            authorizeUrl = "https://x.ai/oauth/authorize",
+            tokenUrl = "https://api.x.ai/v1/oauth/token",
+            clientId = "",
+            scope = "chat.read chat.write",
+            deviceCodeUrl = "https://api.x.ai/v1/oauth/device_code",
+        )
+
+        /**
          * v1.134 P2-1: OpenAI Codex OAuth 预设(Device Flow)。
          *
          * 对齐 Codex CLI 官方登录流程(auth.openai.com 域名),

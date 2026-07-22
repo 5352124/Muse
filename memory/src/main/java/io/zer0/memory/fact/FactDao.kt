@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.RawQuery
 import androidx.sqlite.db.SupportSQLiteQuery
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Fact 数据访问对象 (openhanako fact-store.ts prepared statements 移植)。
@@ -27,9 +28,11 @@ interface FactDao {
     /**
      * v4: 按 importance 降序 + time 降序获取全部事实。
      * 关键(importance=2)和重要(importance=1)的事实排在前面,便于 UI 优先展示。
+     *
+     * v8: 新增可选 scope 过滤,null 表示全部作用域,非 null 仅返回指定作用域的事实。
      */
-    @Query("SELECT * FROM facts ORDER BY importance DESC, time DESC")
-    suspend fun getAll(): List<FactEntity>
+    @Query("SELECT * FROM facts WHERE (:scope IS NULL OR scope = :scope) ORDER BY importance DESC, time DESC")
+    suspend fun getAll(scope: String? = null): List<FactEntity>
 
     @Query("SELECT * FROM facts WHERE id = :id")
     suspend fun getById(id: Long): FactEntity?
@@ -43,9 +46,15 @@ interface FactDao {
     @Query("DELETE FROM facts WHERE id = :id")
     suspend fun deleteById(id: Long): Int
 
-    /** P2: 更新指定 fact 的内容(用于记忆页 UI 编辑 Fact 层)。 */
-    @Query("UPDATE facts SET fact = :content WHERE id = :id")
-    suspend fun updateContent(id: Long, content: String): Int
+    /**
+     * P2: 更新指定 fact 的内容(用于记忆页 UI 编辑 Fact 层)。
+     *
+     * v8: 新增可选 scope 参数:
+     *  - scope 为 null 时,只更新 content,保留原有 scope(COALESCE 语义)
+     *  - scope 非 null 时,同时更新 content 与 scope(用于 UI 切换事实作用域)
+     */
+    @Query("UPDATE facts SET fact = :content, scope = COALESCE(:scope, scope) WHERE id = :id")
+    suspend fun updateContent(id: Long, content: String, scope: String? = null): Int
 
     /**
      * v4: 更新指定 fact 的重要程度(用于记忆页 UI 手动调整)。
@@ -60,9 +69,12 @@ interface FactDao {
 
     /**
      * v5: 查找与给定文本前40字前缀匹配的事实(用于去重)。
+     *
+     * v8: 新增可选 scope 过滤,去重时仅在相同作用域内查找相似事实,
+     * 避免"main"作用域的事实与子助手作用域的事实被误合并。
      */
-    @Query("SELECT * FROM facts WHERE fact LIKE :prefix || '%' ORDER BY importance DESC, created_at DESC LIMIT 5")
-    suspend fun findSimilar(prefix: String): List<FactEntity>
+    @Query("SELECT * FROM facts WHERE fact LIKE :prefix || '%' AND (:scope IS NULL OR scope = :scope) ORDER BY importance DESC, created_at DESC LIMIT 5")
+    suspend fun findSimilar(prefix: String, scope: String? = null): List<FactEntity>
 
     @Query("DELETE FROM facts")
     suspend fun deleteAll(): Int
@@ -74,19 +86,23 @@ interface FactDao {
      * 用 created_at 而非 time:time 是 fact 自身描述的事件时间(可空且可远早于入库),
      * created_at 是落库时间,作为衰减基准更稳定。
      *
+     * v8: 新增可选 scope 过滤,null 表示全部作用域,非 null 仅删除指定作用域的事实。
+     *
      * @return 实际删除的行数
      */
-    @Query("DELETE FROM facts WHERE created_at < :cutoffIso")
-    suspend fun deleteOlderThan(cutoffIso: String): Int
+    @Query("DELETE FROM facts WHERE created_at < :cutoffIso AND (:scope IS NULL OR scope = :scope)")
+    suspend fun deleteOlderThan(cutoffIso: String, scope: String? = null): Int
 
     /**
      * v4: 删除创建时间早于 [cutoffIso] 且 importance < [minImportance] 的 fact。
      * 关键事实(importance=2)通过 minImportance=3 永不删除,实现"永不衰减"。
      *
+     * v8: 新增可选 scope 过滤,null 表示全部作用域。
+     *
      * @return 实际删除的行数
      */
-    @Query("DELETE FROM facts WHERE created_at < :cutoffIso AND importance < :minImportance")
-    suspend fun deleteOlderThanExceptImportant(cutoffIso: String, minImportance: Int): Int
+    @Query("DELETE FROM facts WHERE created_at < :cutoffIso AND importance < :minImportance AND (:scope IS NULL OR scope = :scope)")
+    suspend fun deleteOlderThanExceptImportant(cutoffIso: String, minImportance: Int, scope: String? = null): Int
 
     /**
      * v7: 按命中时间衰减删除。
@@ -95,17 +111,20 @@ interface FactDao {
      *  - importance < minImportance 的事实才会被删除
      *
      * 配合 [MemoryConfig.hitBonus] 实现"被引用的记忆更慢遗忘"。
+     *
+     * v8: 新增可选 scope 过滤,null 表示全部作用域。
      */
     @Query("""
         DELETE FROM facts
         WHERE importance < :minImportance
+          AND (:scope IS NULL OR scope = :scope)
           AND (
             (last_hit_at IS NULL AND created_at < :neverHitCutoffIso)
             OR
             (last_hit_at IS NOT NULL AND last_hit_at < :hitCutoffIso)
           )
     """)
-    suspend fun deleteOlderThanWithHit(neverHitCutoffIso: String, hitCutoffIso: String, minImportance: Int): Int
+    suspend fun deleteOlderThanWithHit(neverHitCutoffIso: String, hitCutoffIso: String, minImportance: Int, scope: String? = null): Int
 
     /**
      * 全文搜索(LIKE,兼容所有 ROM)。
@@ -133,6 +152,32 @@ interface FactDao {
      */
     @RawQuery
     suspend fun tagSearch(query: SupportSQLiteQuery): List<FactTagSearchRow>
+
+    // ── v8: 按作用域(scope)查询/衰减 ──
+
+    /**
+     * v8: 按 scope 观察事实列表(Flow 形式),用于 UI 实时刷新。
+     * 排序与 [getAll] 一致:importance DESC + time DESC。
+     */
+    @Query("SELECT * FROM facts WHERE scope = :scope ORDER BY importance DESC, time DESC")
+    fun observeByScope(scope: String): Flow<List<FactEntity>>
+
+    /**
+     * v8: 按 scope 同步查询事实列表。
+     * 用于 system prompt 注入、子助手记忆检索等场景。
+     */
+    @Query("SELECT * FROM facts WHERE scope = :scope ORDER BY importance DESC, time DESC")
+    suspend fun getByScope(scope: String): List<FactEntity>
+
+    /**
+     * v8: 按作用域衰减删除 — 仅删除指定 scope 下早于 [cutoffIso] 且 importance < [minImportance] 的事实。
+     * 用于 daily pipeline 中各助手作用域独立衰减,避免一个助手的低重要性事实
+     * 影响其他助手的衰减节奏。
+     *
+     * @return 实际删除的行数
+     */
+    @Query("DELETE FROM facts WHERE scope = :scope AND created_at < :cutoffIso AND importance < :minImportance")
+    suspend fun deleteByScopeExceptImportant(scope: String, cutoffIso: String, minImportance: Int): Int
 
     // ── v6: FTS4 索引同步 ──
 

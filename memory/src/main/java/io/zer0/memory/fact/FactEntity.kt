@@ -11,6 +11,8 @@ import kotlinx.serialization.Serializable
  *
  * v3 schema: 移除 search_text 字段(不再用 FTS5,无需 n-gram 索引列)。
  * v4 schema: 新增 importance 字段(0=普通,1=重要,2=关键),关键事实永不衰减。
+ * v8 schema: 新增 scope 字段(记忆作用域,默认 "main" 表示主助手作用域,
+ *   子助手/团队成员使用各自的 assistantId),用于隔离不同 Agent 的记忆。
  *
  * Phase 7: @Serializable 用于备份导出/导入。id 自增主键在导入时清表后重新分配。
  */
@@ -22,6 +24,7 @@ import kotlinx.serialization.Serializable
         Index(value = ["session_id"], name = "idx_facts_session"),
         Index(value = ["importance"], name = "idx_facts_importance"),
         Index(value = ["category"], name = "idx_facts_category"),
+        Index(value = ["scope"], name = "index_facts_scope"),
     ],
 )
 data class FactEntity(
@@ -101,4 +104,13 @@ data class FactEntity(
      */
     @ColumnInfo(name = "last_hit_at", defaultValue = "NULL")
     val lastHitAt: String? = null,
+
+    /**
+     * v8: 记忆作用域,用于隔离不同 Agent 的记忆。
+     *  - "main":主助手作用域(默认),用户与主助手的对话事实
+     *  - assistantId:子助手/团队成员作用域,用户与该子助手的对话事实
+     * 查询时按 scope 过滤,避免子助手误用主助手的事实,也避免团队成员之间记忆混淆。
+     */
+    @ColumnInfo(name = "scope", defaultValue = "main")
+    val scope: String = "main",
 )

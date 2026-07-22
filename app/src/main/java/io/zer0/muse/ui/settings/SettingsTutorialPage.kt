@@ -61,6 +61,14 @@ fun SettingsTutorialPage(
                         title = stringResource(R.string.settings_tutorial_ch1_s3_title),
                         content = stringResource(R.string.settings_tutorial_ch1_s3_content),
                     ),
+                    TutorialSection(
+                        title = stringResource(R.string.settings_tutorial_ch1_s4_title),
+                        content = stringResource(R.string.settings_tutorial_ch1_s4_content),
+                    ),
+                    TutorialSection(
+                        title = stringResource(R.string.settings_tutorial_ch1_s5_title),
+                        content = stringResource(R.string.settings_tutorial_ch1_s5_content),
+                    ),
                 ),
             )
         }
@@ -86,6 +94,14 @@ fun SettingsTutorialPage(
                     TutorialSection(
                         title = stringResource(R.string.settings_tutorial_ch2_s4_title),
                         content = stringResource(R.string.settings_tutorial_ch2_s4_content),
+                    ),
+                    TutorialSection(
+                        title = stringResource(R.string.settings_tutorial_ch2_s5_title),
+                        content = stringResource(R.string.settings_tutorial_ch2_s5_content),
+                    ),
+                    TutorialSection(
+                        title = stringResource(R.string.settings_tutorial_ch2_s6_title),
+                        content = stringResource(R.string.settings_tutorial_ch2_s6_content),
                     ),
                 ),
             )
@@ -116,6 +132,14 @@ fun SettingsTutorialPage(
                     TutorialSection(
                         title = stringResource(R.string.settings_tutorial_ch3_s5_title),
                         content = stringResource(R.string.settings_tutorial_ch3_s5_content),
+                    ),
+                    TutorialSection(
+                        title = stringResource(R.string.settings_tutorial_ch3_s6_title),
+                        content = stringResource(R.string.settings_tutorial_ch3_s6_content),
+                    ),
+                    TutorialSection(
+                        title = stringResource(R.string.settings_tutorial_ch3_s7_title),
+                        content = stringResource(R.string.settings_tutorial_ch3_s7_content),
                     ),
                 ),
             )
@@ -155,6 +179,18 @@ fun SettingsTutorialPage(
                         title = stringResource(R.string.settings_tutorial_ch4_s7_title),
                         content = stringResource(R.string.settings_tutorial_ch4_s7_content),
                     ),
+                    TutorialSection(
+                        title = stringResource(R.string.settings_tutorial_ch4_s8_title),
+                        content = stringResource(R.string.settings_tutorial_ch4_s8_content),
+                    ),
+                    TutorialSection(
+                        title = stringResource(R.string.settings_tutorial_ch4_s9_title),
+                        content = stringResource(R.string.settings_tutorial_ch4_s9_content),
+                    ),
+                    TutorialSection(
+                        title = stringResource(R.string.settings_tutorial_ch4_s10_title),
+                        content = stringResource(R.string.settings_tutorial_ch4_s10_content),
+                    ),
                 ),
             )
         }
@@ -177,6 +213,14 @@ fun SettingsTutorialPage(
                         title = stringResource(R.string.settings_tutorial_ch5_s3_title),
                         content = stringResource(R.string.settings_tutorial_ch5_s3_content),
                     ),
+                    TutorialSection(
+                        title = stringResource(R.string.settings_tutorial_ch5_s4_title),
+                        content = stringResource(R.string.settings_tutorial_ch5_s4_content),
+                    ),
+                    TutorialSection(
+                        title = stringResource(R.string.settings_tutorial_ch5_s5_title),
+                        content = stringResource(R.string.settings_tutorial_ch5_s5_content),
+                    ),
                 ),
             )
         }
@@ -198,6 +242,14 @@ fun SettingsTutorialPage(
                     TutorialSection(
                         title = stringResource(R.string.settings_tutorial_ch6_s3_title),
                         content = stringResource(R.string.settings_tutorial_ch6_s3_content),
+                    ),
+                    TutorialSection(
+                        title = stringResource(R.string.settings_tutorial_ch6_s4_title),
+                        content = stringResource(R.string.settings_tutorial_ch6_s4_content),
+                    ),
+                    TutorialSection(
+                        title = stringResource(R.string.settings_tutorial_ch6_s5_title),
+                        content = stringResource(R.string.settings_tutorial_ch6_s5_content),
                     ),
                 ),
             )
@@ -224,6 +276,14 @@ fun SettingsTutorialPage(
                     TutorialSection(
                         title = stringResource(R.string.settings_tutorial_ch7_s4_title),
                         content = stringResource(R.string.settings_tutorial_ch7_s4_content),
+                    ),
+                    TutorialSection(
+                        title = stringResource(R.string.settings_tutorial_ch7_s5_title),
+                        content = stringResource(R.string.settings_tutorial_ch7_s5_content),
+                    ),
+                    TutorialSection(
+                        title = stringResource(R.string.settings_tutorial_ch7_s6_title),
+                        content = stringResource(R.string.settings_tutorial_ch7_s6_content),
                     ),
                 ),
             )

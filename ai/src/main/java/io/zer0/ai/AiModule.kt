@@ -4,6 +4,7 @@ import io.zer0.common.ErrorCode
 import io.zer0.common.toMessage
 import io.zer0.ai.core.ChatCompletion
 import io.zer0.ai.core.ChatRequest
+import io.zer0.ai.core.ChatRequestMode
 import io.zer0.ai.core.ChatStreamEvent
 import io.zer0.ai.core.Model
 import io.zer0.ai.core.Provider
@@ -39,6 +40,8 @@ object ProviderRegistry {
                 ProviderType.OPENAI -> OpenAIProvider(config)
                 ProviderType.ANTHROPIC -> AnthropicProvider(config)
                 ProviderType.GEMINI -> GeminiProvider(config)
+                // v1.0.6: OPENAI_RESPONSES 暂复用 OpenAIProvider(其内部通过 specific.useResponseApi 切换到 /v1/responses)
+                ProviderType.OPENAI_RESPONSES -> OpenAIProvider(config)
             }
         }
     }
@@ -70,14 +73,18 @@ class ChatService(
         tools: List<ToolDefinition>? = null,
         reasoningLevel: ReasoningLevel = ReasoningLevel.DEFAULT,
         providerConfig: ProviderConfig? = null,
+        mode: ChatRequestMode = ChatRequestMode.CHAT,
     ): Flow<ChatStreamEvent> {
-        val (provider, request) = buildProviderRequest(messages, model, temperature, maxTokens, tools, reasoningLevel, providerConfig)
+        val (provider, request) = buildProviderRequest(messages, model, temperature, maxTokens, tools, reasoningLevel, providerConfig, mode)
         return provider.streamChat(request)
     }
 
     /**
      * 非流式聊天。一次性返回完整结果,适用于 memory 编译、fact 抽取等后台任务。
      * @see [buildProviderRequest] 负责公共前置逻辑。
+     *
+     * v1.0.7: 默认 [mode]=[ChatRequestMode.UTILITY](对齐 openhanako callText 硬编码 utility),
+     *   后台任务无需显式传 mode 即可自动关思考。用户对话路径应调 [streamChat]。
      */
     suspend fun completeText(
         messages: List<UIMessage>,
@@ -87,8 +94,9 @@ class ChatService(
         tools: List<ToolDefinition>? = null,
         reasoningLevel: ReasoningLevel = ReasoningLevel.DEFAULT,
         providerConfig: ProviderConfig? = null,
+        mode: ChatRequestMode = ChatRequestMode.UTILITY,
     ): ChatCompletion {
-        val (provider, request) = buildProviderRequest(messages, model, temperature, maxTokens, tools, reasoningLevel, providerConfig)
+        val (provider, request) = buildProviderRequest(messages, model, temperature, maxTokens, tools, reasoningLevel, providerConfig, mode)
         return provider.completeText(request)
     }
 
@@ -105,6 +113,7 @@ class ChatService(
         tools: List<ToolDefinition>?,
         reasoningLevel: ReasoningLevel,
         providerConfig: ProviderConfig? = null,
+        mode: ChatRequestMode = ChatRequestMode.CHAT,
     ): Pair<Provider, ChatRequest> {
         val config = providerConfig ?: configStore.get()
             ?: error(ErrorCode.NO_PROVIDER_CONFIGURED.toMessage())
@@ -115,13 +124,22 @@ class ChatService(
         // Strip tools if model doesn't support tool calling
         val effectiveTools = if (enhancedModel.supportsToolCalling()) tools else null
         val provider = ProviderRegistry.create(config)
+        // v1.0.7: UTILITY 模式强制关思考(对齐 openhanako buildProviderCompatOptions)
+        //  在 ChatService 层统一覆盖 reasoningLevel=OFF,所有 Provider(OpenAI/Anthropic/Gemini)
+        //  自动生效,无需各 Provider 内部重复判断 mode。
+        val effectiveReasoningLevel = if (mode == ChatRequestMode.UTILITY) {
+            ReasoningLevel.OFF
+        } else {
+            reasoningLevel
+        }
         val request = ChatRequest(
             messages = messages,
             model = enhancedModel,
             temperature = temperature,
             maxTokens = maxTokens,
             tools = effectiveTools,
-            reasoningLevel = reasoningLevel,
+            reasoningLevel = effectiveReasoningLevel,
+            mode = mode,
         )
         return Pair(provider, request)
     }

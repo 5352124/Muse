@@ -1,4 +1,4 @@
-﻿package io.zer0.muse.tools
+package io.zer0.muse.tools
 
 import android.content.Context
 import io.zer0.ai.core.ToolDefinition
@@ -875,7 +875,9 @@ class ToolRegistry(private val context: Context) {
                 description = def.description,
                 parametersJsonSchema = AppJson.encodeToString(JsonObject.serializer(), schema),
             )
-        }
+        // v1.0.4 修复 HTTP 400 "Tool names must be unique":
+        // 防御性按 name 去重,即使 ToolRegistry 内部因多 Registrar 注册同名工具也能拦截。
+        }.distinctBy { it.name }
 
     /**
      * 执行工具(对标 MCP tools/call)。

@@ -13,8 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -537,7 +535,7 @@ private fun McpServerAddDialog(
 /**
  * 浏览指定 server 的 Resources(Phase 11.1.2 listAllResources / readResource 接入)。
  *
- * - 列表态:LazyColumn 展示 uri / name / description
+ * - 列表态:Column + forEach 展示 uri / name / description
  * - 详情态:点击某项后读取内容,叠加一个 MuseDialog 展示文本/blob
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -607,8 +605,10 @@ private fun ResourcesBrowserDialog(
                         )
                     }
                 } else {
-                    LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
-                        items(resources, key = { it.uri }) { res ->
+                    // v1.0.7 修复:MuseDialog content 已自带 verticalScroll,不能嵌套 LazyColumn。
+                    // 改用 Column + forEach,由 MuseDialog 外层统一滚动(对齐 VoiceCloningPage v1.132)。
+                    Column {
+                        resources.forEach { res ->
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -626,25 +626,25 @@ private fun ResourcesBrowserDialog(
                                     .padding(vertical = 8.dp),
                                 verticalArrangement = Arrangement.spacedBy(2.dp),
                             ) {
-                            Text(
-                                text = res.name ?: res.uri,
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            if (!res.description.isNullOrBlank()) {
                                 Text(
-                                    text = res.description,
-                                    style = MaterialTheme.typography.bodySmall,
+                                    text = res.name ?: res.uri,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                if (!res.description.isNullOrBlank()) {
+                                    Text(
+                                        text = res.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.outline,
+                                    )
+                                }
+                                Text(
+                                    text = res.uri,
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.outline,
                                 )
                             }
-                            Text(
-                                text = res.uri,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline,
-                            )
                         }
                     }
-                }
             }
         }
     },
@@ -752,8 +752,10 @@ private fun PromptsBrowserDialog(
                         )
                     }
                 } else {
-                    LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
-                        items(prompts, key = { it.name }) { p ->
+                    // v1.0.7 修复:MuseDialog content 已自带 verticalScroll,不能嵌套 LazyColumn。
+                    // 改用 Column + forEach,由 MuseDialog 外层统一滚动。
+                    Column {
+                        prompts.forEach { p ->
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()

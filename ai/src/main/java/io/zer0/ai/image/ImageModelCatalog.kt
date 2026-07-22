@@ -50,6 +50,17 @@ data class ImageModel(
  * 避免用户手动输入模型 ID。
  */
 object ImageModelCatalog {
+    /**
+     * v1.136: 默认绘图模型 ID。
+     *
+     * 当调用方未传 model、且 ProviderSpecificConfig.OpenAI.imageModel 也未配置时,
+     * 回退到此模型,保证请求体始终携带 model 字段。
+     */
+    const val DEFAULT_MODEL_ID = "dall-e-3"
+
+    /** 默认绘图模型元数据。 */
+    fun defaultModel(): ImageModel = findById(DEFAULT_MODEL_ID) ?: models.first()
+
     // 注:wanx-v1(通义万相)与 minimax-image-01 已移除 —
     // 二者协议不兼容 OpenAI /images/generations,需独立 Adapter,留后续实现。
     private val models = listOf(

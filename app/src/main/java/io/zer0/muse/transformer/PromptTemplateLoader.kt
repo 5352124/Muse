@@ -28,6 +28,8 @@ class PromptTemplateLoader(private val context: Context) {
             "mood_format",
             "artifact_format",
             "self_reflection",
+            "tool_discipline",
+            "operation_safety",
         )
     }
 

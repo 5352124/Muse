@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -92,6 +93,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -124,7 +126,6 @@ import io.zer0.muse.ui.common.DesktopShortcuts
 import io.zer0.muse.ui.common.MuseDialog
 import io.zer0.muse.ui.common.MuseBottomSheet
 import io.zer0.muse.ui.common.MuseToast
-import io.zer0.muse.ui.common.SuggestionBubbles
 import io.zer0.muse.ui.common.rememberDesktopShortcutsEnabled
 import io.zer0.muse.R
 import io.zer0.muse.data.SettingsRepository
@@ -146,10 +147,12 @@ import io.zer0.muse.ui.theme.MuseIconSizes
 import io.zer0.muse.ui.theme.MuseAnimation
 import io.zer0.muse.ui.taskcard.AgentPlan
 import io.zer0.muse.ui.taskcard.AgentPlanStepStatus
+import io.zer0.muse.perf.MessagePaginator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 
@@ -280,17 +283,52 @@ fun ChatScreen(
     // P2-12: 富文本输入开关 — 开启后 ChatScreen 的 InputBar 替换为 RichInputBar(顶部带 Markdown 格式工具条)
     val richInputEnabled by settings.richInputEnabledFlow.collectAsStateWithLifecycle(initialValue = false)
 
+    // v1.0.4 (P3-4): 性能模式 — 通过 MessagePaginator 对 state.messages 做内存级分页,
+    // LazyColumn 只渲染最近 N 条,上滑到顶时扩展下一页(纯本地内存分页);
+    // 全部展开后再上滑才触发 DB loadMoreHistory。
+    // 关闭时 visibleMessages == state.messages,行为与原有逻辑完全一致。
+    val performanceMode = state.chatPreferences.performanceMode
+    var paginatorPageCount by rememberSaveable { mutableStateOf(1) }
+    // 切换会话 / 关闭性能模式时重置分页计数
+    LaunchedEffect(state.currentSessionId) {
+        paginatorPageCount = 1
+    }
+    LaunchedEffect(performanceMode) {
+        if (!performanceMode) paginatorPageCount = 1
+    }
+    var savedPaginatorScrollOffset by remember { mutableStateOf(0) }
+    val visibleMessages by produceState(
+        initialValue = state.messages,
+        state.messages, paginatorPageCount, performanceMode,
+    ) {
+        if (!performanceMode) {
+            value = state.messages
+            return@produceState
+        }
+        val allIds = state.messages.map { it.id.toString() }
+        if (allIds.isEmpty()) {
+            value = emptyList()
+            return@produceState
+        }
+        val pageSize = MessagePaginator.DEFAULT_PAGE_SIZE * paginatorPageCount
+        // 取首页(最新 N 条 ID),再反查 UIMessage 保留顺序
+        val visibleIds = MessagePaginator.createFlow(allIds, pageSize = pageSize).first()
+        val msgById = state.messages.associateBy { it.id.toString() }
+        value = visibleIds.mapNotNull { msgById[it] }
+    }
+
     // v0.48: 派生状态 — isAtBottom 判断列表是否在底部(用户没往上滚)
     // v1.52: 收紧阈值 — 仅当最后一项的底部在视口内才算"在底部",
     //        避免"部分可见=在底部"导致流式增量把用户拉回底部。
+    // v1.0.4 (P3-4): 性能模式下用 visibleMessages(实际渲染列表)判断,而非 state.messages。
     val isAtBottom by remember {
         derivedStateOf {
-            if (state.messages.isEmpty()) return@derivedStateOf true
+            if (visibleMessages.isEmpty()) return@derivedStateOf true
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull() ?: return@derivedStateOf false
             val viewportEnd = listState.layoutInfo.viewportEndOffset
             // 最后一项必须是列表的最后一项,且其底部在视口底部附近
             // v1.79 (M-S4): 容差从 200px 收紧到 150px
-            lastVisible.index == state.messages.lastIndex &&
+            lastVisible.index == visibleMessages.lastIndex &&
                 (lastVisible.offset + lastVisible.size) <= viewportEnd + 150
         }
     }
@@ -306,7 +344,10 @@ fun ChatScreen(
                 !state.isLoadingMore &&
                 !state.isStreaming &&
                 state.messages.isNotEmpty() &&
-                listState.firstVisibleItemIndex == 0
+                listState.firstVisibleItemIndex == 0 &&
+                // v1.0.4 (P3-4): 性能模式下仅当 visibleMessages 已覆盖全部 state.messages 时才触发 DB 加载,
+                // 否则由 paginatorLoadMoreTrigger 先扩展内存分页
+                (!performanceMode || visibleMessages.size >= state.messages.size)
         }
     }
     LaunchedEffect(loadMoreTrigger) {
@@ -316,13 +357,62 @@ fun ChatScreen(
             viewModel.loadMoreHistory()
         }
     }
+    // v1.0.4 (P3-4): 性能模式内存分页触发 — 到达顶部且 state.messages 还有未渲染的更早消息时,
+    // 扩展 paginatorPageCount(纯本地内存分页,不查 DB)。扩展后通过 scrollToItem 保持视觉位置不跳。
+    val paginatorLoadMoreTrigger by remember {
+        derivedStateOf {
+            performanceMode &&
+                state.messages.size > visibleMessages.size &&
+                !state.isStreaming &&
+                listState.firstVisibleItemIndex == 0
+        }
+    }
+    LaunchedEffect(paginatorLoadMoreTrigger) {
+        if (paginatorLoadMoreTrigger) {
+            // 记录当前 offset,加载后跳到新位置保持视觉位置
+            savedPaginatorScrollOffset = listState.firstVisibleItemScrollOffset
+            val previousSize = visibleMessages.size
+            paginatorPageCount++
+            // 等待 visibleMessages 重新计算并增长(produceState 异步更新)
+            withTimeoutOrNull(1000L) {
+                snapshotFlow { visibleMessages.size }
+                    .filter { it > previousSize }
+                    .first()
+            }
+            // 加载完成后跳到新位置(原来在顶部的消息现在在 addedCount 位置)
+            val addedCount = visibleMessages.size - previousSize
+            if (addedCount > 0) {
+                listState.scrollToItem(addedCount, savedPaginatorScrollOffset)
+            }
+            savedPaginatorScrollOffset = 0
+        }
+    }
     // v1.53-A1: 加载完成后调整滚动位置,保持视觉位置不跳动
     // (原来在顶部的消息现在在 lastHistoryLoadCount 位置)
+    // v1.0.4 (P3-4): 性能模式下,DB 加载更多后同步扩展 paginatorPageCount,
+    // 让 visibleMessages 包含新加载的旧消息(否则 visibleMessages 仍是最新 N 条,看不到新加载的更老消息)。
     LaunchedEffect(state.lastHistoryLoadCount) {
         if (state.lastHistoryLoadCount > 0) {
+            if (performanceMode) {
+                paginatorPageCount++
+                // 等待 visibleMessages 重新计算并覆盖全部 state.messages
+                val targetSize = state.messages.size
+                withTimeoutOrNull(1000L) {
+                    snapshotFlow { visibleMessages.size }
+                        .filter { it >= targetSize }
+                        .first()
+                }
+            }
             listState.scrollToItem(state.lastHistoryLoadCount, savedScrollOffset)
             viewModel.clearHistoryLoadCount()
             savedScrollOffset = 0
+        }
+    }
+    // v1.0.4 (P1): 草稿恢复 toast 反馈 — 进入有草稿的会话时显示"草稿已恢复"
+    // (InputBar 已显示「草稿」小标签,本 toast 是更强的瞬时反馈,避免用户没注意到标签)
+    LaunchedEffect(state.hasDraft, state.currentSessionId) {
+        if (state.hasDraft && state.input.isNotBlank()) {
+            MuseToast.show(context.getString(R.string.chat_draft_restored))
         }
     }
     // v1.28: 上次消息数量,用于区分"用户发消息"和"流式增量"
@@ -376,13 +466,15 @@ fun ChatScreen(
                     state.messages.lastOrNull()?.role == MessageRole.USER
                 if (isUserSendMessage) {
                     // 用户刚发消息:瞬时滚到底部,并解锁跟随
+                    // v1.0.4 (P3-4): 性能模式下 LazyColumn 只渲染 visibleMessages,
+                    // 滚动目标必须用 visibleMessages 索引,否则 size-1 越界。
                     userScrolledUp = false
-                    listState.scrollToItem(size - 1)
+                    listState.scrollToItem(visibleMessages.size - 1)
                 } else if (!userScrolledUp) {
                     // 流式增量:用户未上滑,平滑跟随底部
                     isProgrammaticScroll.value = true
                     try {
-                        listState.animateScrollToItem(size - 1)
+                        listState.animateScrollToItem(visibleMessages.size - 1)
                     } finally {
                         isProgrammaticScroll.value = false
                     }
@@ -808,8 +900,9 @@ fun ChatScreen(
                 },
             )
             // 空状态与消息列表 Crossfade 过渡,避免硬切换
+            // v1.0.4 (P3-4): 用 visibleMessages 判空,性能模式下 visibleMessages 反映实际渲染状态
             Crossfade(
-                targetState = state.messages.isEmpty(),
+                targetState = visibleMessages.isEmpty(),
                 animationSpec = tween(300),
                 label = "chatState",
                 modifier = Modifier.fillMaxSize(),
@@ -836,6 +929,17 @@ fun ChatScreen(
                 val latestPlan = remember(state.agentPlans) {
                     state.agentPlans.values.maxByOrNull { it.createdAt }
                 }
+                // v1.137: 构建 messageId → plan 映射,让每条助手消息能找到关联自己的计划卡。
+                // 计划卡固定在创建它的消息上随消息滚动,不再"跳"到最后一条助手消息。
+                val plansByMessageId = remember(state.agentPlans) {
+                    state.agentPlans.values
+                        .filter { it.messageId != null }
+                        .associateBy { it.messageId!! }
+                }
+                // M-UI3: 将最新计划卡关联到最近一条助手消息,随消息一起滚动
+                val lastAssistantId by remember {
+                    derivedStateOf { visibleMessages.lastOrNull { it.role == MessageRole.ASSISTANT }?.id }
+                }
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
@@ -858,19 +962,29 @@ fun ChatScreen(
                     verticalArrangement = Arrangement.spacedBy(MusePaddings.messageGap),
                     contentPadding = PaddingValues(bottom = MusePaddings.screen),
                 ) {
+                    // v1.0.4 (P1): 历史加载更多顶部占位 — 上滑触发 loadMoreHistory 后,
+                    // 在 LazyColumn 顶部插入一条 shimmer 占位条,让用户看到"正在加载"反馈。
+                    // 加载完成后 lastHistoryLoadCount > 0,scrollToItem 跳过新插入条数保持视觉位置不跳。
+                    if (state.isLoadingMore) {
+                        item(key = "load_more") { HistoryLoadMorePlaceholder() }
+                    }
                     itemsIndexed(
-                        state.messages,
+                        // v1.0.4 (P3-4): 性能模式下渲染 visibleMessages(最近 N 条);
+                        // 非性能模式下 visibleMessages == state.messages,行为不变。
+                        visibleMessages,
                         key = { _, it -> it.id },
                         // v1.100: contentType 让 LazyColumn 复用同类型 item 的 measure cache
                         contentType = { _, it -> it.role.name },
                     ) { index, msg ->
                         // 日期分隔线: 相邻消息跨天时插入细线 + 居中日期文字
-                        val prevMsg = state.messages.getOrNull(index - 1)
+                        // v1.0.4 (P3-4): prevMsg 取自 visibleMessages,与渲染顺序一致
+                        val prevMsg = visibleMessages.getOrNull(index - 1)
                         val showDateSeparator = prevMsg != null &&
                             !isSameDay(prevMsg.createdAt, msg.createdAt)
                         // v1.100: 用 derivedStateOf 收窄 state 读取范围,避免每次 messages 变化
                         // 都重新计算所有可见 item 的 isLast。只有最后一条消息变化时才重组。
-                        val isLast by remember { derivedStateOf { msg.id == state.messages.lastOrNull()?.id } }
+                        // v1.0.4 (P3-4): isLast 基于 visibleMessages,性能模式下指"已渲染列表的最后一条"
+                        val isLast by remember { derivedStateOf { msg.id == visibleMessages.lastOrNull()?.id } }
                         // v1.100: expandedState 用 derivedStateOf 包裹,只有该 msg 对应的
                         // 展开状态变化时才重组,避免其他消息的折叠操作波及本 item。
                         val expandedState by remember(msg.id) {
@@ -960,6 +1074,8 @@ fun ChatScreen(
                             onToggleTts = onToggleTts,
                             // Phase 8.8: 任务卡
                             taskCard = taskCard,
+                            // v1.201: 委派链路(仅最后一条 AI 消息传入,避免历史消息重复显示)
+                            delegationChain = if (isLast && msg.role == MessageRole.ASSISTANT) state.delegationChain else null,
                             // Phase 10.1: 任务卡交互回调
                             onToggleTaskCardExpand = onToggleTaskCardExpand,
                             onRetryTaskCardStep = onRetryTaskCardStep,
@@ -988,11 +1104,17 @@ fun ChatScreen(
                             onToggleMoodExpanded = { viewModel.toggleMessageMoodExpanded(msg.id.toString()) },
                             onToggleReasoningExpanded = { viewModel.toggleMessageReasoningExpanded(msg.id.toString()) },
                             onToggleReflectionExpanded = { viewModel.toggleMessageReflectionExpanded(msg.id.toString()) },
-                            // 功能1: 消息表情回应
-                            reaction = msg.reaction,
-                            onReact = { reaction -> viewModel.setReaction(msg.id, reaction) },
+                            // v1.137: 计划卡按 messageId 关联到创建它的助手消息,随该消息滚动。
+                            // 旧计划(无 messageId)回退到 lastAssistantId 兜底,保持向后兼容。
+                            agentPlan = if (msg.role == MessageRole.ASSISTANT) {
+                                plansByMessageId[msg.id.toString()]
+                                    ?: if (msg.id == lastAssistantId && latestPlan?.messageId == null) latestPlan else null
+                            } else null,
                             // HTML/SVG 代码块全屏预览
                             onHtmlPreview = onHtmlPreview,
+                            // v1.138: 视觉辅助 UI — 分析中进度 + 已完成标签
+                            visionAssistProgress = if (msg.role == MessageRole.USER) state.visionProgress else null,
+                            visionAssisted = if (msg.role == MessageRole.USER) msg.id.toString() in state.visionAssistedMessageIds else false,
                         )
                         // 消息分支选择器:assistant 消息且有多分支时显示左右箭头切换
                         if (msg.role == MessageRole.ASSISTANT && !state.isStreaming) {
@@ -1008,37 +1130,37 @@ fun ChatScreen(
                                 )
                             }
                         }
-                        // 建议气泡: 最后一条 AI 消息且不在流式输出时展示
-                        if (isLast && msg.role == MessageRole.ASSISTANT && !state.isStreaming) {
-                            SuggestionBubbles(
-                                suggestions = listOf(
-                                    stringResource(R.string.chat_suggested_prompt_explain),
-                                    stringResource(R.string.chat_suggested_prompt_ideas),
-                                    stringResource(R.string.chat_suggested_prompt_summary),
-                                ),
-                                onSuggestionClick = { text ->
-                                    viewModel.updateInput(text)
-                                    viewModel.send()
-                                },
-                            )
-                        }
                         }
                     }
-                    // 任务 2B: 空流式 AI 消息用 shimmer 骨架屏占位(替代旧 LoadingDots "思考中"文字)
-                    if (state.isStreaming && state.messages.lastOrNull()?.content.isNullOrEmpty()) {
+                    // 任务 2B: 等待首 token 阶段用 shimmer 骨架屏占位(替代旧 LoadingDots "思考中"文字)
+                    // v1.0.3: 改用 isWaitingFirstToken 触发,首 token 到达后立即消失,避免"loading → 大量文字"断层
+                    // v1.0.4: 视觉分析期间显示"正在分析图片 2/4…"
+                    // v1.0.4 (P0): OCR 识别 / 工具调用恢复 也复用 ShimmerBubble,统一所有"短暂等待"反馈
+                    val showShimmer = state.isOcrProcessing ||
+                        (state.isStreaming && state.isWaitingFirstToken)
+                    if (showShimmer) {
                         // H-S5: 显式提供稳定 key
-                        item(key = "shimmer") { ShimmerBubble() }
+                        item(key = "shimmer") {
+                            // 优先级:工具恢复 > 视觉分析 > OCR 识别 > 默认"思考中"
+                            val vp = state.visionProgress
+                            val progressText = when {
+                                state.toolProgressMessage != null -> state.toolProgressMessage
+                                vp?.isActive == true ->
+                                    "正在分析图片 ${vp.index}/${vp.total}…"
+                                state.isOcrProcessing -> stringResource(R.string.ocr_processing_hint)
+                                else -> null
+                            }
+                            ShimmerBubble(progressText = progressText)
+                        }
                     }
                     // P5-G: 图片生成中占位卡片(比纯文字 LoadingDots 更有反馈感)
                     if (state.isGeneratingImage) {
                         // H-S5: 显式提供稳定 key
                         item(key = "image_placeholder") { ImageGenerationPlaceholder() }
                     }
-                    // v1.55: Agent 工作流计划卡(显示最新的活跃计划)
-                    if (latestPlan != null) {
-                        item(key = "plan_${latestPlan.id}") {
-                            io.zer0.muse.ui.taskcard.PlanCard(plan = latestPlan)
-                        }
+                    // v1.0.4 (P1): 视频生成中占位卡片(与图片生成对称)
+                    if (state.isGeneratingVideo) {
+                        item(key = "video_placeholder") { VideoGenerationPlaceholder() }
                     }
                     // 工具审批卡片:待审批的工具调用显示审批/拒绝按钮
                     items(state.pendingToolApprovals, key = { "approval_${it.toolCallId}" }) { approval ->
@@ -1049,7 +1171,7 @@ fun ChatScreen(
                             onDeny = { reason -> viewModel.denyToolCall(approval.toolCallId, reason) },
                             alwaysAllow = approval.alwaysAllow,
                             onAlwaysAllowChanged = { checked ->
-                                // 更新 alwaysAllow 状态(仅 UI 层,审批时一起提交)
+                                viewModel.setToolApprovalAlwaysAllow(approval.toolCallId, checked)
                             },
                         )
                     }
@@ -1057,16 +1179,43 @@ fun ChatScreen(
                 }
             }
 
+            // v1.0.4 (P3-4): 性能模式指示器 — 仅当开启性能模式且 visibleMessages 未覆盖全部
+            // state.messages 时显示"已显示 X / Y 条",让用户感知到分页加载的存在。
+            // 滚到顶部会自动扩展 paginatorPageCount,X 增大;全部展开后 X == Y,指示器隐藏。
+            if (performanceMode && visibleMessages.size < state.messages.size) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    shape = MuseShapes.extraLarge,
+                    tonalElevation = 2.dp,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 8.dp),
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.chat_performance_indicator,
+                            visibleMessages.size,
+                            state.messages.size,
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                }
+            }
+
             // v1.28: 滚动到底部按钮 — 用户上翻查看历史时显示一个小箭头按钮,
             // 点击平滑滚回底部。去掉"有新消息"文字提示(用户反馈体验奇怪)。
             // 仅当不在底部且有消息时显示。
             AnimatedVisibility(
-                visible = !isAtBottom && state.messages.isNotEmpty(),
+                // v1.0.4 (P3-4): 用 visibleMessages 判断是否有可滚动内容
+                visible = !isAtBottom && visibleMessages.isNotEmpty(),
                 enter = fadeIn() + slideInVertically { it / 2 },
                 exit = fadeOut() + slideOutVertically { it / 2 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = SCROLL_TO_BOTTOM_BUTTON_BOTTOM_PADDING),
+                    .padding(bottom = SCROLL_TO_BOTTOM_BUTTON_BOTTOM_PADDING)
+                    .navigationBarsPadding(),
             ) {
                 // L-CS2: 触摸目标扩大到 48dp(touchTarget),Icon 保持小尺寸居中
                 Surface(
@@ -1081,9 +1230,10 @@ fun ChatScreen(
                             isProgrammaticScroll.value = true
                             scrollToBottomScope.launch {
                                 // M-S13: 空 list 防护,避免 size - 1 越界
-                                if (state.messages.isEmpty()) return@launch
+                                if (visibleMessages.isEmpty()) return@launch
                                 try {
-                                    listState.animateScrollToItem(state.messages.size - 1)
+                                    // v1.0.4 (P3-4): 滚到 visibleMessages 末尾
+                                    listState.animateScrollToItem(visibleMessages.size - 1)
                                 } finally {
                                     isProgrammaticScroll.value = false
                                 }
@@ -1172,6 +1322,78 @@ fun ChatScreen(
                 }
             }
 
+            // v1.0.4 (P2): 压缩会话历史 Banner — /compact 期间持续显示,
+            // (原仅顶部 IconButton 替换为转圈,对话区无反馈,用户不知道压缩是否在运行)
+            AnimatedVisibility(
+                visible = state.isCompressing,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+                modifier = Modifier.align(Alignment.TopCenter),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    shape = MuseShapes.medium,
+                    tonalElevation = 3.dp,
+                    modifier = Modifier.padding(12.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(MuseIconSizes.iconSmall),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        )
+                        Text(
+                            text = stringResource(R.string.chat_compressing_banner),
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+
+            // v1.0.4 (P2): 委派链路顶部 Banner — 当前有 RUNNING 子任务时显示进度,
+            // 避免用户必须滚到末尾才能在 TaskCard 内看到委派链路信息
+            val runningDelegateCount = state.delegationChain.count {
+                it.status == io.zer0.muse.ui.taskcard.DelegationNodeStatus.RUNNING
+            }
+            AnimatedVisibility(
+                visible = runningDelegateCount > 0 && !state.isCompressing,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+                modifier = Modifier.align(Alignment.TopCenter),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    shape = MuseShapes.medium,
+                    tonalElevation = 3.dp,
+                    modifier = Modifier.padding(12.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Compress,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.size(MuseIconSizes.iconSmall),
+                        )
+                        Text(
+                            text = stringResource(R.string.chat_delegation_banner, runningDelegateCount),
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+
             // v0.49: 多错误列表展示(每条带重试/关闭按钮,AnimatedVisibility 过渡)
             // v1.131: 红色网络离线 banner 从底部移到顶部,避免遮挡输入栏
             AnimatedVisibility(
@@ -1233,7 +1455,8 @@ fun ChatScreen(
             TtsControllerWidget(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 16.dp),
+                    .padding(end = 16.dp, bottom = 16.dp)
+                    .navigationBarsPadding(),
             )
         } // Box
 
@@ -1676,6 +1899,16 @@ fun ChatScreen(
         }
     } // Scaffold
 
+    // v1.201: 委派暂停确认弹窗(绑定到 state.activePauseRequest)
+    io.zer0.muse.ui.taskcard.DelegationConfirmDialog(
+        pauseRequest = state.activePauseRequest,
+        onSubmit = { response ->
+            state.activePauseRequest?.let { req ->
+                viewModel.submitPauseDecision(req.requestId, response)
+            }
+        },
+    )
+
     // v1.49: Vosk 模型下载弹窗已移除(离线识别能力随之移除)
 
     // v1.43: 产物卡片查看弹窗
@@ -1800,10 +2033,17 @@ private fun EmptyChatGuide(
 
 /**
  * 任务 2B: shimmer 骨架屏气泡占位。
- * 三行圆角条配合从左到右的扫光渐变,营造"AI 正在写"的呼吸感。
+ *
+ * v1.0.3 改进:
+ *  - 顶部加三个跳动圆点 + "思考中"文字,给用户明确的语义反馈(原纯 shimmer 缺少文字提示)
+ *  - 三行圆角条配合从左到右的扫光渐变,营造"AI 正在写"的呼吸感
+ *  - "思考中"文字带脉冲呼吸动画(alpha 0.5↔1.0),比静态文字更有活力
+ *  - 整体布局: [三点动画] / "思考中" / [三行 shimmer 条]
+ * v1.0.4 改进:
+ *  - 新增 [progressText] 参数,视觉分析阶段显示"正在分析图片 2/4…"等进度文字(替代"思考中")
  */
 @Composable
-private fun ShimmerBubble() {
+private fun ShimmerBubble(progressText: String? = null) {
     val shimmerColors = listOf(
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.1f),
@@ -1819,6 +2059,16 @@ private fun ShimmerBubble() {
         ),
         label = "shimmer",
     )
+    // v1.0.3: "思考中"文字的脉冲呼吸动画
+    val textAlpha by transition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "text_alpha",
+    )
     val brush = Brush.linearGradient(
         colors = shimmerColors,
         start = Offset(translateAnim - 200f, 0f),
@@ -1832,8 +2082,57 @@ private fun ShimmerBubble() {
         Spacer(Modifier.width(32.dp))
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            // v1.0.3: 顶部 — 三个跳动圆点 + "思考中"文字
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                // 三个圆点共享一个 transition,依次缩放/淡入淡出
+                repeat(3) { index ->
+                    val dotScale by transition.animateFloat(
+                        initialValue = 0.6f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(600, delayMillis = index * 120, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse,
+                        ),
+                        label = "dot_scale_$index",
+                    )
+                    val dotAlpha by transition.animateFloat(
+                        initialValue = 0.4f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(600, delayMillis = index * 120, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse,
+                        ),
+                        label = "dot_alpha_$index",
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .then(
+                                Modifier.graphicsLayer {
+                                    scaleX = dotScale
+                                    scaleY = dotScale
+                                    alpha = dotAlpha
+                                },
+                            )
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+                // v1.0.4: 视觉分析阶段优先显示进度文字(如"正在分析图片 2/4…"),否则回退"思考中"
+                val defaultThinking = stringResource(R.string.chat_loading_thinking)
+                Text(
+                    text = progressText ?: defaultThinking,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = textAlpha),
+                )
+            }
+            // 三行 shimmer 骨架条
             repeat(3) { index ->
                 Box(
                     modifier = Modifier
@@ -1852,6 +2151,7 @@ private fun ShimmerBubble() {
  *
  * 用圆角矩形 shimmer + 图片图标 + "生成图片中…" 文案,
  * 让用户明确知道正在绘图而不是卡死。
+ * v1.0.4 (P2): 顶部加三个跳动圆点,与 ShimmerBubble 视觉一致,强化"正在进行"语义。
  */
 @Composable
 private fun ImageGenerationPlaceholder() {
@@ -1885,6 +2185,46 @@ private fun ImageGenerationPlaceholder() {
             modifier = Modifier.weight(1f),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // v1.0.4 (P2): 顶部三圆点跳动(复用 ShimmerBubble 同款动画,改 label 避免冲突)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                repeat(3) { index ->
+                    val dotScale by transition.animateFloat(
+                        initialValue = 0.6f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(600, delayMillis = index * 120, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse,
+                        ),
+                        label = "img_dot_scale_$index",
+                    )
+                    val dotAlpha by transition.animateFloat(
+                        initialValue = 0.4f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(600, delayMillis = index * 120, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse,
+                        ),
+                        label = "img_dot_alpha_$index",
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .then(
+                                Modifier.graphicsLayer {
+                                    scaleX = dotScale
+                                    scaleY = dotScale
+                                    alpha = dotAlpha
+                                },
+                            )
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1911,6 +2251,131 @@ private fun ImageGenerationPlaceholder() {
                 }
             }
         }
+    }
+}
+
+/**
+ * v1.0.4 (P1): 视频生成中占位卡片。
+ *
+ * 与 [ImageGenerationPlaceholder] 对称:圆角矩形 shimmer + 播放图标 + "正在生成视频,可能需要几十秒…"文案,
+ * 让用户在聊天主流程内明确感知 LLM 调用 generate_video 工具时的长任务进度。
+ * (execGenerateVideo 内部还会通过 updateAssistant 在助手消息气泡里同步"已等待 N 秒…",本占位是补充反馈)
+ */
+@Composable
+private fun VideoGenerationPlaceholder() {
+    val shimmerColors = listOf(
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+    )
+    val transition = rememberInfiniteTransition(label = "video_shimmer")
+    val translateAnim by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1000f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "video_shimmer",
+    )
+    val brush = Brush.linearGradient(
+        colors = shimmerColors,
+        start = Offset(translateAnim - 200f, 0f),
+        end = Offset(translateAnim + 200f, 0f),
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Spacer(Modifier.width(32.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp)
+                    .clip(MuseShapes.semiLarge)
+                    .background(brush),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(40.dp),
+                    )
+                    Text(
+                        text = stringResource(R.string.chat_video_generating),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * v1.0.4 (P1): 历史加载更多顶部占位条。
+ *
+ * 上滑触发 loadMoreHistory 后,LazyColumn 顶部插入此占位,让用户看到"正在加载更多历史…"反馈。
+ * 与 [ShimmerBubble] 风格一致(三行圆角 shimmer 条 + 文案),但去掉圆点和气泡,做成顶部细条。
+ * 占位在 isLoadingMore=true 时显示,加载完成(lastHistoryLoadCount > 0)后由 scrollToItem 移除。
+ */
+@Composable
+private fun HistoryLoadMorePlaceholder() {
+    val shimmerColors = listOf(
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.1f),
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+    )
+    val transition = rememberInfiniteTransition(label = "load_more_shimmer")
+    val translateAnim by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1000f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "load_more_shimmer",
+    )
+    val brush = Brush.linearGradient(
+        colors = shimmerColors,
+        start = Offset(translateAnim - 200f, 0f),
+        end = Offset(translateAnim + 200f, 0f),
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        CircularProgressIndicator(
+            strokeWidth = 2.dp,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = stringResource(R.string.chat_loading_more_history),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(8.dp))
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(6.dp)
+                .clip(MuseShapes.extraSmall)
+                .background(brush),
+        )
     }
 }
 

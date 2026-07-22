@@ -255,6 +255,38 @@
     <string name="settings_screen_stats_cd">统计，查看使用统计和热力图，点击进入</string>
     <string name="settings_screen_stats">统计</string>
     <string name="settings_screen_stats_desc">查看使用统计和热力图</string>
+    <string name="settings_screen_reports">我的报告</string>
+    <string name="settings_screen_reports_desc">周报 / 月报回顾</string>
+    <string name="reports_title">我的报告</string>
+    <string name="reports_generating">正在生成报告…</string>
+    <string name="reports_empty">暂无报告数据</string>
+    <string name="reports_weekly_title">本周回顾</string>
+    <string name="reports_monthly_title">本月回顾</string>
+    <string name="reports_chats">会话数</string>
+    <string name="reports_messages">消息数</string>
+    <string name="reports_words">字数(估)</string>
+    <string name="reports_new_memories">新增记忆</string>
+    <string name="reports_emotion_title">情绪趋势</string>
+    <string name="reports_emotion_desc">基于最近 AI 消息的 mood 标签解析</string>
+    <string name="reports_emotion_avg">平均</string>
+    <string name="reports_emotion_high">最高</string>
+    <string name="reports_emotion_low">最低</string>
+    <string name="reports_emotion_positive">积极</string>
+    <string name="reports_emotion_neutral">中性</string>
+    <string name="reports_emotion_negative">消极</string>
+    <!-- v1.0.4: 配额仪表盘 -->
+    <string name="quota_title">每日配额</string>
+    <string name="quota_plan_free">免费</string>
+    <string name="quota_plan_pro">Pro</string>
+    <string name="quota_chats">聊天</string>
+    <string name="quota_images">图片生成</string>
+    <string name="quota_searches">联网搜索</string>
+    <!-- v1.0.4: 通知监听 -->
+    <string name="settings_screen_notification_listener">通知监听</string>
+    <string name="settings_screen_notification_listener_desc">授权后 AI 可读取其他 App 通知</string>
+    <!-- v1.0.4: AI 工具管理 -->
+    <string name="settings_screen_tools">AI 工具</string>
+    <string name="settings_screen_tools_desc">查看 AI 可调用的工具与权限</string>
     <string name="settings_screen_about_group_cd">关于分组</string>
     <string name="settings_screen_about">关于</string>
     <string name="settings_screen_tutorial_cd">使用教程，新手引导，点击进入</string>
@@ -281,7 +313,6 @@
 
     <!-- v1.97 gap8: 工具分组(独立翻译页入口) -->
     <string name="settings_screen_tools_group_cd">工具分组</string>
-    <string name="settings_screen_tools">工具</string>
     <string name="settings_screen_translate_cd">AI 翻译，独立翻译工具，点击进入</string>
     <string name="settings_screen_translate">AI 翻译</string>
     <string name="settings_screen_translate_desc">多语言互译,支持粘贴/复制</string>
@@ -295,11 +326,48 @@
     <string name="settings_vision_enabled_subtitle">自动将图片发送给视觉模型进行分析</string>
     <string name="settings_vision_model_section">视觉模型</string>
     <string name="settings_vision_no_models">未找到支持视觉输入的模型，请在供应商设置中添加视觉模型。</string>
+    <!-- v1.0.1: 中转站支持 — 手动选择未识别视觉模型 -->
+    <string name="settings_vision_show_all_models">显示全部模型</string>
+    <string name="settings_vision_show_all_models_subtitle">中转站高级模式：显示所有模型，可手动选择未被自动识别的视觉模型</string>
+    <string name="settings_vision_manual_selected">手动选择</string>
 
     <!-- v1.135: 视觉辅助状态提示 -->
     <string name="vision_analysis_starting">正在使用辅助视觉模型分析图片</string>
     <string name="vision_analysis_done">已使用辅助视觉模型分析 %1$d 张图片</string>
     <string name="vision_analysis_failed">图片分析失败：%1$s</string>
+    <!-- v1.138: 视觉辅助 UI 标签(图片下方显示) -->
+    <string name="vision_assist_label">辅助视觉</string>
+    <string name="vision_assist_analyzing">辅助视觉 · 分析中 %1$d/%2$d</string>
+    <string name="vision_assist_done">辅助视觉 · 已分析</string>
+    <string name="vision_assist_failed">辅助视觉 · 失败</string>
+
+    <!-- v1.0.5: 视觉辅助探针测试 — 验证所选视觉模型是否真的可用 -->
+    <string name="settings_vision_probe_section">探针测试</string>
+    <string name="settings_vision_probe_desc">发送一张内置测试图片给所选视觉模型，验证其是否真的支持视觉输入并可用。</string>
+    <string name="settings_vision_probe_button">测试所选视觉模型</string>
+    <string name="settings_vision_probe_running">测试中…</string>
+    <string name="settings_vision_probe_success">测试成功：视觉模型返回了 %1$d 字符的描述。</string>
+    <string name="settings_vision_probe_failed">测试失败：%1$s</string>
+    <string name="settings_vision_probe_no_model">请先选择视觉模型。</string>
+    <string name="settings_vision_probe_disabled">请先启用视觉辅助并选择视觉模型。</string>
+
+    <!-- v1.0.4: P0 反馈补全 — OCR / 工具恢复 / 视觉分析 ShimmerBubble 文案 -->
+    <string name="ocr_processing_hint">正在识别图片文字…</string>
+    <string name="tool_resume_starting">正在恢复未完成的工具调用…</string>
+    <string name="tool_resume_step">正在执行 %1$s (%2$d/%3$d)…</string>
+
+    <!-- v1.0.4: P1 反馈补全 — 视频生成占位 / 草稿恢复提示 / 历史加载更多 -->
+    <string name="chat_video_generating">正在生成视频,可能需要几十秒…</string>
+    <string name="chat_draft_restored">草稿已恢复</string>
+    <string name="chat_loading_more_history">加载更多历史…</string>
+    <!-- v1.0.4 P3-4: 性能模式顶部指示器(MessagePaginator 接入) -->
+    <string name="chat_performance_indicator">已显示 %1$d / %2$d 条</string>
+
+    <!-- v1.0.4: P2 反馈补全 — 压缩 Banner / 搜索 / 委派链路 / TTS -->
+    <string name="chat_compressing_banner">正在压缩会话历史…</string>
+    <string name="search_searching">正在搜索…</string>
+    <string name="chat_delegation_banner">委派中 · %1$d 个子任务执行中</string>
+    <string name="tts_not_ready">TTS 正在初始化,请稍后重试</string>
 
     <!-- ===== 搜索页 SearchScreen ===== -->
     <string name="search_back_cd">返回</string>
@@ -430,10 +498,20 @@
     <string name="audit_log_clear">清空日志</string>
     <string name="audit_log_empty">暂无日志记录</string>
     <string name="audit_log_clear_confirm">确认清空所有审计日志?</string>
+    <string name="audit_log_category_all">全部</string>
     <string name="audit_log_category_api">API 调用</string>
     <string name="audit_log_category_user">用户操作</string>
     <string name="audit_log_category_auth">认证</string>
     <string name="audit_log_category_system">系统</string>
+    <string name="audit_log_search_hint">搜索 action / target / detail</string>
+    <string name="audit_log_clear_search">清除搜索</string>
+    <string name="audit_log_no_match">无匹配日志</string>
+    <string name="audit_log_result_count">显示 %1$d 条 / 共 %2$d 条</string>
+    <string name="audit_log_export">导出 JSON</string>
+    <string name="audit_log_export_empty">暂无可导出的日志</string>
+    <string name="audit_log_export_subject">muse 审计日志 — %1$d 条</string>
+    <string name="audit_log_export_chooser">分享审计日志</string>
+    <string name="audit_log_export_failed">导出失败:无法获取文件 URI</string>
 
     <!-- ===== P2-8: 视频生成(SettingsScreen 入口 + VideoGenerationPage) ===== -->
     <string name="settings_screen_video_gen_cd">视频生成,可灵 API,点击进入</string>

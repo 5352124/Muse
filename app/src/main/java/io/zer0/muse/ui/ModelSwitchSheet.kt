@@ -242,6 +242,7 @@ internal fun ModelSwitchSheet(
                             .fillMaxWidth()
                             .padding(vertical = 24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(
                             text = if (isFetchingModels) {
@@ -254,6 +255,14 @@ internal fun ModelSwitchSheet(
                                 MaterialTheme.colorScheme.error
                             else MaterialTheme.colorScheme.outline,
                         )
+                        // v1.0.4 (P2): 拉取失败时就近显示"重试"按钮,避免用户还得去找顶部刷新按钮
+                        if (fetchModelsError != null && !isFetchingModels) {
+                            TextButton(
+                                onClick = { onRefreshModels(activeProvider.id) },
+                            ) {
+                                Text(text = stringResource(R.string.model_switch_retry))
+                            }
+                        }
                     }
                     return@Column
                 }
@@ -563,6 +572,7 @@ private fun providerEmoji(type: ProviderType): String = when (type) {
     ProviderType.OPENAI -> "O"
     ProviderType.ANTHROPIC -> "A"
     ProviderType.GEMINI -> "G"
+    ProviderType.OPENAI_RESPONSES -> "R"
 }
 
 /**

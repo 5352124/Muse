@@ -77,7 +77,15 @@ fun IosDropdown(
     // stringResource 需在 @Composable 直接调用位置提取,不能在 semantics{} 内使用。
     val dropdownCd = stringResource(R.string.common_dropdown_cd, label, selectedDisplay)
 
-    Box(modifier = modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { expanded = true }
+            .semantics {
+                role = Role.Button
+                contentDescription = dropdownCd
+            },
+    ) {
         OutlinedTextField(
             value = selectedDisplay,
             onValueChange = {},
@@ -90,13 +98,7 @@ fun IosDropdown(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { expanded = true }
-                .semantics {
-                    role = Role.Button
-                    contentDescription = dropdownCd
-                },
+            modifier = Modifier.fillMaxWidth(),
             shape = MuseShapes.medium,
             singleLine = true,
         )

@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 41,
-    "identityHash": "8c1f04488341587b937b60998f002130",
+    "identityHash": "f651a76c905849cc13cb98940c543ec3",
     "entities": [
       {
         "tableName": "sessions",
@@ -393,7 +393,7 @@
       },
       {
         "tableName": "assistants",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `sortIndex` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, `modelId` TEXT, `providerId` TEXT, `temperature` REAL, `topP` REAL, `maxTokens` INTEGER, `contextMessageSize` INTEGER NOT NULL DEFAULT 20, `reasoningLevel` TEXT NOT NULL DEFAULT 'AUTO', `systemPrompt` TEXT NOT NULL DEFAULT '', `messageTemplate` TEXT NOT NULL DEFAULT '', `presetMessagesJson` TEXT NOT NULL DEFAULT '[]', `toolIdsJson` TEXT NOT NULL DEFAULT '[]', `mcpServerIdsJson` TEXT NOT NULL DEFAULT '[]', `streamOutput` INTEGER NOT NULL DEFAULT 1, `memoryEnabled` INTEGER NOT NULL DEFAULT 1, `useGlobalMemory` INTEGER NOT NULL DEFAULT 1, `enableRecentChatsReference` INTEGER NOT NULL DEFAULT 1, `enableTimeReminder` INTEGER NOT NULL DEFAULT 1, `avatarEmoji` TEXT NOT NULL DEFAULT '', `avatarImageUrl` TEXT NOT NULL DEFAULT '', `backgroundUrl` TEXT NOT NULL DEFAULT '', `backgroundOpacity` REAL NOT NULL DEFAULT 1.0, `useGradientBackground` INTEGER NOT NULL DEFAULT 0, `tagsJson` TEXT NOT NULL DEFAULT '[]', `quickMessageIdsJson` TEXT NOT NULL DEFAULT '[]', `lorebookIdsJson` TEXT NOT NULL DEFAULT '[]', `modeInjectionIdsJson` TEXT NOT NULL DEFAULT '[]', `skillIdsJson` TEXT NOT NULL DEFAULT '[]', `customHeadersJson` TEXT NOT NULL DEFAULT '{}', `customBodiesJson` TEXT NOT NULL DEFAULT '{}', `regexRulesJson` TEXT NOT NULL DEFAULT '[]', `knowledgeBaseIdsJson` TEXT NOT NULL DEFAULT '[]', `ragConfigOverride` TEXT DEFAULT NULL, `messageCount` INTEGER NOT NULL DEFAULT 0, `lastUsedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `sortIndex` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL DEFAULT 0, `updatedAt` INTEGER NOT NULL DEFAULT 0, `modelId` TEXT, `providerId` TEXT, `temperature` REAL, `topP` REAL, `maxTokens` INTEGER, `contextMessageSize` INTEGER NOT NULL DEFAULT 20, `reasoningLevel` TEXT NOT NULL DEFAULT 'AUTO', `systemPrompt` TEXT NOT NULL DEFAULT '', `messageTemplate` TEXT NOT NULL DEFAULT '', `presetMessagesJson` TEXT NOT NULL DEFAULT '[]', `toolIdsJson` TEXT NOT NULL DEFAULT '[]', `mcpServerIdsJson` TEXT NOT NULL DEFAULT '[]', `streamOutput` INTEGER NOT NULL DEFAULT 1, `memoryEnabled` INTEGER NOT NULL DEFAULT 1, `useGlobalMemory` INTEGER NOT NULL DEFAULT 1, `enableRecentChatsReference` INTEGER NOT NULL DEFAULT 1, `enableTimeReminder` INTEGER NOT NULL DEFAULT 1, `avatarEmoji` TEXT NOT NULL DEFAULT '', `avatarImageUrl` TEXT NOT NULL DEFAULT '', `backgroundUrl` TEXT NOT NULL DEFAULT '', `backgroundOpacity` REAL NOT NULL DEFAULT 1.0, `useGradientBackground` INTEGER NOT NULL DEFAULT 0, `tagsJson` TEXT NOT NULL DEFAULT '[]', `capabilitiesJson` TEXT NOT NULL DEFAULT '[]', `quickMessageIdsJson` TEXT NOT NULL DEFAULT '[]', `lorebookIdsJson` TEXT NOT NULL DEFAULT '[]', `modeInjectionIdsJson` TEXT NOT NULL DEFAULT '[]', `skillIdsJson` TEXT NOT NULL DEFAULT '[]', `customHeadersJson` TEXT NOT NULL DEFAULT '{}', `customBodiesJson` TEXT NOT NULL DEFAULT '{}', `regexRulesJson` TEXT NOT NULL DEFAULT '[]', `knowledgeBaseIdsJson` TEXT NOT NULL DEFAULT '[]', `ragConfigOverride` TEXT DEFAULT NULL, `messageCount` INTEGER NOT NULL DEFAULT 0, `lastUsedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -575,6 +575,13 @@
           {
             "fieldPath": "tagsJson",
             "columnName": "tagsJson",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'[]'"
+          },
+          {
+            "fieldPath": "capabilitiesJson",
+            "columnName": "capabilitiesJson",
             "affinity": "TEXT",
             "notNull": true,
             "defaultValue": "'[]'"
@@ -2159,7 +2166,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8c1f04488341587b937b60998f002130')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'f651a76c905849cc13cb98940c543ec3')"
     ]
   }
 }

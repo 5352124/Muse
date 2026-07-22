@@ -18,9 +18,7 @@
 
     <!-- Splash & Onboarding -->
     <string name="splash_tagline">你的灵感,温柔地展开</string>
-    <string name="onboarding_welcome_title">欢迎使用 Muse</string>
     <string name="onboarding_welcome_desc">你的私人 AI 助手,对话、记忆、创作一站搞定</string>
-    <string name="onboarding_provider_title">配置 Provider</string>
     <string name="onboarding_provider_desc">前往设置添加你的 OpenAI / Anthropic / Gemini 密钥</string>
     <string name="onboarding_ready_title">准备就绪</string>
     <string name="onboarding_ready_desc">开始你的第一次对话吧</string>
@@ -66,6 +64,8 @@
     <string name="action_send">发送</string>
     <string name="action_stop">停止</string>
     <string name="action_copy">复制</string>
+    <string name="action_translate">翻译</string>
+    <string name="action_share">分享</string>
     <string name="action_expand">展开</string>
     <string name="action_collapse">收起</string>
 
@@ -82,6 +82,8 @@
     <!-- 录音/语音识别状态 -->
     <string name="voice_release_to_recognize">松开识别 · 上滑取消</string>
     <string name="voice_recognizing">识别中…</string>
+    <!-- v1.0.4 (P2): ASR 连接中状态文案(Connecting 阶段尚未开始录音,不能显示波形) -->
+    <string name="voice_connecting">正在连接识别服务…</string>
 
     <!-- ASR 配置提示 -->
     <string name="asr_missing_api_key_error">当前未配置 API Key,语音输入将无法使用</string>
@@ -246,4 +248,23 @@
     <string name="agent_dm_empty">暂无私信</string>
     <string name="agent_dm_mark_all_read">全部已读</string>
     <string name="agent_dm_unread_count">%d 条未读</string>
+
+    <!-- 助手详情页：能力标签 -->
+    <string name="assistant_detail_capabilities_title">能力标签</string>
+    <string name="assistant_detail_capabilities_desc">标注该助手擅长的领域，供自动路由匹配</string>
+    <string name="assistant_detail_custom_capability">自定义能力</string>
+    <string name="assistant_detail_add">添加</string>
+
+    <!-- 多 Agent 团队工作流 -->
+    <string name="settings_multi_agent_workflow">工作流编排</string>
+    <string name="settings_multi_agent_workflow_desc">定义团队内 Agent 的执行顺序、依赖与结果聚合策略</string>
+    <string name="settings_multi_agent_aggregation">结果聚合</string>
+    <string name="settings_multi_agent_no_workflow">未配置工作流，将按成员顺序串行执行</string>
+    <string name="settings_multi_agent_add_node">添加节点</string>
+    <string name="settings_multi_agent_edit_node">编辑节点</string>
+    <string name="settings_multi_agent_node_name">节点名称</string>
+    <string name="settings_multi_agent_node_task">任务模板</string>
+    <string name="settings_multi_agent_node_assistant">执行助手</string>
+    <string name="settings_multi_agent_node_mode">执行模式</string>
+    <string name="settings_multi_agent_node_dependencies">依赖节点</string>
 </resources>

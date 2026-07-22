@@ -38,6 +38,15 @@
     <string name="preset_provider_deepbricks">DeepBricks 中转</string>
     <string name="preset_provider_oneapi">OneAPI 自建中转</string>
     <string name="preset_provider_newapi">NewAPI 自建中转</string>
+    <!-- v1.0.6: 新增供应商(对齐 openhanako) -->
+    <string name="preset_provider_hunyuan">腾讯混元 Hunyuan</string>
+    <string name="preset_provider_baidu_cloud">百度智能云 (文心)</string>
+    <string name="preset_provider_modelscope">魔搭 ModelScope</string>
+    <string name="preset_provider_infini">无问芯穹 Infini</string>
+    <string name="preset_provider_mimo">小米 MiMo</string>
+    <string name="preset_provider_dashscope_coding">百炼 Coding Plan</string>
+    <string name="preset_provider_volcengine_coding">火山引擎 Coding Plan</string>
+    <string name="preset_provider_zhipu_coding">智谱 GLM Coding Plan</string>
 
     <!-- ===== data/import ===== -->
     <!-- 第三方数据导入错误消息(通过 ImportResult.errors 传递给 UI) -->

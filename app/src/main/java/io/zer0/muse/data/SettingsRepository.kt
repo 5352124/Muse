@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.zer0.ai.core.Model
 import io.zer0.ai.core.ProviderConfig
+import io.zer0.ai.core.ProviderSpecMerger
 import io.zer0.ai.core.ProviderType
 import io.zer0.ai.ProviderConfigStore
 import io.zer0.common.AppJson
@@ -19,6 +20,7 @@ import io.zer0.common.resultOf
 import io.zer0.muse.asr.AsrConfig
 import io.zer0.muse.backup.CloudBackupConfig
 import io.zer0.muse.data.audit.AuditLogger
+import io.zer0.muse.data.preset.PresetProviders
 import io.zer0.muse.rag.RagConfig
 import io.zer0.muse.web.WebSearchConfig
 import io.zer0.muse.web.WebServerConfig
@@ -72,6 +74,12 @@ class SettingsRepository(
     // M-SR5: 防止 migrateLegacyProviderIfNeeded 在并发首调时重复执行(读旧 JSON + addProvider + remove 之间存在竞态)
     private val migrationDone = AtomicBoolean(false)
 
+    /**
+     * v1.0.7: 内置供应商规格声明(对齐 openhanako BUILTIN_PLUGINS)。
+     * lazy 初始化,供 [providersFlow] 合并 spec 默认模型 + 用户 overlay。
+     */
+    private val presetProviders by lazy { PresetProviders(appContext) }
+
     /** v1.131: 语言快速同步缓存(与 DataStore 双写,供 [getLanguageSync] 同步读取)。 */
     private val languageSyncCache = appContext.getSharedPreferences("muse_language_cache", Context.MODE_PRIVATE)
 
@@ -79,9 +87,11 @@ class SettingsRepository(
         // v1.131: 把 DataStore 中的语言设置一次性同步到 SP 快速缓存。
         // 历史用户升级到 v1.131+ 时 SP 为空,需从 DataStore 拷贝过来;
         // 异步执行,不阻塞 Application.onCreate / Activity.attachBaseContext。
+        // v1.138: 修复 NPE — init 块执行时 languageFlow 属性尚未初始化(声明在 line 227),
+        // 直接内联 store.data.map 避免引用未初始化的 languageFlow。
         cacheScope.launch {
             try {
-                val dsLang = languageFlow.first()
+                val dsLang = store.data.map { prefs -> prefs[KEY_LANGUAGE] ?: "system" }.first()
                 if (languageSyncCache.getString(KEY_LANGUAGE_SP, null) == null) {
                     languageSyncCache.edit().putString(KEY_LANGUAGE_SP, dsLang).apply()
                 }
@@ -194,7 +204,10 @@ class SettingsRepository(
     // 否则 init 里启动的协程异步访问 providersFlow 时会是 null) ──
     val providersFlow: Flow<List<ProviderConfig>> = store.data.map { prefs ->
         // v1.53-A2: 读取后解密 apiKey(旧明文数据透传,加密数据解密)
-        prefs[KEY_PROVIDERS]?.let { json -> decodeProviders(json) } ?: emptyList()
+        val raw = prefs[KEY_PROVIDERS]?.let { json -> decodeProviders(json) } ?: emptyList()
+        // v1.0.7: 三层合并 — specId 非空时,把 spec 默认模型列表与用户 overlay 合并
+        // 对齐 openhanako BUILTIN_PLUGINS + Provider Catalog overlay 合并机制
+        raw.map { enrichWithSpecDefaults(it) }
     }.catch {
         // M-SR3: 上游异常(DataStore IO / 解密失败)不应让 Flow 永久失效,回退空列表并记日志
         Logger.w("SettingsRepository", "providersFlow 异常,回退空列表", it)
@@ -439,8 +452,15 @@ class SettingsRepository(
     }
 
     // v1.25: 多 Agent 协作配置(团队列表与总开关)
+    // v1.201: 合并独立 DataStore key(multi_agent_review_model / multi_agent_llm_review_enabled)
+    //         到 MultiAgentConfig —— 这两个字段为 @Transient,不随 JSON 序列化,
+    //         由独立 key 单独读写,避免 updateMultiAgentConfig 与独立 save 方法双写竞态。
     val multiAgentConfigFlow: Flow<MultiAgentConfig> = store.data.map { prefs ->
-        decodePrefsOrNull(prefs[KEY_MULTI_AGENT_CONFIG], MultiAgentConfig.serializer(), "MultiAgentConfig") ?: MultiAgentConfig()
+        val base = decodePrefsOrNull(prefs[KEY_MULTI_AGENT_CONFIG], MultiAgentConfig.serializer(), "MultiAgentConfig") ?: MultiAgentConfig()
+        base.copy(
+            reviewModelId = prefs[KEY_MULTI_AGENT_REVIEW_MODEL],
+            llmReviewEnabled = prefs[KEY_MULTI_AGENT_LLM_REVIEW_ENABLED] ?: false,
+        )
     }
 
     // v1.25: 视觉辅助开关(默认关闭)
@@ -752,12 +772,32 @@ class SettingsRepository(
     /**
      * M3: 原子更新多 Agent 配置,避免读-改-写竞态。
      * 在 DataStore edit 事务内读取当前值、应用变换、写回。
+     *
+     * 注意:[MultiAgentConfig.reviewModelId] 与 [MultiAgentConfig.llmReviewEnabled] 为 @Transient,
+     * 不随 JSON 序列化 —— 修改这两个字段需用 [saveReviewModelId] / [saveLlmReviewEnabled],
+     * 而非本方法(本方法的 block 中对它们的修改不会持久化)。
      */
     suspend fun updateMultiAgentConfig(block: (MultiAgentConfig) -> MultiAgentConfig) {
         store.edit { prefs ->
             val current = decodePrefsOrNull(prefs[KEY_MULTI_AGENT_CONFIG], MultiAgentConfig.serializer(), "MultiAgentConfig") ?: MultiAgentConfig()
             prefs[KEY_MULTI_AGENT_CONFIG] = AppJson.encodeToString(MultiAgentConfig.serializer(), block(current))
         }
+    }
+
+    /**
+     * v1.201: 保存 LLM 综合评审使用的模型 id。
+     * @param modelId 模型 id;null 清除设置,回退到 active provider 的默认模型
+     */
+    suspend fun saveReviewModelId(modelId: String?) {
+        store.edit { if (modelId != null) it[KEY_MULTI_AGENT_REVIEW_MODEL] = modelId else it.remove(KEY_MULTI_AGENT_REVIEW_MODEL) }
+    }
+
+    /**
+     * v1.201: 保存全局 LLM 综合评审开关。
+     * 关闭时 LLM_REVIEW 聚合策略自动降级为 EXPERT_REVIEW。
+     */
+    suspend fun saveLlmReviewEnabled(enabled: Boolean) {
+        store.edit { it[KEY_MULTI_AGENT_LLM_REVIEW_ENABLED] = enabled }
     }
 
     suspend fun saveMcpToken(serverId: String, token: io.zer0.muse.mcp.McpTokenInfo) { store.edit { it[stringPreferencesKey("mcp_token_$serverId")] = AppJson.encodeToString(io.zer0.muse.mcp.McpTokenInfo.serializer(), token.copy(accessToken = SecureKeyStore.encrypt(token.accessToken), refreshToken = SecureKeyStore.encrypt(token.refreshToken))) } }
@@ -885,8 +925,38 @@ class SettingsRepository(
 
     private suspend fun activeProviderFromPrefs(prefs: Preferences): ProviderConfig? {
         val providers = prefs[KEY_PROVIDERS]?.let { decodeProviders(it) } ?: return null
-        val activeId = prefs[KEY_ACTIVE_PROVIDER_ID] ?: return providers.firstOrNull()
-        return providers.firstOrNull { it.id == activeId } ?: providers.firstOrNull()
+        val activeId = prefs[KEY_ACTIVE_PROVIDER_ID] ?: return providers.firstOrNull()?.let { enrichWithSpecDefaults(it) }
+        return (providers.firstOrNull { it.id == activeId } ?: providers.firstOrNull())?.let { enrichWithSpecDefaults(it) }
+    }
+
+    /**
+     * v1.0.7: 三层合并 — 用 spec 默认模型列表丰富用户配置。
+     *
+     * 对齐 openhanako _merge(plugin, userConfig):specId 非空时,从 [presetProviders]
+     * 查找 spec,把 spec 默认模型 + 用户 overlay 模型合并(同 id 用户优先)。
+     * specId 为 null(纯自定义供应商)或 spec 未找到时原样返回。
+     */
+    private fun enrichWithSpecDefaults(config: ProviderConfig): ProviderConfig {
+        val specId = config.specId ?: return config
+        val spec = presetProviders.bySpecId(specId) ?: return config
+        return ProviderSpecMerger.enrichConfig(config, spec)
+    }
+
+    /**
+     * v1.0.7: 数据迁移 — 给已有 "preset_" 前缀 id 的配置推断 specId(幂等)。
+     *
+     * 旧数据(v1.0.6 及之前)反序列化后 specId=null,这里按 id 前缀补全:
+     *  "preset_openai" → specId="openai"
+     *  "preset_deepseek" → specId="deepseek"
+     *
+     * 幂等:已有 specId 的配置不受影响。纯自定义供应商(id 不以 "preset_" 开头)不受影响。
+     * 下次 [updateProvider] 写入时 specId 自然持久化,后续读取不再需要推断。
+     */
+    private fun migrateSpecId(config: ProviderConfig): ProviderConfig {
+        if (config.specId != null) return config
+        if (!config.id.startsWith("preset_")) return config
+        val inferred = config.id.removePrefix("preset_").ifBlank { null } ?: return config
+        return config.copy(specId = inferred)
     }
 
     // ── v1.53-A2: 敏感字段(apiKey)透明加解密 ──────────────────────────
@@ -913,6 +983,8 @@ class SettingsRepository(
         resultOf {
             AppJson.decodeFromString(ListSerializer(ProviderConfig.serializer()), json)
                 .map { it.copy(apiKey = SecureKeyStore.decrypt(it.apiKey)) }
+                // v1.0.7: 幂等迁移 — 给旧数据(v1.0.6 及之前,无 specId 字段)推断 specId
+                .map { migrateSpecId(it) }
         }.onError { msg, t ->
             Logger.w("SettingsRepository", "Providers JSON 解析失败,回退 null: $msg", t)
         }.getOrNull()
@@ -941,6 +1013,7 @@ class SettingsRepository(
             "multi_agent_config_json", "rag_config_json", "chat_drafts_json",
             "task_routing_config_json", "model_profiles_json",
             "account_user_name", "account_login_method",
+            "multi_agent_review_model",
         )
         // 安全的 boolean 类型 key
         val safeBooleanKeys = listOf(
@@ -949,6 +1022,7 @@ class SettingsRepository(
             "keep_awake", "auto_launch", "biometric_enabled",
             "account_logged_in", "account_guest_mode",
             "pii_guard_enabled",
+            "multi_agent_llm_review_enabled",
         )
         // 安全的 int 类型 key
         val safeIntKeys = listOf(
@@ -1068,6 +1142,10 @@ class SettingsRepository(
         private val KEY_IMAGE_GEN_CONFIG = stringPreferencesKey("image_gen_config_json")
         /** v1.25: 多 Agent 协作配置（团队列表与总开关）。 */
         private val KEY_MULTI_AGENT_CONFIG = stringPreferencesKey("multi_agent_config_json")
+        /** v1.201: LLM 综合评审使用的模型 id(独立 key,不随 MultiAgentConfig JSON 序列化)。 */
+        private val KEY_MULTI_AGENT_REVIEW_MODEL = stringPreferencesKey("multi_agent_review_model")
+        /** v1.201: 全局 LLM 综合评审开关(独立 key,不随 MultiAgentConfig JSON 序列化)。 */
+        private val KEY_MULTI_AGENT_LLM_REVIEW_ENABLED = booleanPreferencesKey("multi_agent_llm_review_enabled")
         /** v1.25: 视觉辅助开关（让纯文本模型通过视觉模型"看到"图片）。 */
         private val KEY_VISION_ENABLED = booleanPreferencesKey("vision_enabled")
 
@@ -1323,6 +1401,15 @@ data class ChatPreferences(
     val responseTone: String = "neutral",
     /** v1.110: 默认是否启用深度思考(新建/切换会话时的初始值,避免每次都要手动按按钮)。 */
     val defaultDeepThinking: Boolean = false,
+    /**
+     * v1.0.4 (P3-4): 性能模式 — 超长会话仅渲染最近 N 条消息,上滑加载更多,降低列表卡顿。
+     *
+     * 开启后 ChatScreen 通过 [io.zer0.muse.perf.MessagePaginator] 对 state.messages 做内存级分页,
+     * LazyColumn 只渲染最近 [io.zer0.muse.perf.MessagePaginator.DEFAULT_PAGE_SIZE] * pageCount 条,
+     * 滚到顶部时自动扩展下一页(纯本地内存分页,不查 DB);全部展开后再上滑才触发 DB loadMoreHistory。
+     * 关闭时维持现有行为(直接渲染全部 state.messages)。
+     */
+    val performanceMode: Boolean = false,
 )
 
 /**
@@ -1466,6 +1553,8 @@ data class AgentTeam(
     val description: String = "",
     /** 团队成员 assistantId 列表,顺序即推荐委托顺序。 */
     val memberIds: List<String> = emptyList(),
+    /** v1.200: 团队工作流定义。为空时按 memberIds 顺序串行执行。 */
+    val workflow: io.zer0.muse.tools.DelegationContract.TeamWorkflow? = null,
     /** 创建时间戳。 */
     val createdAt: Long = System.currentTimeMillis(),
     /** 最近更新时间戳。 */
@@ -1479,8 +1568,34 @@ data class AgentTeam(
 data class MultiAgentConfig(
     /** 总开关,开启后 SystemPromptAssembler 才会注入多 Agent 协作提示。 */
     val enabled: Boolean = true,
+    /** v1.200: 自动路由开关。开启后，当用户消息与当前助手匹配度低时，自动委派给更合适的 Agent/团队。 */
+    val autoRoutingEnabled: Boolean = false,
     /** 用户创建的协作团队列表。 */
     val teams: List<AgentTeam> = emptyList(),
     /** 默认团队 id,未指定时主助手自行选择。 */
     val defaultTeamId: String? = null,
+    /**
+     * v1.201: 人机协作暂停策略(随 MultiAgentConfig 一起持久化到 DataStore)。
+     *
+     * 注意:[DelegationPauseManager.PausePolicy] 必须为 @Serializable data class
+     * 才能随 MultiAgentConfig 序列化。当前 [DelegationPauseManager.PausePolicy] 未带
+     * @Serializable 注解,需在 DelegationPauseManager.kt 中补充(详见修改建议清单)。
+     */
+    val pausePolicy: io.zer0.muse.tools.DelegationPauseManager.PausePolicy = io.zer0.muse.tools.DelegationPauseManager.PausePolicy(),
+    /**
+     * v1.201: LLM 综合评审使用的模型 id(全局,跨团队共享)。
+     * 空表示用 active provider 的默认模型。
+     * 持久化到独立 DataStore key: multi_agent_review_model(@Transient:不随 JSON 序列化,
+     * 由独立 key 读写,避免 updateMultiAgentConfig 与独立 save 方法双写竞态)。
+     */
+    @kotlinx.serialization.Transient
+    val reviewModelId: String? = null,
+    /**
+     * v1.201: 全局 LLM 综合评审开关(默认关)。
+     * 开启后,团队工作流选 LLM_REVIEW 聚合策略时才会真正调用 LLM 评审;
+     * 关闭时 LLM_REVIEW 自动降级为 EXPERT_REVIEW。
+     * 持久化到独立 DataStore key: multi_agent_llm_review_enabled。
+     */
+    @kotlinx.serialization.Transient
+    val llmReviewEnabled: Boolean = false,
 )

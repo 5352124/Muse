@@ -161,6 +161,24 @@ class LocalAnalyticsTracker(
     /** 获取当前分析快照。 */
     suspend fun getSnapshot(): AnalyticsSnapshot = analyticsFlow.first()
 
+    /**
+     * P3-2: 获取功能使用计数 Map(featureName → count),按 count 降序返回。
+     *
+     * 用于本地数据分析面板展示 Top N,无任何上报。
+     */
+    suspend fun getFeatureUsage(): List<Pair<String, Int>> {
+        val raw = store.data.first()[KEY_FEATURE_USAGE] ?: "{}"
+        val mapSerializer = MapSerializer(String.serializer(), Int.serializer())
+        val usage = try {
+            io.zer0.common.AppJson.decodeFromString(mapSerializer, raw)
+        } catch (_: Exception) {
+            emptyMap()
+        }
+        return usage.entries
+            .sortedByDescending { it.value }
+            .map { it.key to it.value }
+    }
+
     /** 检查留存(D1/D7/D30)。 */
     private fun checkRetention(prefs: androidx.datastore.preferences.core.MutablePreferences) {
         val firstLaunch = prefs[KEY_FIRST_LAUNCH_DATE] ?: return

@@ -74,14 +74,20 @@ class ImageGenCoordinator(
         accessor.coroutineScope.launch(AppDispatchers.io) {
             try {
                 if (asOcr) {
-                    val text = ocrManager.recognize(uri, context)
-                    if (text.isBlank()) {
-                        reportError("OCR 识别失败或图片中未检测到文字")
-                        return@launch
+                    // v1.0.4 (P0): OCR 识别期间设置 isOcrProcessing=true,UI 显示"正在识别图片文字…"
+                    accessor.update { it.copy(isOcrProcessing = true) }
+                    try {
+                        val text = ocrManager.recognize(uri, context)
+                        if (text.isBlank()) {
+                            reportError("OCR 识别失败或图片中未检测到文字")
+                            return@launch
+                        }
+                        val current = accessor.snapshot.input
+                        val merged = if (current.isBlank()) text else "$current\n\n$text"
+                        accessor.update { it.copy(input = merged) }
+                    } finally {
+                        accessor.update { it.copy(isOcrProcessing = false) }
                     }
-                    val current = accessor.snapshot.input
-                    val merged = if (current.isBlank()) text else "$current\n\n$text"
-                    accessor.update { it.copy(input = merged) }
                 } else {
                     val base64 = readImageAsBase64(uri, context, addError)
                     if (base64.isBlank()) {
@@ -297,7 +303,7 @@ class ImageGenCoordinator(
                         generateImageViaGemini(prompt, sessionId, assistantMsg.id, config, model, addError, updateAssistant)
                     }
                     ProviderType.OPENAI -> {
-                        generateImageViaOpenAi(prompt, sessionId, assistantMsg.id, config, addError, updateAssistant)
+                        generateImageViaOpenAi(prompt, sessionId, assistantMsg.id, config, model, addError, updateAssistant)
                     }
                     else -> {
                         accessor.update {
@@ -328,13 +334,19 @@ class ImageGenCoordinator(
         sessionId: String,
         assistantId: Uuid,
         providerConfig: ProviderConfig,
+        model: Model,
         addError: (ChatErrorType, String) -> Unit,
         updateAssistant: (
             id: Uuid, content: String, reasoning: String?, imageBase64List: List<String>?,
             imageUrls: List<String>?, isStreaming: Boolean,
         ) -> Unit,
     ) {
-        val urls = imageService.generate(prompt, accessor.snapshot.imageGenParams, providerConfig)
+        // v1.136: 把 UI 选中的绘图模型 ID 传入 ImageService,避免 model 为空导致自定义端点 404
+        val urls = imageService.generate(
+            prompt,
+            accessor.snapshot.imageGenParams.copy(model = model.id),
+            providerConfig,
+        )
         if (urls.isEmpty()) {
             accessor.update {
                 it.copy(

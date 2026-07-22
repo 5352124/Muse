@@ -117,6 +117,7 @@ import io.zer0.muse.ui.HomeScreen
 import io.zer0.muse.ui.LorebookScreen
 import io.zer0.muse.ui.MemoryScreen
 import io.zer0.muse.ui.MuseRoutes
+import io.zer0.muse.ui.onboarding.OnboardingScreen
 import io.zer0.muse.ui.PromptInjectionScreen
 import io.zer0.muse.ui.QuickMessageScreen
 import io.zer0.muse.ui.quicknotes.QuickNotesScreen
@@ -133,6 +134,9 @@ import io.zer0.muse.ui.common.rememberDesktopShortcutsEnabled
 import io.zer0.muse.ui.common.rememberWindowWidthClass
 import io.zer0.muse.ui.settings.ProxySettingsPage
 import io.zer0.muse.ui.stats.StatsScreen
+import io.zer0.muse.ui.ReportScreen
+import io.zer0.muse.ui.NotificationListenerScreen
+import io.zer0.muse.ui.ToolsScreen
 import io.zer0.muse.ui.theme.MuseMonoFontFamily
 import io.zer0.muse.ui.theme.MuseShapes
 import io.zer0.muse.ui.theme.MuseTheme
@@ -419,6 +423,12 @@ private fun MuseNavGraph(
     }
     val settingsReady = providersLoaded
 
+    // 开机引导:首次启动时显示引导页,完成后进入主界面
+    // 老用户兼容:已有 Provider 配置的跳过完整引导
+    val onboardingShown by settings.onboardingShownFlow.collectAsStateWithLifecycle(initialValue = true)
+    var onboardingCompleted by rememberSaveable { mutableStateOf(false) }
+    val showOnboarding = settingsReady && !onboardingShown && !onboardingCompleted
+
     // v1.7: 系统 SplashScreen 由 MainActivity 的 keepOnScreenCondition 控制,
     // 这里只负责在 NavHost 初始化 1.2s 后把条件放开。
     // v0.33 修复(M6): 同时等待 appPinFlow 首次 emit(置 appPinLoading=false),
@@ -536,6 +546,12 @@ private fun MuseNavGraph(
         // v1.27: 不再依赖登录态重建 NavHost,直接使用固定导航图
         // H2: settings 加载完成后再组合 NavHost,确保 startDestination 用真实 providers/onboardingShown
         if (settingsReady) {
+            // 开机引导页:首次启动且未完成引导时,全屏覆盖显示引导
+            if (showOnboarding) {
+                OnboardingScreen(
+                    onComplete = { onboardingCompleted = true },
+                )
+            } else {
                 // Phase 8.10: 消费分享/Deep Link 结果
                 // M5: PIN 锁屏期间不消费 deep link/share intent,解锁后(needPin 变 false)重新触发
                 LaunchedEffect(pendingShareResult, needPin) {
@@ -815,6 +831,9 @@ private fun MuseNavGraph(
                         onOpenAgentSettings = { navController.navigate(MuseRoutes.SETTINGS_AGENT) },
                         onOpenAboutSettings = { navController.navigate(MuseRoutes.SETTINGS_ABOUT) },
                         onOpenStats = { navController.navigate(MuseRoutes.STATS) },
+                        onOpenReports = { navController.navigate(MuseRoutes.REPORTS) },
+                        onOpenNotificationListener = { navController.navigate(MuseRoutes.NOTIFICATION_LISTENER) },
+                        onOpenTools = { navController.navigate(MuseRoutes.TOOLS) },
                         onOpenRagSettings = { navController.navigate(MuseRoutes.SETTINGS_RAG) },
                         onOpenVisionSettings = { navController.navigate(MuseRoutes.SETTINGS_VISION) },
                         onOpenDataImport = { navController.navigate(MuseRoutes.SETTINGS_DATA_IMPORT) },
@@ -1245,7 +1264,6 @@ private fun MuseNavGraph(
                 ) {
                     io.zer0.muse.ui.settings.SettingsDataPage(
                         onBack = { navController.popBackStack() },
-                        onOpenCloudBackup = { navController.navigate(MuseRoutes.SETTINGS_CLOUD_BACKUP) },
                     )
                 }
                 // v1.132: 设置二级页 — 云备份独立配置页(WebDAV/S3 表单 + 远端备份列表)
@@ -1428,6 +1446,36 @@ private fun MuseNavGraph(
                         },
                     )
                 }
+                // v1.0.4: 我的报告页(周报/月报)
+                composable(
+                    route = MuseRoutes.REPORTS,
+                    enterTransition = { slideInHorizontally(tween(280), initialOffsetX = { it }) + fadeIn(tween(280)) },
+                    popExitTransition = { slideOutHorizontally(tween(280), targetOffsetX = { it }) + fadeOut(tween(280)) },
+                ) {
+                    ReportScreen(
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                // v1.0.4: 通知监听页(授权引导 + 最近通知列表)
+                composable(
+                    route = MuseRoutes.NOTIFICATION_LISTENER,
+                    enterTransition = { slideInHorizontally(tween(280), initialOffsetX = { it }) + fadeIn(tween(280)) },
+                    popExitTransition = { slideOutHorizontally(tween(280), targetOffsetX = { it }) + fadeOut(tween(280)) },
+                ) {
+                    NotificationListenerScreen(
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                // v1.0.4: AI 工具管理页(展示 ToolRegistry 全部工具 + 详情 + 风险等级)
+                composable(
+                    route = MuseRoutes.TOOLS,
+                    enterTransition = { slideInHorizontally(tween(280), initialOffsetX = { it }) + fadeIn(tween(280)) },
+                    popExitTransition = { slideOutHorizontally(tween(280), targetOffsetX = { it }) + fadeOut(tween(280)) },
+                ) {
+                    ToolsScreen(
+                        onBack = { navController.popBackStack() },
+                    )
+                }
                 // v2.0: 最近删除页(从 ChatListScreen 进入)
                 composable(
                     route = MuseRoutes.RECENTLY_DELETED,
@@ -1548,6 +1596,7 @@ private fun MuseNavGraph(
                     )
                 }
             }
+            } // 关闭 else(showOnboarding) 分支
         }
 
         // v0.33: PIN 锁界面(Splash 后、主界面之上覆盖,直到输入正确 PIN)

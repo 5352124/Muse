@@ -58,6 +58,24 @@ sealed class ChatStreamEvent {
 }
 
 /**
+ * v1.0.7: 聊天请求模式(对齐 openhanako mode: "chat" | "utility")。
+ *
+ * - [CHAT]:用户对话路径,reasoningLevel 由用户偏好/session 决定,可开可关
+ * - [UTILITY]:后台短文本生成路径(memory 摘要 / fact 抽取 / 视觉辅助 / skill 执行 /
+ *   上下文压缩 / 主动消息 / 定时任务等),强制 reasoningLevel = OFF
+ *   (短输出不需要思考链 + 省 token + 降延迟),且不注入 ProviderPromptPatches
+ *
+ * 设计原则(对齐 openhanako buildProviderCompatOptions):
+ *  - UTILITY 模式下,Provider 内部把 effectiveReasoningLevel 强制为 OFF,
+ *    调用方传入的 reasoningLevel 被覆盖(对齐 openhanako utility 模式注入 reasoningLevel: "off")
+ *  - 各 Provider 在 buildRequestBody 时按 mode 决定是否跳过 thinkingFormat 注入
+ */
+enum class ChatRequestMode {
+    CHAT,
+    UTILITY,
+}
+
+/**
  * 一次聊天请求的入参。
  *
  * @param messages 完整对话历史(含 system / user / assistant),由调用方裁剪
@@ -68,6 +86,9 @@ sealed class ChatStreamEvent {
  * @param tools 可选的工具定义列表(Phase 7 function calling),null 表示不启用工具调用
  * @param reasoningLevel 推理等级(Phase 8.1 M11),null 表示用 [ReasoningLevel.DEFAULT]
  *   各 Provider 根据 [Model.supportsReasoning] 和此字段决定是否发 thinking 字段
+ *   v1.0.7: 当 [mode]=[ChatRequestMode.UTILITY] 时,此字段被强制覆盖为 OFF
+ * @param mode v1.0.7: 请求模式,默认 [ChatRequestMode.CHAT];
+ *   UTILITY 模式强制关思考(memory 摘要 / fact 抽取 / 视觉辅助等后台任务)
  */
 data class ChatRequest(
     val messages: List<UIMessage>,
@@ -77,6 +98,7 @@ data class ChatRequest(
     val abortSignal: AbortSignal = AbortSignal(),
     val tools: List<ToolDefinition>? = null,
     val reasoningLevel: ReasoningLevel = ReasoningLevel.DEFAULT,
+    val mode: ChatRequestMode = ChatRequestMode.CHAT,
 )
 
 /**

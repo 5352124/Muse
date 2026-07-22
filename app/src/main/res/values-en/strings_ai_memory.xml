@@ -58,4 +58,10 @@
     <string name="memory_error_trace_message">Message: </string>
     <string name="memory_error_trace_device">Device: </string>
     <string name="memory_error_trace_stack_header">== Stack Trace ==</string>
+
+    <!-- v8: memory scope related -->
+    <string name="memory_scope_all">All</string>
+    <string name="memory_scope_main">Main Assistant</string>
+    <string name="memory_scope_assistant">Assistant Memory</string>
+    <string name="memory_scope_label">Memory Scope</string>
 </resources>

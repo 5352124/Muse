@@ -864,7 +864,7 @@ internal fun ProviderEditPage(
                 location = vertexLocation.trim().ifBlank { "us-central1" },
                 projectId = vertexProjectId.trim(),
             )
-            ProviderType.OPENAI -> if (isCustom) {
+            ProviderType.OPENAI, ProviderType.OPENAI_RESPONSES -> if (isCustom) {
                 ProviderSpecificConfig.Custom(
                     chatCompletionsPath = customChatCompletionsPath.trim(),
                     customHeaders = parseCustomHeaders(customHeadersText),
@@ -974,7 +974,7 @@ internal fun ProviderEditPage(
                 location = vertexLocation.trim().ifBlank { "us-central1" },
                 projectId = vertexProjectId.trim(),
             )
-            ProviderType.OPENAI -> if (isCustom) {
+            ProviderType.OPENAI, ProviderType.OPENAI_RESPONSES -> if (isCustom) {
                 ProviderSpecificConfig.Custom(
                     chatCompletionsPath = customChatCompletionsPath.trim(),
                     customHeaders = parseCustomHeaders(customHeadersText),
@@ -1817,6 +1817,8 @@ private fun ConfigTab(
                             ProviderType.OPENAI -> ProviderConfig.DEFAULT_OPENAI_BASE_URL
                             ProviderType.ANTHROPIC -> ProviderConfig.DEFAULT_ANTHROPIC_BASE_URL
                             ProviderType.GEMINI -> ProviderConfig.DEFAULT_GEMINI_BASE_URL
+                            // v1.0.6: OPENAI_RESPONSES 复用 OpenAI 同款 UI 配置(/v1/responses 切换由 useResponseApi 开关控制)
+                            ProviderType.OPENAI_RESPONSES -> ProviderConfig.DEFAULT_OPENAI_RESPONSES_BASE_URL
                         },
                     )
                     OutlinedTextField(
@@ -2298,7 +2300,8 @@ private fun ConfigTab(
 
                         // Provider 特定高级字段
                         when (type) {
-                            ProviderType.OPENAI -> if (isCustomSpecific) {
+                            // v1.0.6: OPENAI_RESPONSES 复用 OpenAI 同款 UI 配置(/v1/responses 切换由 useResponseApi 开关控制)
+                            ProviderType.OPENAI, ProviderType.OPENAI_RESPONSES -> if (isCustomSpecific) {
                                 Text(
                                     text = stringResource(R.string.settings_provider_custom_specific),
                                     style = MaterialTheme.typography.labelMedium,

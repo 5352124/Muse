@@ -57,8 +57,13 @@ object SkillImporter {
      * H-SI1: 内置保留 id 集合 — 不允许用户导入的 skill 用这些 id,
      * 防止 LLM 通过 install_skill 覆盖内置 skill(如 id="read_file" 覆盖内置工具)。
      * 来源:[SkillExecutor.BUILT_IN_SKILLS] 中所有内置 skill 的 id。
+     *
+     * v1.0.4 修复 HTTP 400 "Tool names must be unique":同时屏蔽 [ToolRegistry.BUILT_IN_TOOL_IDS]
+     * 中所有内置工具名,防止用户导入与本地工具同名的 skill(如 generate_image / calculator / notify 等),
+     * 否则助手同时启用该 skill 与同名本地工具时,会发出重复 tools 触发 DeepSeek/中转站 400。
      */
-    val RESERVED_IDS: Set<String> = SkillExecutor.BUILT_IN_SKILLS.map { it.id }.toSet()
+    val RESERVED_IDS: Set<String> =
+        SkillExecutor.BUILT_IN_SKILLS.map { it.id }.toSet() + ToolRegistry.BUILT_IN_TOOL_IDS.toSet()
 
     /** 解析结果。 */
     sealed class Result {

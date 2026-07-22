@@ -11,6 +11,7 @@ import io.zer0.ai.core.ModelContextWindowRegistry
 import io.zer0.ai.core.ProviderCompat
 import io.zer0.ai.core.ProviderConfig
 import io.zer0.ai.core.ProviderHttpSupport
+import io.zer0.ai.core.ProviderPayloadNormalizer
 import io.zer0.ai.core.ProviderSpecificConfig
 import io.zer0.ai.core.ReasoningLevel
 import io.zer0.ai.core.ToolCall
@@ -86,7 +87,11 @@ class AnthropicProvider(
 
     override fun streamChat(request: ChatRequest): Flow<ChatStreamEvent> = callbackFlow {
         val producerScope = this
-        val (system, messages) = splitSystem(request.messages)
+        // v1.0.5: Provider 出口兜底 — 先对 UIMessage 列表做通用清理(对齐 openhanako normalizeProviderPayload)
+        val normalizedMessages = ProviderPayloadNormalizer.normalizeMessages(
+            request.messages, request.model,
+        )
+        val (system, messages) = splitSystem(normalizedMessages, request.model)
         val body = buildRequestBody(
             model = request.model.id,
             system = system,
@@ -125,9 +130,10 @@ class AnthropicProvider(
             signatureAccumulator.setLength(0)
             blockContext.clear()
             pendingStopReason = null
+            // v1.0.1: 用 effectiveApiKey() 支持多 key 轮换
             val httpRequest = Request.Builder()
                 .url(url)
-                .header("x-api-key", config.apiKey)
+                .header("x-api-key", effectiveApiKey())
                 .header("anthropic-version", ANTHROPIC_VERSION)
                 .header("anthropic-beta", buildBetaHeader(thinkingEnabled = isThinkingEnabled(request.reasoningLevel)))
                 .header("Content-Type", "application/json")
@@ -143,20 +149,45 @@ class AnthropicProvider(
                         // M-ANT10 / M-ANT11: readBodyCapped + 先 cancel 再 close
                         val errText = readBodyCapped(response)
                         val code = response.code
-                        // L-ANT2: onOpen HTTP 错误也走可重试判断(原直接 trySend Error,529/503 无法重试)
-                        val isRetryable = code == 529 || code == 503
+                        // v1.0.1 (P1): 重试条件对齐 OpenAI/Gemini — 429/408/5xx 均重试
+                        //   原 Anthropic 仅重试 529/503,429 限流时用户只能手动重试
+                        val isRetryable = code == 429 || code == 408 || code == 503 || code == 529 || code in 500..599
+                        // v1.0.1 (P0): 429 限流时先尝试切换 key(多 key 场景)
+                        if (code == 429 && !anyDeltaSent.get() && retryCount < maxRetries &&
+                            !request.abortSignal.aborted && !producerScope.isClosedForSend &&
+                            switchToNextKey()
+                        ) {
+                            retryCount++
+                            Logger.i("AnthropicProvider",
+                                "streamChat onOpen 429 限流,已切换到下一个 key,立即重试 " +
+                                    "($retryCount/$maxRetries)")
+                            eventSource.cancel()
+                            call.cancel()
+                            producerScope.launch {
+                                if (request.abortSignal.aborted || producerScope.isClosedForSend) return@launch
+                                connect()
+                            }
+                            return
+                        }
                         if (isRetryable && !anyDeltaSent.get() && retryCount < maxRetries &&
                             !request.abortSignal.aborted && !producerScope.isClosedForSend
                         ) {
                             retryCount++
-                            val delayMs = 1000L shl (retryCount - 1)  // 1s / 2s / 4s
+                            // v1.0.1 (P1): 加 jitter(0~499ms),与 OpenAI 对齐
+                            val baseDelay = 1000L shl (retryCount - 1)  // 1s / 2s / 4s
+                            val delayMs = baseDelay + kotlin.random.Random.nextLong(0, 500)
+                            // v1.0.1: 429 限流优先用 Retry-After 头
+                            val retryAfter = if (code == 429) {
+                                response.header("Retry-After")?.toIntOrNull()?.let { it * 1000L }
+                            } else null
+                            val finalDelay = retryAfter ?: delayMs
                             Logger.w("AnthropicProvider",
                                 "streamChat onOpen retryable HTTP $code, " +
-                                    "retry $retryCount/$maxRetries after ${delayMs}ms")
+                                    "retry $retryCount/$maxRetries after ${finalDelay}ms")
                             eventSource.cancel()
                             call.cancel()
                             producerScope.launch {
-                                delay(delayMs)
+                                delay(finalDelay)
                                 if (request.abortSignal.aborted || producerScope.isClosedForSend) return@launch
                                 connect()
                             }
@@ -164,6 +195,10 @@ class AnthropicProvider(
                         }
                         val msg = parseErrorMessage(code, errText)
                         Logger.w("AnthropicProvider", "streamChat onOpen HTTP $code: $msg")
+                        // v1.0.1: 401/403 鉴权失败时标记当前 key 失败
+                        if (code == 401 || code == 403) {
+                            markKeyFailed(hardBlock = true)
+                        }
                         eventSource.cancel()
                         finished.set(true)
                         trySend(ChatStreamEvent.Error(msg))
@@ -288,15 +323,40 @@ class AnthropicProvider(
                         finished.set(true)
                         close(); return
                     }
-                    // M-ANT1: 529/503/网络异常 有限3次指数退避重试
                     val code = response?.code
-                    val isRetryable = code == 529 || code == 503 || (response == null && t != null)
+                    // v1.0.1 (P1): 重试条件对齐 OpenAI/Gemini — 429/408/5xx/IOException 均重试
+                    //   原 Anthropic 仅重试 529/503,429 限流和 IOException 不会被重试
+                    val isRetryable = (code != null && (code == 429 || code == 408 || code == 503 || code == 529 || code in 500..599))
+                        || (t is java.io.IOException)
+                    // v1.0.1 (P0): 429 限流时先尝试切换 key(多 key 场景)
+                    if (code == 429 && !anyDeltaSent.get() && retryCount < maxRetries &&
+                        !request.abortSignal.aborted && !producerScope.isClosedForSend &&
+                        switchToNextKey()
+                    ) {
+                        retryCount++
+                        Logger.i("AnthropicProvider",
+                            "streamChat onFailure 429 限流,已切换到下一个 key,立即重试 " +
+                                "($retryCount/$maxRetries)")
+                        eventSource.cancel()
+                        producerScope.launch {
+                            if (request.abortSignal.aborted || producerScope.isClosedForSend) return@launch
+                            connect()
+                        }
+                        return
+                    }
                     // H-ANT1: 已发出任何增量则不重试(避免消费者收到重复内容)
                     if (isRetryable && !anyDeltaSent.get() && retryCount < maxRetries &&
                         !producerScope.isClosedForSend
                     ) {
                         retryCount++
-                        val delayMs = 1000L shl (retryCount - 1)  // 1s / 2s / 4s
+                        // v1.0.1 (P1): 加 jitter(0~499ms),与 OpenAI 对齐(原 Anthropic 无 jitter)
+                        val baseDelay = 1000L shl (retryCount - 1)  // 1s / 2s / 4s
+                        var delayMs = baseDelay + kotlin.random.Random.nextLong(0, 500)
+                        // v1.0.1: 429 限流优先用 Retry-After 头
+                        if (code == 429) {
+                            delayMs = response?.header("Retry-After")?.toIntOrNull()
+                                ?.let { it * 1000L } ?: delayMs
+                        }
                         Logger.w("AnthropicProvider",
                             "streamChat retryable failure(code=$code t=${t?.message}), " +
                                 "retry $retryCount/$maxRetries after ${delayMs}ms, " +
@@ -339,7 +399,11 @@ class AnthropicProvider(
     }.flowOn(Dispatchers.IO)
 
     override suspend fun completeText(request: ChatRequest): ChatCompletion = withContext(Dispatchers.IO) {
-        val (system, messages) = splitSystem(request.messages)
+        // v1.0.5: Provider 出口兜底 — 先对 UIMessage 列表做通用清理(对齐 openhanako normalizeProviderPayload)
+        val normalizedMessages = ProviderPayloadNormalizer.normalizeMessages(
+            request.messages, request.model,
+        )
+        val (system, messages) = splitSystem(normalizedMessages, request.model)
         val body = buildRequestBody(
             model = request.model.id,
             system = system,
@@ -352,9 +416,10 @@ class AnthropicProvider(
         )
         val url = baseUrl() + anthropicConfig.messagesPath
         Logger.i("AnthropicProvider", "completeText: POST ${sanitizeUrl(url)} model=${request.model.id}")
+        // v1.0.1: 用 effectiveApiKey() 支持多 key 轮换
         val httpRequest = Request.Builder()
             .url(url)
-            .header("x-api-key", config.apiKey)
+            .header("x-api-key", effectiveApiKey())
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("anthropic-beta", buildBetaHeader(thinkingEnabled = isThinkingEnabled(request.reasoningLevel)))
             .header("Content-Type", "application/json")
@@ -372,10 +437,19 @@ class AnthropicProvider(
             val response = call.execute()
             response.use { resp ->
                 if (!resp.isSuccessful) {
+                    val code = resp.code
+                    // v1.0.1: 429 切换 key 重试;401/403 标记 key 失败
+                    if (code == 429 && switchToNextKey()) {
+                        Logger.i("AnthropicProvider", "completeText 429 限流,已切换到下一个 key,重试")
+                        return@withContext completeText(request)
+                    }
+                    if (code == 401 || code == 403) {
+                        markKeyFailed(hardBlock = true)
+                    }
                     // M-ANT10: readBodyCapped 替代 runCatching
                     val errText = readBodyCapped(resp)
-                    val msg = parseErrorMessage(resp.code, errText)
-                    Logger.w("AnthropicProvider", "completeText HTTP ${resp.code}: $msg")
+                    val msg = parseErrorMessage(code, errText)
+                    Logger.w("AnthropicProvider", "completeText HTTP $code: $msg")
                     throw RuntimeException(msg)
                 }
                 val raw = resp.body.string()
@@ -442,7 +516,7 @@ class AnthropicProvider(
      *  仅有 reasoning 无 signature 时仍发 thinking block(无 signature 字段)。
      *  signature 由 ChatStreamEvent.ReasoningDelta.signature 累积存入 UIMessage.thinkingSignature。
      */
-    private fun splitSystem(messages: List<UIMessage>): Pair<List<AnthropicSystemBlock>?, List<AnthropicMessage>> {
+    private fun splitSystem(messages: List<UIMessage>, model: Model): Pair<List<AnthropicSystemBlock>?, List<AnthropicMessage>> {
         val systemParts = messages.filter { it.role == MessageRole.SYSTEM }
             .map { it.content }
             .filter { it.isNotBlank() }
@@ -520,7 +594,7 @@ class AnthropicProvider(
                             }
                         }
                     }
-                    msg.imageBase64List.isNotEmpty() -> {
+                    msg.imageBase64List.isNotEmpty() && model.supportsVisionInput() -> {
                         // Anthropic Vision: content = [
                         //   {type:"text", text:"..."},
                         //   {type:"image", source:{type:"base64", media_type:"image/jpeg", data:"..."}}
@@ -546,7 +620,16 @@ class AnthropicProvider(
                             }
                         }
                     }
-                    else -> JsonPrimitive(msg.content)
+                    else -> {
+                        // v1.0.5: 防御性视觉过滤 — 模型不支持视觉但消息携带图片时,丢弃图片走纯文本
+                        if (msg.imageBase64List.isNotEmpty() && !model.supportsVisionInput()) {
+                            Logger.w(
+                                "AnthropicProvider",
+                                "splitSystem: 模型 ${model.id} 不支持视觉,丢弃 ${msg.imageBase64List.size} 张图片(防御性过滤)",
+                            )
+                        }
+                        JsonPrimitive(msg.content)
+                    }
                 }
                 AnthropicMessage(role = anthropicRole, content = anthropicContent)
             }
@@ -696,7 +779,7 @@ class AnthropicProvider(
                         AppJson.parseToJsonElement(td.parametersJsonSchema)
                     }.getOrNull() ?: buildJsonObject {},
                 )
-            }
+            }?.takeIf { it.isNotEmpty() }  // v1.0.5: stripEmptyTools — 空 tools 列表改 null,避免 `"tools": []` 被拒绝
         } else null
 
         val payload = AnthropicRequest(

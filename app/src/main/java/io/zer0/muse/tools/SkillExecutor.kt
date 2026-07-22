@@ -80,6 +80,14 @@ class SkillExecutor(
     private val stickerLibraryRepository: io.zer0.muse.data.sticker.StickerLibraryRepository? = null,
     /** v1.???: generate_image 用。 */
     private val imageService: io.zer0.ai.image.ImageService? = null,
+    /** v1.200: 多 Agent 团队配置提供,用于 delegateAgent 处理 TEAM 目标。 */
+    private val multiAgentConfigProvider: () -> io.zer0.muse.data.MultiAgentConfig = { io.zer0.muse.data.MultiAgentConfig() },
+    /** v1.201: LLM 综合评审聚合器,TeamWorkflowExecutor 的 LLM_REVIEW 策略时使用;为 null 时降级为 EXPERT_REVIEW。 */
+    private val llmAggregator: LlmAggregator? = null,
+    /** v1.201: 委派暂停管理器,null 时跳过所有暂停点。 */
+    private val pauseManager: DelegationPauseManager? = null,
+    /** v1.201: 委派链路追踪器,null 时不记录链路。ChatViewModel 共享同一实例用于 UI 展示。 */
+    private val delegationChainTracker: DelegationChainTracker? = null,
 ) {
     /**
      * 执行 skill。
@@ -693,6 +701,273 @@ class SkillExecutor(
         }
 
         return null
+    }
+
+    /**
+     * v1.200/v1.201: 结构化委派入口 — 供 ChatViewModel 自动路由调用。
+     *
+     * 与 [execDelegateAgent] 的区别:
+     *  - 接受 [DelegationContract.DelegationRequest] 结构化请求,而非 Map 参数
+     *  - 返回 [DelegationContract.DelegationResult],含 metadata/subResults,便于链路追踪
+     *  - 支持 TEAM 目标(委托给团队,由 [TeamWorkflowExecutor] 编排)
+     *  - 支持 v1.201 暂停点(before_start / on_intermediate),与 [pauseManager] 配合
+     *  - 支持 v1.201 链路追踪,通过 [delegationChainTracker] 通知 UI
+     *
+     * @param request 委派请求
+     * @param policy 暂停策略(仅 pauseManager 非 null 时生效)
+     */
+    suspend fun delegateAgent(
+        request: DelegationContract.DelegationRequest,
+        policy: DelegationPauseManager.PausePolicy = DelegationPauseManager.PausePolicy(),
+    ): DelegationContract.DelegationResult {
+        val requestId = request.requestId
+        val startedAt = System.currentTimeMillis()
+        var finishedSuccess = false
+        var finishedResultText = ""
+        var finishedError: String? = null
+
+        fun errorResult(msg: String): DelegationContract.DelegationResult {
+            finishedError = msg
+            val finishedAt = System.currentTimeMillis()
+            return DelegationContract.DelegationResult(
+                requestId = requestId,
+                success = false,
+                error = msg,
+                metadata = DelegationContract.DelegationResult.ResultMetadata(
+                    startedAt = startedAt,
+                    finishedAt = finishedAt,
+                    durationMs = finishedAt - startedAt,
+                ),
+            )
+        }
+
+        // v1.201: 入口取消检查
+        if (pauseManager?.isCancelled(requestId) == true) {
+            return errorResult("委派已被用户取消")
+        }
+
+        // v1.201: 通知链路开始
+        delegationChainTracker?.onDelegationStarted(
+            requestId = requestId,
+            parentRequestId = null,
+            task = request.task,
+            targetType = when (request.targetType) {
+                DelegationContract.DelegationRequest.TargetType.TEAM -> "team"
+                else -> "assistant"
+            },
+            targetId = request.targetId,
+            targetName = "",
+        )
+
+        // v1.201: before_start / 高风险暂停点
+        var effectiveTask = request.task
+        if (pauseManager != null && (
+            (policy.pauseOnHighRisk && request.requireApproval) ||
+            request.pausePoints.contains("before_start")
+        )) {
+            val pauseReq = DelegationPauseManager.PauseRequest(
+                requestId = "pause-$requestId-before-start",
+                taskId = requestId,
+                taskTitle = effectiveTask.take(80),
+                taskDescription = effectiveTask,
+                targetType = when (request.targetType) {
+                    DelegationContract.DelegationRequest.TargetType.TEAM -> "team"
+                    else -> "assistant"
+                },
+                targetName = request.targetId,
+                reason = if (request.requireApproval) "高风险任务执行前确认" else "委派执行前确认",
+                options = listOf(
+                    DelegationPauseManager.PauseOption.APPROVE,
+                    DelegationPauseManager.PauseOption.REJECT,
+                    DelegationPauseManager.PauseOption.MODIFY,
+                    DelegationPauseManager.PauseOption.CANCEL,
+                ),
+            )
+            val resp = pauseManager.awaitPauseDecision(pauseReq, policy)
+            when (resp.decision) {
+                DelegationPauseManager.PauseDecision.CANCEL ->
+                    return errorResult("用户取消委派")
+                DelegationPauseManager.PauseDecision.REJECT ->
+                    return errorResult("用户拒绝委派")
+                DelegationPauseManager.PauseDecision.MODIFY -> {
+                    // 不递归,直接用修改后的任务继续执行(避免 onDelegationStarted 重复触发)
+                    effectiveTask = resp.modifiedInput?.takeIf { it.isNotBlank() } ?: effectiveTask
+                }
+                DelegationPauseManager.PauseDecision.APPROVE -> { /* 继续 */ }
+            }
+        }
+
+        // v1.104: 递归深度兜底(当前 completeText 不执行工具不会递归,此为防御性)
+        val depth = (delegateDepth.get() ?: 0) + 1
+        if (depth > MAX_DELEGATE_DEPTH) {
+            return errorResult(context.getString(R.string.skill_delegate_max_depth, MAX_DELEGATE_DEPTH))
+        }
+        delegateDepth.set(depth)
+        try {
+            if (request.targetType == DelegationContract.DelegationRequest.TargetType.TEAM) {
+                val config = multiAgentConfigProvider()
+                val team = config.teams.find { it.id == request.targetId }
+                    ?: return errorResult("未找到团队: ${request.targetId}")
+                return TeamWorkflowExecutor(
+                    delegate = { req -> delegateAgent(req) },
+                    llmAggregator = llmAggregator,
+                    pauseManager = pauseManager,
+                    pausePolicy = policy,
+                ).execute(
+                    workflow = team.workflow ?: DelegationContract.TeamWorkflow(),
+                    teamTask = effectiveTask,
+                    parentRequestId = request.requestId,
+                    teamMembers = team.memberIds,
+                    baseContext = request.contextMessages,
+                )
+            }
+            if (request.targetType != DelegationContract.DelegationRequest.TargetType.ASSISTANT) {
+                return errorResult("不支持的 targetType: ${request.targetType}")
+            }
+            val assistantId = request.targetId
+            if (assistantId.isBlank()) {
+                return errorResult(context.getString(R.string.skill_missing_param_assistant_id))
+            }
+            val task = effectiveTask.trim()
+            if (task.isBlank()) {
+                return errorResult(context.getString(R.string.skill_task_blank))
+            }
+
+            // v1.201: 取消检查
+            if (pauseManager?.isCancelled(requestId) == true) {
+                return errorResult("委派已被用户取消")
+            }
+
+            // 1. 取子助手配置
+            val assistant = resultOf { assistantRepository.getById(assistantId) }
+                .onError { msg, _ -> Logger.w("SkillExecutor", "delegateAgent getById 失败: $msg") }
+                .getOrNull()
+                ?: return errorResult(context.getString(R.string.skill_assistant_not_found, assistantId))
+
+            // 2. 构造消息列表: system + contextMessages + user
+            val messages = mutableListOf<UIMessage>()
+            if (assistant.systemPrompt.isNotBlank()) {
+                messages.add(UIMessage(role = MessageRole.SYSTEM, content = assistant.systemPrompt))
+            }
+            messages.addAll(request.contextMessages)
+            val userContent = buildString {
+                appendLine(task)
+                if (request.attachments.isNotEmpty()) {
+                    appendLine()
+                    appendLine("附件/产物:")
+                    request.attachments.forEachIndexed { idx, attachment ->
+                        appendLine("${idx + 1}. $attachment")
+                    }
+                }
+            }
+            messages.add(UIMessage(role = MessageRole.USER, content = userContent))
+
+            // 3. 调 LLM 跑一轮(用 withTimeoutOrNull 包裹,超时返回错误信息)
+            val temperature = assistant.temperature ?: 0.7f
+            val maxTokens = assistant.maxTokens ?: 1500
+            val completion = resultOf {
+                withTimeoutOrNull(request.timeoutSec * 1000L) {
+                    chatService.completeText(
+                        messages = messages,
+                        temperature = temperature,
+                        maxTokens = maxTokens,
+                    )
+                }
+            }.onError { msg, _ ->
+                return errorResult(context.getString(R.string.skill_delegate_failed, assistant.name, msg))
+            }.getOrNull()
+
+            val finishedAt = System.currentTimeMillis()
+            if (completion == null) {
+                return DelegationContract.DelegationResult(
+                    requestId = requestId,
+                    success = false,
+                    error = context.getString(R.string.skill_delegate_timeout, assistant.name, request.timeoutSec),
+                    metadata = DelegationContract.DelegationResult.ResultMetadata(
+                        startedAt = startedAt,
+                        finishedAt = finishedAt,
+                        durationMs = finishedAt - startedAt,
+                        assistantId = assistantId,
+                        assistantName = assistant.name,
+                    ),
+                )
+            }
+            val result = completion.text.trim()
+            if (result.isBlank()) {
+                return DelegationContract.DelegationResult(
+                    requestId = requestId,
+                    success = false,
+                    error = context.getString(R.string.skill_delegate_empty, assistant.name),
+                    metadata = DelegationContract.DelegationResult.ResultMetadata(
+                        startedAt = startedAt,
+                        finishedAt = finishedAt,
+                        durationMs = finishedAt - startedAt,
+                        assistantId = assistantId,
+                        assistantName = assistant.name,
+                    ),
+                )
+            }
+
+            // v1.201: 中间结果确认(pauseOnIntermediateResult)
+            if (pauseManager != null && (
+                policy.pauseOnIntermediateResult ||
+                request.pausePoints.contains("on_intermediate")
+            )) {
+                if (pauseManager.isCancelled(requestId)) {
+                    return errorResult("委派已被用户取消")
+                }
+                val pauseReq = DelegationPauseManager.PauseRequest(
+                    requestId = "pause-$requestId-intermediate",
+                    taskId = requestId,
+                    taskTitle = "中间结果确认",
+                    taskDescription = task,
+                    targetType = "assistant",
+                    targetName = assistant.name,
+                    reason = "中间结果产出后等待用户确认",
+                    intermediateResult = result.take(500),
+                    options = listOf(
+                        DelegationPauseManager.PauseOption.APPROVE,
+                        DelegationPauseManager.PauseOption.REJECT,
+                        DelegationPauseManager.PauseOption.CANCEL,
+                    ),
+                )
+                val resp = pauseManager.awaitPauseDecision(pauseReq, policy)
+                when (resp.decision) {
+                    DelegationPauseManager.PauseDecision.CANCEL ->
+                        return errorResult("用户取消委派")
+                    DelegationPauseManager.PauseDecision.REJECT ->
+                        return errorResult("用户拒绝中间结果")
+                    DelegationPauseManager.PauseDecision.APPROVE,
+                    DelegationPauseManager.PauseDecision.MODIFY -> { /* 接受中间结果 */ }
+                }
+            }
+
+            // 4. 返回结构化结果
+            finishedSuccess = true
+            finishedResultText = result
+            return DelegationContract.DelegationResult(
+                requestId = requestId,
+                success = true,
+                resultText = result,
+                metadata = DelegationContract.DelegationResult.ResultMetadata(
+                    startedAt = startedAt,
+                    finishedAt = finishedAt,
+                    durationMs = finishedAt - startedAt,
+                    assistantId = assistantId,
+                    assistantName = assistant.name,
+                ),
+            )
+        } finally {
+            delegateDepth.set(depth - 1)
+            // v1.201: 通知链路结束 + 清理取消标记
+            pauseManager?.clearCancellation(requestId)
+            delegationChainTracker?.onDelegationFinished(
+                requestId = requestId,
+                success = finishedSuccess,
+                resultText = finishedResultText,
+                error = finishedError,
+            )
+        }
     }
 
     /**
@@ -1412,8 +1687,11 @@ class SkillExecutor(
         val prompt = args["prompt"]?.takeIf { it.isNotBlank() }
             ?: return context.getString(R.string.skill_missing_param_prompt)
         val size = args["size"]?.takeIf { it.isNotBlank() } ?: "1024x1024"
+        // v1.136: Skill 可显式指定 model,未指定时由 ImageService 按 ProviderSpecificConfig / Catalog 兜底
+        val model = args["model"]?.takeIf { it.isNotBlank() } ?: ""
         return resultOf {
             val urls = service.generate(prompt, io.zer0.ai.image.ImageGenParams(
+                model = model,
                 size = size,
                 responseFormat = "url",
                 n = 1,

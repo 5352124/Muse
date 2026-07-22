@@ -61,6 +61,10 @@ data class StreamRoundParams(
     val currentAssistantId: Uuid,
     val builder: StringBuilder,
     val reasoningBuilder: StringBuilder,
+    // v1.0.1 (P4): 每轮工具调用的流式重试计数,递归调用 streamRound 时递增。
+    //   原计数器声明在 launchStream 外层,跨所有 tool round 共享,导致第 1 轮耗尽后后续轮次无法重试。
+    //   移入 params 后每轮独立,且递归重试通过 copy(retryCount = ...) 传递。
+    val retryCount: Int = 0,
 )
 
 /**
@@ -430,7 +434,11 @@ class ToolOrchestrator(
                     taskCardCoordinator.updateTaskCardPhase(taskCardId, TaskCardPhase.DONE)
 
                     // 同步 Agent 工作流计划到 UI
-                    val latestPlans = skillExecutor.getActivePlans()
+                    // v1.137: 为计划关联当前助手消息 ID,使计划卡固定在创建它的消息上随消息滚动,
+                    // 而不是始终"跳"到最后一条助手消息(用户反馈"列表固定在底部不跟随滚动")。
+                    val latestPlans = skillExecutor.getActivePlans().mapValues { (_, plan) ->
+                        if (plan.messageId == null) plan.copy(messageId = currentAssistantId.toString()) else plan
+                    }
                     if (latestPlans.isNotEmpty()) {
                         accessor.update { it.copy(agentPlans = latestPlans) }
                     }

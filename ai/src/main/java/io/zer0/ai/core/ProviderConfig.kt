@@ -40,6 +40,16 @@ enum class ProviderCategory {
  * @param balanceResultPath 余额结果 JSON 路径(如 $.data.total_usage)
  * @param category 供应商分类(默认 OFFICIAL,向后兼容旧数据)
  * @param oauthConfig P1-6 OAuth 登录配置(可选);非空时支持 OAuth 自动获取 apiKey
+ * @param allowMissingApiKey v1.0.6: 是否允许空 apiKey(对齐 openhanako authType=none/optional)。
+ *   true 时 Provider 不强制要求 apiKey(如 Ollama 本地部署、system-speech 等)。
+ *   默认 false(向后兼容,绝大多数供应商需要 apiKey)。
+ * @param specId v1.0.7: 内置供应商规格标识(对齐 openhanako BUILTIN_PLUGINS 的 providerId)。
+ *   非空时标识该配置源自某个内置供应商规格(如 "openai"/"deepseek"/"anthropic"),
+ *   运行时 [io.zer0.ai.core.ProviderSpecMerger] 会把 spec 默认模型列表与用户 overlay 合并:
+ *    - spec 默认模型 + 用户自定义模型(同 id 去重,用户字段优先)
+ *    - 当内置供应商更新默认模型列表后,已添加的用户自动看到新模型
+ *   为 null 时表示纯自定义供应商,不参与合并(向后兼容旧数据)。
+ *   数据迁移时给已有 "preset_" 前缀 id 的配置自动推断 specId。
  */
 @Serializable
 data class ProviderConfig(
@@ -56,6 +66,8 @@ data class ProviderConfig(
     val balanceResultPath: String = "",
     val category: ProviderCategory = ProviderCategory.OFFICIAL,
     val oauthConfig: OAuthConfig? = null,
+    val allowMissingApiKey: Boolean = false,
+    val specId: String? = null,
 ) {
     /**
      * v1.80 (H-CORE1): 自定义 toString 防止 apiKey 明文泄露到日志/调试输出。
@@ -89,6 +101,7 @@ data class ProviderConfig(
                 ProviderType.OPENAI -> DEFAULT_OPENAI_BASE_URL
                 ProviderType.ANTHROPIC -> DEFAULT_ANTHROPIC_BASE_URL
                 ProviderType.GEMINI -> DEFAULT_GEMINI_BASE_URL
+                ProviderType.OPENAI_RESPONSES -> DEFAULT_OPENAI_RESPONSES_BASE_URL
             }
         }
         if (resolved.isNotEmpty() && !resolved.startsWith("https://", ignoreCase = true)) {
@@ -128,5 +141,6 @@ data class ProviderConfig(
         const val DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1"
         const val DEFAULT_GEMINI_BASE_URL =
             "https://generativelanguage.googleapis.com/v1beta"
+        const val DEFAULT_OPENAI_RESPONSES_BASE_URL = "https://api.openai.com/v1"
     }
 }

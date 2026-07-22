@@ -4,6 +4,7 @@ import io.zer0.common.ErrorCode
 import io.zer0.common.toMessage
 import io.zer0.ai.core.ChatCompletion
 import io.zer0.ai.core.ChatRequest
+import io.zer0.ai.core.ChatRequestMode
 import io.zer0.ai.core.ChatStreamEvent
 import io.zer0.ai.core.MessageRole
 import io.zer0.ai.core.Model
@@ -12,11 +13,17 @@ import io.zer0.ai.core.ModelContextWindowRegistry
 import io.zer0.ai.core.ProviderCompat
 import io.zer0.ai.core.ProviderConfig
 import io.zer0.ai.core.ProviderHttpSupport
+import io.zer0.ai.core.ProviderPayloadNormalizer
+import io.zer0.ai.core.ProviderPromptPatches
 import io.zer0.ai.core.ProviderSpecificConfig
+import io.zer0.ai.core.ReasoningCarrier
+import io.zer0.ai.core.ReasoningReplayPolicy
+import io.zer0.ai.core.ThinkingFormat
 import io.zer0.ai.core.ToolCall
 import io.zer0.ai.core.ToolDefinition
 import io.zer0.ai.core.UIMessage
 import io.zer0.ai.ollama.OllamaVisionInferrer
+import io.zer0.ai.registry.ModelRegistry
 import io.zer0.common.AppJson
 import io.zer0.common.Logger
 import io.zer0.common.resultOf
@@ -69,37 +76,76 @@ class OpenAIProvider(
             ?: ProviderSpecificConfig.OpenAI()
     }
 
+    /**
+     * v1.0.7: 是否走 Responses API(/v1/responses 端点)。
+     *
+     * 对齐 openhanako 的 openai-responses / openai-codex-responses 协议。
+     * 当 [ProviderSpecificConfig.OpenAI.useResponseApi]=true 时:
+     *  - streamChat/completeText 改走 [responsesPath] 端点(默认 /responses)
+     *  - 请求体改用 ResponsesRequest 结构(messages → input, system → instructions)
+     *  - 流式响应改用 response.output_text.delta 事件(替代 delta.content)
+     *  - 非流式响应改用 output[] 数组(替代 choices[0].message)
+     *
+     * 修复"骗用户 bug":ProviderType.OPENAI_RESPONSES + useResponseApi=true 已声明,
+     * 但旧版 OpenAIProvider 完全不读此标志,始终走 Chat Completions 协议,
+     * 导致用户配置 Responses API 后实际发 Chat Completions 格式到 /chat/completions,
+     * 而 Responses API 端点是 /responses 且请求/响应结构完全不同 — 会 404 或 400。
+     */
+    private val useResponsesApi: Boolean by lazy { openAIConfig.useResponseApi }
+
     private val sseFactory by lazy { EventSources.createFactory(httpClient) }
 
     /**
      * 获取实际发送给 API 的 model id。
      *
-     * 1. 如果 OpenAI specific 配置了 [ProviderSpecificConfig.OpenAI.stripModelPrefix],优先移除该前缀。
-     * 2. 未配置且 model id 含 "/" 时,自动取最后一段(兼容 openrouter/opencode-go 等聚合平台的
-     *    "provider/model" 命名)。OpenAI 官方模型 id 不含 "/",因此不会误伤。
+     * v1.0.2 修复 HTTP 400: 移除 v1.135 引入的自动 `substringAfterLast("/")` 剥离逻辑。
      *
-     * v1.135: 自动剥离解决中转站(OpenCode/OpenRouter)因模型 id 前缀导致 HTTP 400 的问题。
+     * 调研三大参考项目(rikkahub / openhanako / kelivo)结论:全部原样透传 model id,
+     * 不做前缀剥离。OpenRouter / Console GO / new-api 等中转站明确要求保留 "provider/model"
+     * 斜杠前缀(例如 `openai/gpt-4o`、`anthropic/claude-3`),自动剥离会让中转站找不到
+     * 模型,返回 HTTP 400 invalid_request_error。
+     *
+     * v1.135 的自动剥离本是"修复"中转站 400,实际反而成了新的 400 根因。
+     *
+     * 现策略:
+     * - 默认原样透传(对齐三参考项目)
+     * - 用户需要剥离时,显式配置 [ProviderSpecificConfig.OpenAI.stripModelPrefix]
+     *   (例如 stripModelPrefix = "openai/",会剥离成 "gpt-4o")
      */
     private fun effectiveModelId(modelId: String): String {
         val configuredPrefix = openAIConfig.stripModelPrefix.takeIf { it.isNotBlank() }
-        if (configuredPrefix != null) {
-            return if (modelId.startsWith(configuredPrefix)) modelId.removePrefix(configuredPrefix) else modelId
+        return if (configuredPrefix != null && modelId.startsWith(configuredPrefix)) {
+            modelId.removePrefix(configuredPrefix)
+        } else {
+            modelId
         }
-        return modelId.substringAfterLast("/").takeIf { it.isNotBlank() } ?: modelId
     }
 
-    override fun streamChat(request: ChatRequest): Flow<ChatStreamEvent> = callbackFlow {
+    override fun streamChat(request: ChatRequest): Flow<ChatStreamEvent> {
+        // v1.0.7: useResponseApi=true 时走 Responses API 分支(修复"骗用户 bug")
+        if (useResponsesApi) return streamChatResponses(request)
+        return streamChatCompletions(request)
+    }
+
+    /**
+     * v1.0.7: Chat Completions API 流式(原 streamChat 主体,提取为独立函数便于分支)。
+     */
+    private fun streamChatCompletions(request: ChatRequest): Flow<ChatStreamEvent> = callbackFlow {
         val body = buildRequestBody(request)
         // M-OAI4: 改用配置项 chatCompletionsPath(支持 Azure 等中转自定义路径)
         val url = baseUrl() + openAIConfig.chatCompletionsPath
         Logger.i("OpenAIProvider", "streamChat: POST $url model=${request.model} msgs=${request.messages.size}")
-        val httpRequest = Request.Builder()
+
+        // v1.0.1: httpRequest 改为 var,429 切换 key 后重新构造
+        fun buildHttpRequest(): Request = Request.Builder()
             .url(url)
-            .header("Authorization", "Bearer ${config.apiKey}")
+            .header("Authorization", "Bearer ${effectiveApiKey()}")
             .header("Content-Type", "application/json")
             .header("Accept", "text/event-stream")
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
             .build()
+
+        var httpRequest = buildHttpRequest()
 
         // 捕获 ProducerScope,供匿名 listener 内启动重连协程
         val scope = this@callbackFlow
@@ -135,12 +181,33 @@ class OpenAIProvider(
                     firstByteAt = System.currentTimeMillis()
                     Logger.i("OpenAIProvider", "streamChat TTFB: ${firstByteAt - requestStartAt}ms | url=$url")
                     if (!response.isSuccessful) {
+                        val code = response.code
+                        // v1.0.1: 429 限流时尝试切换 key重试(多 key 场景)
+                        if (code == 429 && !anyDeltaSent.get() && retryCount.get() < MAX_RETRIES &&
+                            !request.abortSignal.aborted && switchToNextKey()
+                        ) {
+                            Logger.i("OpenAIProvider", "streamChat onOpen 429 限流,已切换到下一个 key,立即重试")
+                            httpRequest = buildHttpRequest()
+                            retryCount.incrementAndGet()
+                            eventSource.cancel()
+                            currentCall?.cancel()
+                            scope.launch {
+                                if (!request.abortSignal.aborted && !scope.isClosedForSend) {
+                                    connect()
+                                }
+                            }
+                            return
+                        }
                         // L-OAI1: 用 readBodySafely 替代 runCatching
                         val errText = ProviderHttpSupport.readBodySafely(response)
-                        val msg = parseErrorMessage(response.code, errText)
-                        Logger.w("OpenAIProvider", "streamChat onOpen HTTP ${response.code}: $msg")
+                        val msg = parseErrorMessage(code, errText)
+                        Logger.w("OpenAIProvider", "streamChat onOpen HTTP $code: $msg")
+                        // v1.0.1: 401/403 鉴权失败时标记当前 key 失败(多 key 场景)
+                        if (code == 401 || code == 403) {
+                            markKeyFailed(hardBlock = true)
+                        }
                         // L-OAI17: 错误事件携带 throwable,便于上层据此区分错误类型
-                        trySend(ChatStreamEvent.Error(msg, OpenAIHttpException(response.code, msg)))
+                        trySend(ChatStreamEvent.Error(msg, OpenAIHttpException(code, msg)))
                         close()
                         return
                     }
@@ -249,9 +316,19 @@ class OpenAIProvider(
                         if (code == 429) {
                             backoffMs = response?.header("Retry-After")?.toIntOrNull()
                                 ?.let { it * 1000L } ?: backoffMs
+                            // v1.0.1: 429 时切换到下一个 key(多 key 场景)
+                            //  切换成功后立即重试(不等 backoff),因为新 key 可能未限流
+                            if (switchToNextKey()) {
+                                Logger.i("OpenAIProvider", "streamChat 429 限流,已切换到下一个 key,立即重试")
+                                backoffMs = 0L
+                            }
                         }
                         // L-OAI9: 加 jitter(0~499ms),避免多客户端同步重试引发惊群
-                        backoffMs += Random.nextLong(0, 500)
+                        if (backoffMs > 0) {
+                            backoffMs += Random.nextLong(0, 500)
+                        }
+                        // v1.0.1: key 切换后重新构造 httpRequest(更新 Authorization header)
+                        httpRequest = buildHttpRequest()
                         Logger.w("OpenAIProvider", "streamChat onFailure, retry $attempt/$MAX_RETRIES after ${backoffMs}ms: ${t?.message ?: code}")
                         scope.launch {
                             delay(backoffMs)
@@ -300,13 +377,16 @@ class OpenAIProvider(
      *   如确需重试,应由调用方(Worker)根据返回的异常类型决定。
      */
     override suspend fun completeText(request: ChatRequest): ChatCompletion = withContext(Dispatchers.IO) {
+        // v1.0.7: useResponseApi=true 时走 Responses API 分支
+        if (useResponsesApi) return@withContext completeTextResponses(request)
         val body = buildRequestBody(request, stream = false)
         // M-OAI4: 改用配置项 chatCompletionsPath(与 streamChat 一致)
         val url = baseUrl() + openAIConfig.chatCompletionsPath
         Logger.i("OpenAIProvider", "completeText: POST $url model=${request.model}")
+        // v1.0.1: 用 effectiveApiKey() 支持多 key 轮换
         val httpRequest = Request.Builder()
             .url(url)
-            .header("Authorization", "Bearer ${config.apiKey}")
+            .header("Authorization", "Bearer ${effectiveApiKey()}")
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
@@ -317,12 +397,21 @@ class OpenAIProvider(
             val response = call.execute()
             response.use { resp ->
                 if (!resp.isSuccessful) {
+                    val code = resp.code
+                    // v1.0.1: 429 切换 key 重试(多 key 场景);401/403 标记 key 失败
+                    if (code == 429 && switchToNextKey()) {
+                        Logger.i("OpenAIProvider", "completeText 429 限流,已切换到下一个 key,重试")
+                        return@withContext completeText(request)
+                    }
+                    if (code == 401 || code == 403) {
+                        markKeyFailed(hardBlock = true)
+                    }
                     // L-OAI1: 用 readBodySafely 替代 runCatching
                     val errText = ProviderHttpSupport.readBodySafely(resp)
-                    val msg = parseErrorMessage(resp.code, errText)
-                    Logger.w("OpenAIProvider", "completeText HTTP ${resp.code}: $msg")
+                    val msg = parseErrorMessage(code, errText)
+                    Logger.w("OpenAIProvider", "completeText HTTP $code: $msg")
                     // L-OAI11: 用自定义异常替代字符串前缀判断
-                    throw OpenAIHttpException(resp.code, msg)
+                    throw OpenAIHttpException(code, msg)
                 }
                 // M-OAI6: body 可能为 null(虽然 OkHttp 实际几乎不为 null,但类型上 Nullable),统一做空安全
                 val raw = resp.body?.string()
@@ -442,42 +531,83 @@ class OpenAIProvider(
                     .filter { seen.add(it.id) }
                     .map { m ->
                         // v1.132: OpenRouter/Together 的 context_length 透传并注册到全局表
-                        val upstreamCtx = m.context_length
-                            ?: m.top_provider?.max_completion_tokens?.takeIf { it > 0 }
-                        if (upstreamCtx != null && upstreamCtx > 0) {
-                            ModelContextWindowRegistry.register(m.id, upstreamCtx)
+                        // v1.0.8 修正:context_window 与 max_completion_tokens 语义不同,
+                        // 后者仅用于 maxOutputTokens,不再作为 contextWindow 兜底。
+                        val contextLength = m.context_length
+                        if (contextLength != null && contextLength > 0) {
+                            ModelContextWindowRegistry.register(m.id, contextLength)
                         }
-                        // P2-3: 视觉/工具能力填充。
-                        //   优先级: 服务端 capabilities 字段 > OllamaVisionInferrer 推断 > 默认 false。
-                        //   - 服务端 capabilities 含 "vision" → supportsVision = true
-                        //   - 服务端 capabilities 含 "tools" → abilities 加 TOOL
-                        //   - Ollama 场景下,服务端未声明时用模型名关键字推断(见 OllamaVisionInferrer)
-                        val serverVision = m.capabilities
-                            ?.any { it.equals("vision", ignoreCase = true) } ?: false
-                        val serverTools = m.capabilities
-                            ?.any { it.equals("tools", ignoreCase = true) } ?: false
+                        // v1.0.8: 统一解析服务端 capabilities + modalities,构造 input/outputModalities。
+                        // 优先级: 服务端显式声明 > Ollama 推断 > 默认 text-only。
+                        val capabilitySet = m.capabilities
+                            ?.map { it.trim().lowercase() }
+                            ?.toSet()
+                            ?: emptySet()
+                        val modalitySet = m.modalities
+                            ?.map { it.trim().lowercase() }
+                            ?.toSet()
+                            ?: emptySet()
+
+                        val serverVision = capabilitySet.contains("vision") ||
+                            capabilitySet.contains("image") ||
+                            modalitySet.contains("image")
+                        val serverAudio = capabilitySet.contains("audio") || modalitySet.contains("audio")
+                        val serverVideoIn = capabilitySet.contains("video_input") ||
+                            capabilitySet.contains("video") ||
+                            modalitySet.contains("video")
+                        val serverVideoOut = capabilitySet.contains("video_output") ||
+                            capabilitySet.contains("video_generation")
+                        val serverImageOut = capabilitySet.contains("image_generation") ||
+                            capabilitySet.contains("image_output") ||
+                            capabilitySet.contains("dall-e")
+                        val serverTools = capabilitySet.contains("tools") ||
+                            capabilitySet.contains("tool_call") ||
+                            capabilitySet.contains("function_call")
+                        val serverReasoning = capabilitySet.contains("reasoning")
+
                         val inferredVision = isOllama && !serverVision &&
                             OllamaVisionInferrer.inferSupportsVision(m.id)
                         val inferredTools = isOllama && !serverTools &&
                             OllamaVisionInferrer.inferSupportsTools(m.id)
+
                         val supportsVision = serverVision || inferredVision
-                        val abilities = if (serverTools || inferredTools) {
-                            setOf(ModelAbility.TOOL)
-                        } else {
-                            emptySet()
+                        val supportsVideoOut = serverVideoOut
+                        val abilities = buildSet {
+                            if (serverTools || inferredTools) add(ModelAbility.TOOL)
+                            if (serverReasoning) add(ModelAbility.REASONING)
                         }
-                        Model(
+
+                        val inputModalities = buildSet {
+                            add("text")
+                            if (supportsVision || serverAudio || serverVideoIn) {
+                                if (supportsVision) add("image")
+                                if (serverAudio) add("audio")
+                                if (serverVideoIn) add("video")
+                            }
+                        }
+                        val outputModalities = buildSet {
+                            add("text")
+                            if (serverImageOut) add("image")
+                            if (supportsVideoOut) add("video")
+                        }
+
+                        val rawModel = Model(
                             id = m.id,
                             name = m.id,
                             providerId = config.id,
                             // 优先用上游 context_length,其次查注册表(刚 register 的会被命中)
-                            contextWindow = upstreamCtx ?: ModelContextWindowRegistry.lookup(m.id),
+                            contextWindow = contextLength ?: ModelContextWindowRegistry.lookup(m.id),
                             // v1.132: 透传 max_completion_tokens 作为 maxOutputTokens
                             maxOutputTokens = m.max_completion_tokens ?: m.top_provider?.max_completion_tokens,
-                            // P2-3: 视觉/工具能力(服务端优先,推断兜底)
+                            // v1.0.8: 视觉/视频/工具/推理能力(服务端优先,推断兜底)
                             supportsVision = supportsVision,
+                            supportsVideo = supportsVideoOut,
                             abilities = abilities,
+                            inputModalities = inputModalities,
+                            outputModalities = outputModalities,
                         )
+                        // v1.0.8: 用 registry 再补全一次能力/模态,覆盖服务端未声明的场景
+                        ModelRegistry.enhanceModel(rawModel)
                     }
                     // 按 id 字母序排序,便于用户查找
                     .sortedBy { it.id.lowercase() }
@@ -504,35 +634,202 @@ class OpenAIProvider(
     }
 
     private fun buildRequestBody(request: ChatRequest, stream: Boolean = true): String {
+        // v1.0.7: UTILITY 模式强制关思考(对齐 openhanako buildProviderCompatOptions)
+        //  utility 路径(memory 摘要 / fact 抽取 / 视觉辅助等后台短文本任务)无需思考链,
+        //  强制 effectiveReasoningLevel = OFF 以省 token + 降延迟。
+        val effectiveReasoningLevel = if (request.mode == ChatRequestMode.UTILITY) {
+            io.zer0.ai.core.ReasoningLevel.OFF
+        } else {
+            request.reasoningLevel
+        }
         // v1.138: 思考等级优化 — 避免简单问题模型过度思考。
         // - AUTO: 不发 reasoning_effort(让服务端自行决定)
         // - OFF: 模型支持推理时发 "minimal"(最小推理,比不发 effort 让服务端用默认 medium 更少);
         //        模型不支持推理时不发(避免对 GPT-4o 等非推理模型发 reasoning_effort 导致 400)
         // - LOW/MEDIUM/HIGH/XHIGH: 显式发送对应 effort
-        val effort = when (request.reasoningLevel) {
+        val effort = when (effectiveReasoningLevel) {
             io.zer0.ai.core.ReasoningLevel.AUTO -> null
             io.zer0.ai.core.ReasoningLevel.OFF ->
                 if (request.model.supportsReasoning()) "minimal" else null
-            else -> request.reasoningLevel.effort
+            else -> effectiveReasoningLevel.effort
         }
         // compat 派生:按 type + baseUrl + modelId 三层匹配,决定是否注入 reasoning_effort / tools。
         // 用 effectiveModelId(已剥离 stripModelPrefix)作为 modelId,反映真正发给 API 的 model。
         // H-COMPAT1: 仅在最明显的参数注入点加判断,不重构请求构造主体逻辑。
         val effectiveModel = effectiveModelId(request.model.id)
         val compat: ProviderCompat = config.resolvedCompat(effectiveModel)
+        // v1.0.5: Provider 出口兜底 — 先对 UIMessage 列表做 Provider 无关的通用清理
+        //  (stripOrphanToolMessages 删孤儿 TOOL 消息 / stripNativeMediaAttachmentMarkers
+        //   清理冗余图片标记),再做协议翻译。对齐 openhanako normalizeProviderPayload。
+        val normalizedMessages = ProviderPayloadNormalizer.normalizeMessages(
+            request.messages, request.model,
+        )
+        // v1.0.7: Provider Prompt Patches — 注入厂商专属 system prompt 补丁
+        //  (对齐 openhanako getProviderPromptPatches,当前仅 DeepSeek 推理模型输出契约)
+        //  UTILITY 模式下 effectiveReasoningLevel=OFF,ProviderPromptPatches 内部会跳过注入
+        val promptPatches = ProviderPromptPatches.getProviderPromptPatches(
+            model = request.model,
+            baseUrl = baseUrl(),
+            thinkingFormat = compat.thinkingFormat,
+            reasoningLevel = effectiveReasoningLevel,
+        )
+        val messagesWithPatches = injectSystemPromptPatches(normalizedMessages, promptPatches)
         val payload = OpenAIRequest(
             model = effectiveModel,
-            messages = request.messages.map { it.toOpenAI() },
+            messages = messagesWithPatches.map { it.toOpenAI(request.model, compat) },
             temperature = request.temperature,
-            max_tokens = request.maxTokens,
+            // v1.0.2 修复 HTTP 400: max_tokens 范围校验,0/负值视为未设置(对齐 rikkahub/openhanako)。
+            // 部分 OpenAI 兼容中转站严格校验 max_tokens >= 1,直接发 0 会返回 400 invalid_request_error。
+            // null 会被 kotlinx.serialization 忽略,不写入请求体,让上游用默认值。
+            max_tokens = request.maxTokens?.takeIf { it > 0 },
             stream = stream,
             // compat.supportsToolCalling=false 时强制不发 tools(如 deepseek-reasoner / o1-mini)
-            tools = if (compat.supportsToolCalling) request.tools?.mapNotNull { it.toOpenAISafely() } else null,
+            // v1.0.4 修复 HTTP 400 "Tool names must be unique":按 function.name 防御性去重,
+            // 即使上游(ToolRegistry + SkillExecutor)漏过同名工具,这里也能拦截,
+            // 防止 DeepSeek 等严格校验工具名唯一性的 API 返回 400。
+            // v1.0.5: stripEmptyTools — 空 tools 列表改为 null,避免序列化出
+            //  `"tools": []` 被严格中转站拒绝(对齐 openhanako stripEmptyTools)。
+            tools = if (compat.supportsToolCalling)
+                request.tools?.mapNotNull { it.toOpenAISafely() }?.distinctBy { it.function.name }
+                    ?.takeIf { it.isNotEmpty() }
+            else null,
             // compat.supportsReasoningEffort=false 时强制不发 reasoning_effort
             //   (如 DeepSeek / Zhipu / Gemini OpenAI 兼容层,各自用 reasoning_content / thinking 字段)
-            reasoning_effort = if (compat.supportsReasoningEffort) effort else null,
+            // v1.0.5: stripDisabledReasoningEffort — 值为 false/none/off 时视为未启用,
+            //   改为 null 不发送(对齐 openhanako stripDisabledReasoningEffort)。
+            // v1.0.7: thinkingFormat != null 时也不发 reasoning_effort
+            //   (改走对应厂商扩展字段,如 thinking / enable_thinking / chat_template_kwargs)
+            reasoning_effort = if (compat.supportsReasoningEffort && compat.thinkingFormat == null)
+                effort?.takeIf { !isDisabledReasoningEffort(it) }
+            else null,
         )
-        return AppJson.encodeToString(payload)
+        // v1.0.7: thinkingFormat 注入 — 按厂商扩展字段构造思考参数
+        // 对齐 openhanako 的 thinkingFormat 9 种格式,每种对应不同请求体字段。
+        // 实现:先序列化 OpenAIRequest 为 JsonObject,再按 thinkingFormat 追加/修改字段。
+        // UTILITY 模式下 effectiveReasoningLevel=OFF,injectThinkingFormat 会写入 disabled
+        val thinkingFormat = compat.thinkingFormat
+        if (thinkingFormat == null) {
+            return AppJson.encodeToString(payload)
+        }
+        return injectThinkingFormat(payload, thinkingFormat, effectiveReasoningLevel)
+    }
+
+    /**
+     * v1.0.7: 按 [ThinkingFormat] 注入厂商扩展思考字段。
+     *
+     * 对齐 openhanako thinkingFormat 9 种格式,实现:
+     *  - [ThinkingFormat.DEEPSEEK]:不发任何思考参数(服务端默认开,仅消费流式 reasoning_content)
+     *  - [ThinkingFormat.KIMI]:`thinking: {type: "enabled"|"disabled", keep: false}`
+     *  - [ThinkingFormat.QWEN]:`enable_thinking: bool` + 可选 `thinking_budget: int`(HIGH/XHIGH 时发)
+     *  - [ThinkingFormat.QWEN_CHAT_TEMPLATE]:`chat_template_kwargs: {enable_thinking: bool}`
+     *  - [ThinkingFormat.ZHIPU]:`thinking: {type: "enabled"|"disabled", clear_thinking: false}`
+     *  - [ThinkingFormat.OPENROUTER]:`reasoning: {effort: "low"|"medium"|"high"}`
+     *  - [ThinkingFormat.VOLCENGINE]:`thinking: {type: "enabled"|"disabled"}`
+     *  - [ThinkingFormat.LONGCAT]:`thinking: {type: "enabled"|"disabled"}`
+     *  - [ThinkingFormat.ANTHROPIC]:OpenAIProvider 不消费(AnthropicProvider 自身处理原生 thinking 块)
+     *
+     * @param payload 原始 OpenAIRequest(已含 messages/tools/stream 等标准字段)
+     * @param format thinkingFormat 枚举值(非 null)
+     * @param level 推理等级(决定 enabled/disabled + effort 值)
+     * @return 注入思考字段后的 JSON 字符串
+     */
+    private fun injectThinkingFormat(
+        payload: OpenAIRequest,
+        format: ThinkingFormat,
+        level: io.zer0.ai.core.ReasoningLevel,
+    ): String {
+        // 先把 OpenAIRequest 序列化为 JsonObject
+        val jsonElement = AppJson.encodeToJsonElement(OpenAIRequest.serializer(), payload)
+        val baseObj = jsonElement as? kotlinx.serialization.json.JsonObject
+            ?: return AppJson.encodeToString(payload)
+        val baseMap = baseObj.toMutableMap()
+
+        // 推理开关:OFF → disabled,AUTO → enabled(让服务端自行决定深度),其他 → enabled
+        val thinkingEnabled = level != io.zer0.ai.core.ReasoningLevel.OFF
+
+        when (format) {
+            ThinkingFormat.DEEPSEEK -> {
+                // DeepSeek 不发任何思考参数(服务端默认开 R1 思考)
+                // reasoning_content 已在流式 delta 中解析,无需请求体控制
+            }
+            ThinkingFormat.KIMI -> {
+                // Kimi:thinking: {type: "enabled"|"disabled", keep: false}
+                // keep=false 表示不保留思考链在最终响应中(节省 tokens)
+                baseMap["thinking"] = buildJsonObject {
+                    put("type", if (thinkingEnabled) "enabled" else "disabled")
+                    put("keep", false)
+                }
+            }
+            ThinkingFormat.QWEN -> {
+                // Qwen3:enable_thinking: bool + 可选 thinking_budget: int
+                baseMap["enable_thinking"] = JsonPrimitive(thinkingEnabled)
+                if (thinkingEnabled && level.budgetTokens != null && level.budgetTokens > 0) {
+                    baseMap["thinking_budget"] = JsonPrimitive(level.budgetTokens)
+                }
+            }
+            ThinkingFormat.QWEN_CHAT_TEMPLATE -> {
+                // Qwen3-Coder:chat_template_kwargs: {enable_thinking: bool}
+                // (Qwen3-Coder 用 chat_template 协议,enable_thinking 必须嵌在 chat_template_kwargs 内)
+                baseMap["chat_template_kwargs"] = buildJsonObject {
+                    put("enable_thinking", thinkingEnabled)
+                }
+            }
+            ThinkingFormat.ZHIPU -> {
+                // 智谱 GLM-Z1:thinking: {type: "enabled"|"disabled", clear_thinking: false}
+                // clear_thinking=false 表示不清除思考链(保留在响应中)
+                baseMap["thinking"] = buildJsonObject {
+                    put("type", if (thinkingEnabled) "enabled" else "disabled")
+                    put("clear_thinking", false)
+                }
+            }
+            ThinkingFormat.OPENROUTER -> {
+                // OpenRouter:reasoning: {effort: "low"|"medium"|"high"}
+                // (Chat Completions 协议扩展,与 Responses API 的 reasoning 不同)
+                if (thinkingEnabled && level.effort != null) {
+                    // OpenRouter 不接受 "minimal",OFF 时不发 reasoning 字段
+                    val openRouterEffort = when (level) {
+                        io.zer0.ai.core.ReasoningLevel.LOW -> "low"
+                        io.zer0.ai.core.ReasoningLevel.MEDIUM -> "medium"
+                        io.zer0.ai.core.ReasoningLevel.HIGH, io.zer0.ai.core.ReasoningLevel.XHIGH -> "high"
+                        else -> null  // AUTO/OFF 不发
+                    }
+                    openRouterEffort?.let {
+                        baseMap["reasoning"] = buildJsonObject {
+                            put("effort", it)
+                        }
+                    }
+                }
+            }
+            ThinkingFormat.VOLCENGINE -> {
+                // 火山引擎 Doubao Thinking:thinking: {type: "enabled"|"disabled"}
+                baseMap["thinking"] = buildJsonObject {
+                    put("type", if (thinkingEnabled) "enabled" else "disabled")
+                }
+            }
+            ThinkingFormat.LONGCAT -> {
+                // 美团 LongCat:thinking: {type: "enabled"|"disabled"}
+                baseMap["thinking"] = buildJsonObject {
+                    put("type", if (thinkingEnabled) "enabled" else "disabled")
+                }
+            }
+            ThinkingFormat.ANTHROPIC -> {
+                // Anthropic 原生 thinking 块 — OpenAIProvider 不消费
+                // (AnthropicProvider 自身走原生 Messages API,不经过此路径)
+            }
+        }
+
+        return AppJson.encodeToString(kotlinx.serialization.json.JsonObject(baseMap))
+    }
+
+    /**
+     * v1.0.5: 判断 reasoning_effort 值是否为"已禁用"语义(对齐 openhanako isDisabledReasoningEffort)。
+     *
+     * false / null / 空串 / "none" / "off" / "disabled" 均视为已禁用,不应发送给 API。
+     */
+    private fun isDisabledReasoningEffort(value: String?): Boolean {
+        if (value == null) return true
+        val normalized = value.lowercase()
+        return normalized.isEmpty() || normalized == "none" || normalized == "off" || normalized == "disabled" || normalized == "false"
     }
 
     /**
@@ -569,18 +866,35 @@ class OpenAIProvider(
      * M-OAI5: 图片 mime type 从 base64 头部 magic bytes 推断。
      * M-OAI8: base64 图片数量限制(<=4张)+ 单张大小限制(<=2MB),超限丢弃。
      * L-OAI7: assistant + tool_calls 时 content 为空传 JsonNull 而非空串。
+     *
+     * v1.0.5: 防御性视觉过滤 — 当 [model] 不支持视觉输入时,即使消息携带图片
+     *  也走纯文本路径(丢弃 imageBase64List),避免向纯文本模型发送图片触发 400。
+     *  这是 Provider 出口的最后一道防线,正常情况下 ChatViewModel 的视觉辅助路由
+     *  应已在调用 streamChat 前清空图片(由 VisionBridge.prepare 注入描述后清空)。
+     *  此过滤仅用于兜底:历史消息残留图片 / 调用方遗漏清空等异常场景。
      */
-    private fun UIMessage.toOpenAI(): OpenAIMessage = OpenAIMessage(
+    private fun UIMessage.toOpenAI(model: Model, compat: ProviderCompat? = null): OpenAIMessage = OpenAIMessage(
         role = when (role) {
             MessageRole.SYSTEM -> "system"
             MessageRole.USER -> "user"
             MessageRole.ASSISTANT -> "assistant"
             MessageRole.TOOL -> "tool"
         },
-        content = if (imageBase64List.isEmpty()) {
-            // L-OAI7: assistant + tool_calls 时 content 为空传 JsonNull 而非空串
+        content = if (imageBase64List.isEmpty() || !model.supportsVisionInput()) {
+            // v1.0.5: 模型不支持视觉但消息携带图片时,丢弃图片走纯文本路径(防御性)
+            if (imageBase64List.isNotEmpty() && !model.supportsVisionInput()) {
+                Logger.w(
+                    "OpenAIProvider",
+                    "toOpenAI: 模型 ${model.id} 不支持视觉,丢弃 ${imageBase64List.size} 张图片(防御性过滤)",
+                )
+            }
+            // v1.0.2 修复 HTTP 400: assistant + tool_calls 时 content 为空,改传空字符串而非 JsonNull。
+            // 调研 openhanako (reasoning-content-replay.ts:270-292 ensureAssistantContentForToolCalls):
+            // 将 null/undefined content 规范化为 "" 空字符串,避免 OpenAI 兼容协议(尤其严格的中转站)
+            // 拒绝 content: null 的 assistant 消息。原 L-OAI7 传 JsonNull 在部分中转站会触发 400。
+            // rikkahub (ChatCompletionsAPI.kt:535-614) 也用 content: "" 而非 null。
             if (role == MessageRole.ASSISTANT && !toolCalls.isNullOrEmpty() && content.isBlank()) {
-                JsonNull
+                JsonPrimitive("")
             } else {
                 JsonPrimitive(content)
             }
@@ -614,7 +928,74 @@ class OpenAIProvider(
         },
         toolCalls = toolCalls?.map { it.toOpenAI() },
         toolCallId = toolCallId,
+        // v1.0.7: 历史推理回放 — 按 reasoningReplayContract.carrier/policy 决定是否注入 reasoning_content
+        reasoningContent = computeReasoningContentForReplay(compat),
     )
+
+    /**
+     * v1.0.7: 计算历史推理回放的 reasoning_content 值(对齐 openhanako reasoning-content-replay)。
+     *
+     * 仅当 compat.reasoningReplayContract.carrier == REASONING_CONTENT 时考虑注入
+     * (Kimi / DeepSeek / MiMo / Zhipu Chat Completions 协议)。
+     *
+     * policy 决策:
+     *  - [ReasoningReplayPolicy.NONE]:不注入(返回 null)
+     *  - [ReasoningReplayPolicy.PRESERVE]:始终注入(若 reasoning 非空)
+     *  - [ReasoningReplayPolicy.REQUIRE_TOOL_CALL]:仅 ASSISTANT + tool_calls 非空时注入
+     *    (对齐 Kimi/DeepSeek fail-closed:这些厂商要求 tool_calls 消息必带 reasoning_content,
+     *     否则返回 400;非 tool_calls 消息则不发,避免污染普通对话)
+     *
+     * 其他 carrier(REASONING_ITEMS / REASONING_DETAILS / THINKING_BLOCKS / THOUGHT_SIGNATURE)
+     * 不通过此函数处理 — 它们走 Responses API / OpenRouter / Anthropic / Gemini 各自路径。
+     */
+    private fun UIMessage.computeReasoningContentForReplay(compat: ProviderCompat?): String? {
+        val contract = compat?.reasoningReplayContract ?: return null
+        if (contract.carrier != ReasoningCarrier.REASONING_CONTENT) return null
+        val reasoningText = reasoning?.takeIf { it.isNotBlank() } ?: return null
+        return when (contract.policy) {
+            ReasoningReplayPolicy.NONE -> null
+            ReasoningReplayPolicy.PRESERVE -> reasoningText
+            ReasoningReplayPolicy.REQUIRE_TOOL_CALL -> {
+                // 仅 ASSISTANT + toolCalls 非空时注入(对齐 openhanako fail-closed 原则)
+                if (role == MessageRole.ASSISTANT && !toolCalls.isNullOrEmpty()) reasoningText else null
+            }
+        }
+    }
+
+    /**
+     * v1.0.7: 把 Provider Prompt Patches 注入到 messages 列表(对齐 openhanako appendSystemPrompt)。
+     *
+     * 注入策略:
+     *  - patches 为空:原样返回(不复制,零开销)
+     *  - 已有 system 消息:把 patches 追加到**第一条** system 消息的 content 末尾(用双换行分隔)
+     *    (避免新增多条 system 消息,部分中转站对 system 消息数量有严格校验)
+     *  - 无 system 消息:在列表开头插入一条新的 system 消息(content = patches 拼接)
+     *
+     * 注:本函数只处理 Chat Completions 协议(messages 数组);
+     *   Responses API 的 instructions 字段在 [buildResponsesRequestBody] 中单独处理。
+     */
+    private fun injectSystemPromptPatches(
+        messages: List<UIMessage>,
+        patches: List<String>,
+    ): List<UIMessage> {
+        if (patches.isEmpty()) return messages
+        val patchText = patches.joinToString("\n\n")
+        val firstSystemIdx = messages.indexOfFirst { it.role == MessageRole.SYSTEM }
+        return if (firstSystemIdx >= 0) {
+            // 追加到第一条 system 消息末尾
+            messages.toMutableList().also { list ->
+                val orig = list[firstSystemIdx]
+                list[firstSystemIdx] = orig.copy(
+                    content = orig.content + "\n\n" + patchText,
+                )
+            }
+        } else {
+            // 无 system 消息,在开头插入一条
+            listOf(
+                UIMessage(role = MessageRole.SYSTEM, content = patchText),
+            ) + messages
+        }
+    }
 
     private fun ToolCall.toOpenAI(): OpenAIToolCall = OpenAIToolCall(
         id = id,
@@ -681,6 +1062,544 @@ class OpenAIProvider(
             }
             detail?.type?.takeIf { it.isNotBlank() }?.let { append(" (").append(it).append(")") }
         }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // v1.0.7: OpenAI Responses API 实现(/v1/responses 端点)
+    //
+    // 对齐 openhanako 的 openai-responses / openai-codex-responses 协议。
+    // 与 Chat Completions API 的关键差异:
+    //  - 请求体:messages → input;system role → instructions 顶层字段;
+    //    max_tokens → max_output_tokens;新增 reasoning: {effort, summary}
+    //  - 流式响应:event: response.output_text.delta + data: {delta: "..."},
+    //    结束标记 response.completed(并发 data: [DONE])
+    //  - 非流式响应:choices[0].message.content → output[] 数组,
+    //    reasoning / function_call 都是 output 顶层 sibling(不在 message 内)
+    // ════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * v1.0.7: Responses API 流式实现。
+     *
+     * SSE 事件类型(对齐 openhanako readCodexResponsesStream):
+     *  - response.output_text.delta:正文增量 → ContentDelta
+     *  - response.output_text.done:正文结束(text 兜底)
+     *  - response.reasoning_summary_text.delta:推理摘要增量 → ReasoningDelta
+     *  - response.function_call_arguments.delta:工具调用参数增量 → ToolCallDelta
+     *  - response.output_item.added:新增 output item(如 function_call 起始,含 id+name)
+     *  - response.completed:流结束(response 字段含最终 output 数组)→ Done
+     *  - data: [DONE]:OpenAI 通用结束符 → Done
+     */
+    private fun streamChatResponses(request: ChatRequest): Flow<ChatStreamEvent> = callbackFlow {
+        val body = buildResponsesRequestBody(request, stream = true)
+        val url = baseUrl() + openAIConfig.responsesPath
+        Logger.i("OpenAIProvider", "streamChatResponses: POST $url model=${request.model} msgs=${request.messages.size}")
+
+        fun buildHttpRequest(): Request = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer ${effectiveApiKey()}")
+            .header("Content-Type", "application/json")
+            .header("Accept", "text/event-stream")
+            .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+
+        var httpRequest = buildHttpRequest()
+        val scope = this@callbackFlow
+        val requestStartAt = System.currentTimeMillis()
+        var firstByteAt = 0L
+        var firstDeltaAt = 0L
+
+        val retryCount = AtomicInteger(0)
+        val anyDeltaSent = AtomicBoolean(false)
+        // Responses API 工具调用累积:output_index → 本地 index 映射
+        val toolCallIndexMap = mutableMapOf<String, Int>()
+        var nextToolCallIndex = 0
+        // output_item.added 事件携带的 function_call 起始信息(id+name)
+        val pendingFunctionCalls = mutableMapOf<String, Pair<String, String>>() // item_id → (call_id, name)
+
+        var currentEventSource: EventSource? = null
+        var currentCall: Call? = null
+
+        fun connect() {
+            val call = httpClient.newCall(httpRequest)
+            currentCall = call
+            currentEventSource = sseFactory.newEventSource(httpRequest, object : EventSourceListener() {
+                override fun onOpen(eventSource: EventSource, response: Response) {
+                    firstByteAt = System.currentTimeMillis()
+                    Logger.i("OpenAIProvider", "streamChatResponses TTFB: ${firstByteAt - requestStartAt}ms | url=$url")
+                    if (!response.isSuccessful) {
+                        val code = response.code
+                        if (code == 429 && !anyDeltaSent.get() && retryCount.get() < MAX_RETRIES &&
+                            !request.abortSignal.aborted && switchToNextKey()
+                        ) {
+                            Logger.i("OpenAIProvider", "streamChatResponses onOpen 429 限流,已切换 key,立即重试")
+                            httpRequest = buildHttpRequest()
+                            retryCount.incrementAndGet()
+                            eventSource.cancel()
+                            currentCall?.cancel()
+                            scope.launch {
+                                if (!request.abortSignal.aborted && !scope.isClosedForSend) {
+                                    connect()
+                                }
+                            }
+                            return
+                        }
+                        val errText = ProviderHttpSupport.readBodySafely(response)
+                        val msg = parseErrorMessage(code, errText)
+                        Logger.w("OpenAIProvider", "streamChatResponses onOpen HTTP $code: $msg")
+                        if (code == 401 || code == 403) {
+                            markKeyFailed(hardBlock = true)
+                        }
+                        trySend(ChatStreamEvent.Error(msg, OpenAIHttpException(code, msg)))
+                        close()
+                        return
+                    }
+                }
+
+                override fun onEvent(
+                    eventSource: EventSource,
+                    id: String?,
+                    type: String?,
+                    data: String,
+                ) {
+                    // Responses API 同时用 [DONE] 和 response.completed 作结束标记
+                    if (data == "[DONE]") {
+                        trySend(ChatStreamEvent.Done())
+                        close()
+                        return
+                    }
+
+                    val event = resultOf {
+                        AppJson.decodeFromString<ResponsesStreamEvent>(data)
+                    }.getOrNull() ?: return
+
+                    if (firstDeltaAt == 0L && (event.delta != null || event.text != null)) {
+                        firstDeltaAt = System.currentTimeMillis()
+                        Logger.i(
+                            "OpenAIProvider",
+                            "streamChatResponses first delta: ${firstDeltaAt - requestStartAt}ms " +
+                                "(TTFB=${firstByteAt - requestStartAt}ms) | url=$url",
+                        )
+                    }
+
+                    when (event.type) {
+                        "response.output_text.delta" -> {
+                            event.delta?.takeIf { it.isNotEmpty() }?.let {
+                                anyDeltaSent.set(true)
+                                trySend(ChatStreamEvent.ContentDelta(it))
+                            }
+                        }
+                        "response.output_text.done" -> {
+                            // 兜底完整文本(若 delta 累积为空才用)
+                            // 此处不直接发送,留给 response.completed 处理
+                        }
+                        "response.reasoning_summary_text.delta" -> {
+                            event.delta?.takeIf { it.isNotEmpty() }?.let {
+                                anyDeltaSent.set(true)
+                                trySend(ChatStreamEvent.ReasoningDelta(it))
+                            }
+                        }
+                        "response.function_call_arguments.delta" -> {
+                            // 工具调用参数增量,按 item_id 累积
+                            val itemId = event.item_id ?: return
+                            val localIndex = toolCallIndexMap.getOrPut(itemId) { nextToolCallIndex++ }
+                            anyDeltaSent.set(true)
+                            // 首片附带 id+name(若 output_item.added 已缓存)
+                            val (callId, name) = pendingFunctionCalls.remove(itemId) ?: ("" to "")
+                            trySend(ChatStreamEvent.ToolCallDelta(
+                                index = localIndex,
+                                id = callId.takeIf { it.isNotEmpty() },
+                                name = name,
+                                argumentsDelta = event.delta.orEmpty(),
+                            ))
+                        }
+                        "response.output_item.added" -> {
+                            // 新增 output item,解析 function_call 起始信息
+                            val item = event.item ?: return
+                            val itemType = (item as? kotlinx.serialization.json.JsonObject)
+                                ?.get("type")?.let { (it as? JsonPrimitive)?.content }
+                            if (itemType == "function_call") {
+                                val obj = item as? kotlinx.serialization.json.JsonObject ?: return
+                                val itemId = obj["id"]?.let { (it as? JsonPrimitive)?.content } ?: return
+                                val callId = obj["call_id"]?.let { (it as? JsonPrimitive)?.content } ?: ""
+                                val name = obj["name"]?.let { (it as? JsonPrimitive)?.content } ?: ""
+                                pendingFunctionCalls[itemId] = callId to name
+                                // 预分配 localIndex
+                                toolCallIndexMap.getOrPut(itemId) { nextToolCallIndex++ }
+                            }
+                        }
+                        "response.completed" -> {
+                            // 流结束,带最终 response 对象
+                            val status = event.response?.status
+                            trySend(ChatStreamEvent.Done(status))
+                            close()
+                        }
+                    }
+                }
+
+                override fun onClosed(eventSource: EventSource) {
+                    close()
+                }
+
+                override fun onFailure(
+                    eventSource: EventSource,
+                    t: Throwable?,
+                    response: Response?,
+                ) {
+                    if (request.abortSignal.aborted) {
+                        Logger.d("OpenAIProvider", "streamChatResponses aborted by user")
+                        trySend(ChatStreamEvent.Error("aborted", t))
+                        close()
+                        return
+                    }
+                    val code = response?.code ?: -1
+                    // 有限次指数退避重连(仅网络层错误,且未发出任何 delta)
+                    if (code <= 0 && !anyDeltaSent.get() && retryCount.get() < MAX_RETRIES) {
+                        val attempt = retryCount.incrementAndGet()
+                        val backoffMs = (RETRY_BASE_DELAY_MS * (1 shl (attempt - 1))) +
+                            Random.nextLong(0, 200)
+                        Logger.w("OpenAIProvider", "streamChatResponses onFailure, retry $attempt/$MAX_RETRIES after ${backoffMs}ms: ${t?.message ?: code}")
+                        scope.launch {
+                            delay(backoffMs)
+                            if (!request.abortSignal.aborted && !scope.isClosedForSend) {
+                                connect()
+                            }
+                        }
+                        return
+                    }
+                    val msg = response?.let {
+                        if (it.code in 200..299) {
+                            t?.message?.takeIf { m -> m.isNotBlank() }
+                                ?: ErrorCode.STREAM_INTERRUPTED.toMessage()
+                        } else {
+                            val bodyText = ProviderHttpSupport.readBodySafely(it)
+                            parseErrorMessage(it.code, bodyText)
+                        }
+                    } ?: (t?.message ?: ErrorCode.NETWORK_ERROR.toMessage())
+                    Logger.e("OpenAIProvider", "streamChatResponses onFailure: $msg", t)
+                    trySend(ChatStreamEvent.Error(msg, t))
+                    close()
+                }
+            })
+        }
+
+        connect()
+
+        awaitClose {
+            request.abortSignal.abort()
+            currentEventSource?.cancel()
+            currentCall?.cancel()
+        }
+    }.flowOn(Dispatchers.IO)
+
+    /**
+     * v1.0.7: Responses API 非流式实现。
+     *
+     * 解析 output[] 数组,提取:
+     *  - type="message" 的 content[].text(可见正文)
+     *  - type="reasoning" 的 summary(推理内容,存入 reasoningContent)
+     *  - type="function_call" 的 call_id/name/arguments(工具调用)
+     */
+    private suspend fun completeTextResponses(request: ChatRequest): ChatCompletion = withContext(Dispatchers.IO) {
+        val body = buildResponsesRequestBody(request, stream = false)
+        val url = baseUrl() + openAIConfig.responsesPath
+        Logger.i("OpenAIProvider", "completeTextResponses: POST $url model=${request.model}")
+        val httpRequest = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer ${effectiveApiKey()}")
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+
+        val call = httpClient.newCall(httpRequest)
+        try {
+            val response = call.execute()
+            response.use { resp ->
+                if (!resp.isSuccessful) {
+                    val code = resp.code
+                    if (code == 429 && switchToNextKey()) {
+                        Logger.i("OpenAIProvider", "completeTextResponses 429 限流,已切换 key,重试")
+                        return@withContext completeTextResponses(request)
+                    }
+                    if (code == 401 || code == 403) {
+                        markKeyFailed(hardBlock = true)
+                    }
+                    val errText = ProviderHttpSupport.readBodySafely(resp)
+                    val msg = parseErrorMessage(code, errText)
+                    Logger.w("OpenAIProvider", "completeTextResponses HTTP $code: $msg")
+                    throw OpenAIHttpException(code, msg)
+                }
+                val raw = resp.body?.string()
+                    ?: throw RuntimeException(ErrorCode.INVALID_RESPONSE.toMessage("empty_body", resp.code))
+                val parsed = AppJson.decodeFromString<ResponsesResult>(raw)
+                val text = extractResponsesVisibleText(parsed)
+                val reasoningContent = extractResponsesReasoning(parsed)
+                val toolCalls = extractResponsesToolCalls(parsed)
+
+                if (text.isBlank() && toolCalls.isNullOrEmpty() && reasoningContent.isBlank()) {
+                    Logger.w("OpenAIProvider", "completeTextResponses 返回空(output 无 message/reasoning/function_call)")
+                    throw RuntimeException(ErrorCode.INVALID_RESPONSE.toMessage("empty_text"))
+                }
+                Logger.d("OpenAIProvider", "completeTextResponses OK: text=${text.length} chars, reasoning=${reasoningContent.length} chars, toolCalls=${toolCalls?.size ?: 0}")
+                ChatCompletion(
+                    text = text,
+                    finishReason = parsed.status,
+                    toolCalls = toolCalls,
+                    reasoningContent = reasoningContent.takeIf { it.isNotBlank() },
+                )
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            call.cancel()
+            throw e
+        } catch (t: Throwable) {
+            if (request.abortSignal.aborted) {
+                Logger.d("OpenAIProvider", "completeTextResponses aborted by user")
+            } else if (t is OpenAIHttpException) {
+                // 已记录的 HTTP 错误
+            } else {
+                Logger.e("OpenAIProvider", "completeTextResponses 异常", t)
+            }
+            throw t
+        } finally {
+            if (request.abortSignal.aborted) call.cancel()
+        }
+    }
+
+    /**
+     * v1.0.7: 构造 Responses API 请求体。
+     *
+     * 转换规则:
+     *  - SYSTEM 消息提取到 instructions 顶层字段(不入 input 数组)
+     *  - USER/ASSISTANT/TOOL 消息转为 input 数组项
+     *  - ASSISTANT 消息的 toolCalls 转为 function_call 项(顶层 sibling,不在 message 内)
+     *  - TOOL 消息转为 function_call_output 项(用 toolCallId 作为 call_id)
+     *  - 多模态 content 用 ResponsesInputItem.content(JsonElement)承载
+     *
+     * 推理配置:
+     *  - reasoningLevel != OFF/AUTO 时,构造 reasoning: {effort} 字段
+     *  - Codex 协议(responsesPath=/codex/responses)强制 store=false
+     *
+     * v1.0.7 TODO(reasoning-items-replay):REASONING_ITEMS carrier 的 reasoning item 回放
+     *  尚未实现。OpenAI Responses API 要求 reasoning item 必须携带 encrypted_content
+     *  才能完整回放(服务端用加密负载验证思考链完整性),仅有 summary 文本不够。
+     *  实现路径:
+     *   1. streamChatResponses 解析 response.completed 事件时,从 output[type=reasoning]
+     *      提取 encrypted_content + id,存入 UIMessage.thinkingSignature
+     *   2. 此处遍历 normalizedMessages,若 ASSISTANT 消息的 thinkingSignature 非空,
+     *      在对应 message item 之前插入 type="reasoning" 的 input item
+     *      (带 id + encrypted_content,无 summary)
+     *  当前不实现:避免构造不完整的 reasoning item 触发服务端 400。
+     *  影响:OpenAI Responses API 多轮对话中,模型无法"看见"上一轮的完整思考链,
+     *  但不会 fail-closed(不像 Kimi/DeepSeek 那样强制要求 reasoning_content)。
+     */
+    private fun buildResponsesRequestBody(request: ChatRequest, stream: Boolean = true): String {
+        val effectiveModel = effectiveModelId(request.model.id)
+        val normalizedMessages = ProviderPayloadNormalizer.normalizeMessages(
+            request.messages, request.model,
+        )
+        // v1.0.7: compat 派生(Responses API 路径,用于 ProviderPromptPatches 判定)
+        val compat: ProviderCompat = config.resolvedCompat(effectiveModel)
+        // v1.0.7: UTILITY 模式强制关思考(对齐 openhanako buildProviderCompatOptions)
+        val effectiveReasoningLevel = if (request.mode == ChatRequestMode.UTILITY) {
+            io.zer0.ai.core.ReasoningLevel.OFF
+        } else {
+            request.reasoningLevel
+        }
+
+        // 提取 system → instructions;其余消息转 input 项
+        val instructionsBuilder = StringBuilder()
+        val inputItems = mutableListOf<ResponsesInputItem>()
+        for (msg in normalizedMessages) {
+            if (msg.role == MessageRole.SYSTEM) {
+                // SYSTEM 消息合并到 instructions(多条用换行分隔)
+                if (instructionsBuilder.isNotEmpty()) instructionsBuilder.append("\n\n")
+                instructionsBuilder.append(msg.content)
+            } else {
+                inputItems.add(msg.toResponsesInputItem(request.model))
+                // ASSISTANT 消息的 toolCalls 转为 function_call 顶层 sibling
+                if (msg.role == MessageRole.ASSISTANT && !msg.toolCalls.isNullOrEmpty()) {
+                    msg.toolCalls.forEach { tc ->
+                        inputItems.add(ResponsesInputItem(
+                            type = "function_call",
+                            call_id = tc.id,
+                            name = tc.name,
+                            arguments = tc.arguments,
+                        ))
+                    }
+                }
+            }
+        }
+
+        // v1.0.7: Provider Prompt Patches — 追加到 instructions 末尾
+        //  (Responses API 的 system prompt 走顶层 instructions 字段,不进 input 数组)
+        //  UTILITY 模式下 effectiveReasoningLevel=OFF,ProviderPromptPatches 内部会跳过注入
+        val promptPatches = ProviderPromptPatches.getProviderPromptPatches(
+            model = request.model,
+            baseUrl = baseUrl(),
+            thinkingFormat = compat.thinkingFormat,
+            reasoningLevel = effectiveReasoningLevel,
+        )
+        for (patch in promptPatches) {
+            if (instructionsBuilder.isNotEmpty()) instructionsBuilder.append("\n\n")
+            instructionsBuilder.append(patch)
+        }
+
+        val instructions = instructionsBuilder.toString().takeIf { it.isNotBlank() }
+
+        // 推理配置(effort 映射,UTILITY 模式下 effectiveReasoningLevel=OFF → "minimal")
+        val effort = when (effectiveReasoningLevel) {
+            io.zer0.ai.core.ReasoningLevel.AUTO -> null
+            io.zer0.ai.core.ReasoningLevel.OFF -> "minimal"
+            else -> effectiveReasoningLevel.effort
+        }
+        val reasoning = effort?.let { ResponsesReasoningConfig(effort = it) }
+
+        // Codex 协议强制 store=false(/codex/responses 路径识别)
+        val isCodex = openAIConfig.responsesPath.contains("codex")
+        val store = if (isCodex) false else null
+
+        val payload = ResponsesRequest(
+            model = effectiveModel,
+            input = inputItems,
+            instructions = instructions,
+            stream = stream,
+            max_output_tokens = request.maxTokens?.takeIf { it > 0 },
+            temperature = request.temperature,
+            tools = request.tools?.mapNotNull { it.toOpenAISafely() }?.distinctBy { it.function.name }
+                ?.takeIf { it.isNotEmpty() },
+            reasoning = reasoning,
+            store = store,
+        )
+        return AppJson.encodeToString(payload)
+    }
+
+    /**
+     * v1.0.7: UIMessage → ResponsesInputItem。
+     *
+     * Responses API 的 input 项与 Chat Completions 的 messages 项结构不同:
+     *  - type="message"(普通消息),role + content
+     *  - type="function_call"(assistant 工具调用,由 buildResponsesRequestBody 单独构造)
+     *  - type="function_call_output"(tool 消息回填,call_id + output)
+     *
+     * content 字段:
+     *  - 纯文本:string(直接传 JsonPrimitive)
+     *  - 多模态:JsonArray([{type:"input_text", text}, {type:"input_image", image_url}])
+     *    (注意:Responses API 用 input_text / input_image,而非 Chat Completions 的 text / image_url)
+     */
+    private fun UIMessage.toResponsesInputItem(model: Model): ResponsesInputItem {
+        // TOOL 消息转 function_call_output(回填工具结果)
+        if (role == MessageRole.TOOL) {
+            return ResponsesInputItem(
+                type = "function_call_output",
+                call_id = toolCallId,
+                content = JsonPrimitive(content),
+            )
+        }
+
+        val roleStr = when (role) {
+            MessageRole.USER -> "user"
+            MessageRole.ASSISTANT -> "assistant"
+            MessageRole.SYSTEM -> "system"
+            MessageRole.TOOL -> "user"  // 兜底(理论上不会到这里)
+        }
+
+        val contentElement = if (imageBase64List.isEmpty() || !model.supportsVisionInput()) {
+            if (imageBase64List.isNotEmpty() && !model.supportsVisionInput()) {
+                Logger.w(
+                    "OpenAIProvider",
+                    "toResponsesInputItem: 模型 ${model.id} 不支持视觉,丢弃 ${imageBase64List.size} 张图片(防御性过滤)",
+                )
+            }
+            JsonPrimitive(content)
+        } else {
+            // 多模态:Responses API 用 input_text / input_image(注意与 Chat Completions 的 text / image_url 不同)
+            buildJsonArray {
+                add(buildJsonObject {
+                    put("type", "input_text")
+                    put("text", content)
+                })
+                val validImages = imageBase64List.filter { it.isNotEmpty() }
+                if (validImages.size > MAX_VISION_IMAGES) {
+                    Logger.w("OpenAIProvider", "图片数量 ${validImages.size} 超过上限 $MAX_VISION_IMAGES,丢弃多余的")
+                }
+                validImages.take(MAX_VISION_IMAGES).forEach { b64 ->
+                    if (b64.length > MAX_IMAGE_BASE64_LEN) {
+                        Logger.w("OpenAIProvider", "图片 base64 长度 ${b64.length} 超过 $MAX_IMAGE_BASE64_LEN,丢弃")
+                        return@forEach
+                    }
+                    val mimeType = inferMimeType(b64)
+                    add(buildJsonObject {
+                        put("type", "input_image")
+                        put("image_url", "data:$mimeType;base64,$b64")
+                    })
+                }
+            }
+        }
+
+        return ResponsesInputItem(
+            type = "message",
+            role = roleStr,
+            content = contentElement,
+        )
+    }
+
+    /**
+     * v1.0.7: 从 ResponsesResult 提取可见正文。
+     *
+     * 优先级:
+     *  1. 顶层 output_text 字段(若非空直接用)
+     *  2. output[] 中 type="message" 的 content[].text(type="output_text" 或 "text")
+     *
+     * 不能从 type="reasoning" 的 item 提取文本(对齐 openhanako extractResponsesText)
+     */
+    private fun extractResponsesVisibleText(result: ResponsesResult): String {
+        result.outputText?.takeIf { it.isNotBlank() }?.let { return it.trim() }
+        return result.output
+            .filter { it.type == "message" }
+            .flatMap { it.content ?: emptyList() }
+            .filter { it.type == "output_text" || it.type == "text" }
+            .mapNotNull { it.text?.trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString("\n")
+    }
+
+    /**
+     * v1.0.7: 从 ResponsesResult 提取推理内容(reasoning item 的 summary)。
+     */
+    private fun extractResponsesReasoning(result: ResponsesResult): String {
+        return result.output
+            .filter { it.type == "reasoning" }
+            .flatMap { it.summary?.let { s -> parseSummaryTexts(s) } ?: emptyList() }
+            .filter { it.isNotBlank() }
+            .joinToString("\n")
+    }
+
+    /** v1.0.7: 解析 reasoning item 的 summary 字段(JsonElement,可能是数组或字符串)。 */
+    private fun parseSummaryTexts(summary: JsonElement): List<String> {
+        return when (summary) {
+            is kotlinx.serialization.json.JsonPrimitive -> listOf(summary.content)
+            is kotlinx.serialization.json.JsonArray -> summary.mapNotNull { el ->
+                (el as? kotlinx.serialization.json.JsonObject)
+                    ?.get("text")?.let { (it as? JsonPrimitive)?.content }
+            }
+            else -> emptyList()
+        }
+    }
+
+    /**
+     * v1.0.7: 从 ResponsesResult 提取工具调用。
+     *
+     * output[] 中 type="function_call" 的项含 call_id / name / arguments。
+     */
+    private fun extractResponsesToolCalls(result: ResponsesResult): List<ToolCall>? {
+        val calls = result.output
+            .filter { it.type == "function_call" }
+            .mapNotNull { item ->
+                val callId = item.callId ?: return@mapNotNull null
+                val name = item.name ?: return@mapNotNull null
+                ToolCall(id = callId, name = name, arguments = item.arguments.orEmpty())
+            }
+        return calls.takeIf { it.isNotEmpty() }
     }
 
     private companion object {

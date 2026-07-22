@@ -12,6 +12,8 @@ import io.zer0.memory.fact.FactStore
 import io.zer0.memory.summary.SessionSummaryManager
 import io.zer0.memory.ticker.MemoryTicker
 import io.zer0.muse.data.SettingsRepository
+import io.zer0.muse.data.assistant.AssistantEntity
+import io.zer0.muse.data.assistant.AssistantRepository
 import io.zer0.muse.data.experience.ExperienceEntity
 import io.zer0.muse.data.experience.ExperienceRepository
 import io.zer0.muse.ui.common.MuseToast
@@ -120,6 +122,29 @@ data class MemoryItem(
     val createdAt: String? = null,
     /** v1.98: 分类(仅 Experience 层有值,编辑时回填到表单)。 */
     val category: String? = null,
+    /**
+     * v8: 记忆作用域(仅 Fact 层有值)。
+     *  - "main":主助手作用域
+     *  - assistantId:子助手/团队成员作用域
+     * 用于 UI 显示 scope 徽章(主助手=默认色,子助手=tertiary 色)。
+     */
+    val scope: String? = null,
+)
+
+/**
+ * v8: 记忆作用域筛选项(供 UI 顶部 FilterChip 渲染)。
+ *
+ *  - [id]:作用域标识("main" 或 assistantId),null 表示"全部作用域"(UI 用 all 标记)。
+ *    为方便 UI 区分"全部"与具体作用域,使用 [isAll] 标记。
+ *  - [displayName]:UI 显示名("全部" / "主助手" / 助手名称)。
+ *  - [isMain]:是否为主助手作用域(用于 UI 选用默认色 vs tertiary 色)。
+ *  - [isAll]:是否为"全部"选项(用于 UI 显示"全部"且默认选中)。
+ */
+data class ScopeOption(
+    val id: String?,
+    val displayName: String,
+    val isMain: Boolean = false,
+    val isAll: Boolean = false,
 )
 
 /**
@@ -131,6 +156,11 @@ data class MemoryItem(
  *  - [MemoryCompiler]:Compile 层(读取 4 段编译产物)
  *
  * Deep 层无独立存储,通过 Fact 总数 + 时间戳推断展示。
+ *
+ * v8: 新增 [assistantRepository] 注入,用于:
+ *  - 加载 [availableScopes](主助手 + 所有子助手)
+ *  - [selectedScope] 控制记忆页 factItems 按作用域筛选
+ *  - [addFact] 写入时使用当前 [selectedScope](null 时默认 "main")
  */
 class MemoryViewModel(
     application: Application,
@@ -143,10 +173,31 @@ class MemoryViewModel(
     private val settings: SettingsRepository,
     /** v1.98: 注入 ExperienceRepository 用于经验库 CRUD + observeAll。 */
     private val experienceRepository: ExperienceRepository,
+    /** v8: 注入 AssistantRepository 用于加载 availableScopes(主助手 + 子助手列表)。 */
+    private val assistantRepository: AssistantRepository,
 ) : AndroidViewModel(application) {
 
     private val _state = MutableStateFlow(MemoryUiState())
     val state: StateFlow<MemoryUiState> = _state.asStateFlow()
+
+    /**
+     * v8: 当前选中的记忆作用域。
+     *  - null:全部作用域(默认,UI 选中"全部" chip)
+     *  - "main":仅展示主助手作用域的事实
+     *  - assistantId:仅展示该子助手作用域的事实
+     *
+     * 切换 scope 后会触发 [loadAll] 重新拉取数据。
+     */
+    private val _selectedScope = MutableStateFlow<String?>(null)
+    val selectedScope: StateFlow<String?> = _selectedScope.asStateFlow()
+
+    /**
+     * v8: 可选的作用域列表(响应式)。
+     * 始终包含"全部" + "主助手";其余项来自 [assistantRepository.observeAll]。
+     * 用户在助手设置页新建/删除子助手时,本列表自动更新。
+     */
+    private val _availableScopes = MutableStateFlow<List<ScopeOption>>(emptyList())
+    val availableScopes: StateFlow<List<ScopeOption>> = _availableScopes.asStateFlow()
 
     init {
         // v0.51: 收集 MemoryTicker 的 healthFlow,实时反映记忆健康状态到 UI。
@@ -183,6 +234,48 @@ class MemoryViewModel(
                 }
             }
         }
+        // v8: 订阅 AssistantRepository.observeAll,实时刷新 availableScopes。
+        // 用户在助手设置页新建/删除子助手时,FilterChip 列表自动同步。
+        // 默认包含"全部" + "主助手",其余项按 AssistantEntity.id/name 渲染。
+        viewModelScope.launch {
+            assistantRepository.observeAll.collect { assistants ->
+                _availableScopes.value = buildScopes(assistants)
+            }
+        }
+        loadAll()
+    }
+
+    /**
+     * v8: 构造作用域选项列表(始终包含"全部" + "主助手" + 所有子助手)。
+     *
+     * "default" 助手在 Muse 中视为"默认主助手",其作用域映射到 "main"(与 FactEntity 默认值一致),
+     * 避免历史数据(default 助手写入的 facts 仍带 scope="main")与 UI 选项不一致。
+     * 其他 assistantId 直接使用其 id 作为 scope。
+     */
+    private fun buildScopes(assistants: List<AssistantEntity>): List<ScopeOption> {
+        val all = ScopeOption(
+            id = null,
+            displayName = getApplication<Application>().getString(R.string.memory_scope_all),
+            isAll = true,
+        )
+        val main = ScopeOption(
+            id = "main",
+            displayName = getApplication<Application>().getString(R.string.memory_scope_main),
+            isMain = true,
+        )
+        // 排除 "default" 助手 — 它在历史数据中已映射到 "main",避免 UI 重复展示。
+        val subScopes = assistants
+            .filter { it.id.isNotBlank() && it.id != "default" }
+            .map { ScopeOption(id = it.id, displayName = it.name.ifBlank { it.id }) }
+        return listOf(all, main) + subScopes
+    }
+
+    /**
+     * v8: 切换当前选中的作用域。null 表示"全部"。
+     * 切换后立即触发 [loadAll] 重新拉取按 scope 过滤的数据。
+     */
+    fun selectScope(scope: String?) {
+        _selectedScope.value = scope
         loadAll()
     }
 
@@ -204,12 +297,18 @@ class MemoryViewModel(
     /**
      * 拉取全部 4 层数据(memory 模块 Repository 层全是 suspend,无 Flow,需主动 pull)。
      * 捕获完整崩溃堆栈到 state.errorTrace,供 UI 可滚动展示(方便用户复制给开发者)。
+     *
+     * v8: Fact 层按 [_selectedScope] 过滤:
+     *  - null:全部作用域(向后兼容旧版)
+     *  - "main" / assistantId:仅拉取该作用域的事实
+     * Summary / Compile 层不区分 scope(由 MemoryTicker 全局编译,不按助手隔离)。
      */
     fun loadAll() {
         _state.update { it.copy(isLoading = true, errorTrace = null) }
         viewModelScope.launch {
             try {
-                val facts = withContext(Dispatchers.IO) { factStore.getAll() }
+                val scope = _selectedScope.value
+                val facts = withContext(Dispatchers.IO) { factStore.getAll(scope) }
                 val summaries = withContext(Dispatchers.IO) { summaryManager.getAllSummaries() }
                 val compileFacts = withContext(Dispatchers.IO) {
                     // v1.78 (H6): 包装 suspend 调用必须用 resultOf,避免吞 CancellationException
@@ -251,6 +350,8 @@ class MemoryViewModel(
                         importance = fact.importance,
                         sessionId = fact.sessionId,
                         createdAt = fact.createdAt,
+                        // v8: 透传 scope,供 UI 显示徽章(主助手=默认色,子助手=tertiary 色)
+                        scope = fact.scope,
                     )
                 }
                 val summaryItems = summaries.map { summary ->
@@ -372,6 +473,8 @@ class MemoryViewModel(
                     importance = fact.importance,
                     sessionId = fact.sessionId,
                     createdAt = fact.createdAt,
+                    // v8: 透传 scope,搜索结果与列表项徽章一致
+                    scope = fact.scope,
                 )
             }
             _state.update { it.copy(searchResults = items, isSearching = false) }
@@ -464,16 +567,21 @@ class MemoryViewModel(
 
     /**
      * 手动新增一条元事实。
+     *
+     * v8: 新增事实的 scope 取当前 [_selectedScope],若为 null(全部)则默认 "main"。
+     * 这与用户在 UI 上切换 scope 后再"新增"的直觉一致 — 用户切到某子助手作用域后,
+     * 新增的事实归属该子助手;切到"全部"时归属主助手(默认)。
      */
     fun addFact(content: String) {
         if (content.isBlank()) return
         viewModelScope.launch {
             // v1.78 (H6): loadAll 移出 runCatching,避免 add 成功但 loadAll 失败时
             // 错误信息显示"添加失败"(错误归因错位)
+            val scope = _selectedScope.value ?: "main"
             val ok = withContext(Dispatchers.IO) {
                 // v1.78 (H6): 包装 suspend 调用必须用 resultOf,避免吞 CancellationException
                 resultOf {
-                    factStore.add(FactStore.Fact(fact = content.trim()))
+                    factStore.add(FactStore.Fact(fact = content.trim()), scope = scope)
                 }.onError { msg, t ->
                     _state.update { it.copy(errorTrace = (it.errorTrace ?: "") + "\n" + getApplication<Application>().getString(R.string.memory_add_failed, msg)) }
                 }.isSuccess

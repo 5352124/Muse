@@ -3,6 +3,8 @@ package io.zer0.memory.fact
 import androidx.sqlite.db.SimpleSQLiteQuery
 import io.zer0.memory.pii.PiiGuard
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -53,6 +55,12 @@ class FactStore(
         val lastConfirmedAt: String? = null,
         /** v7: 最近一次命中时间 ISO 8601,用于 hitBonus 衰减时钟。 */
         val lastHitAt: String? = null,
+        /**
+         * v8: 记忆作用域,默认 "main" 表示主助手作用域。
+         * 子助手/团队成员使用各自的 assistantId,用于隔离不同 Agent 的记忆。
+         * [add] / [addBatch] 的 scope 参数会覆盖此字段。
+         */
+        val scope: String = "main",
         val matchCount: Int? = null,
     )
 
@@ -123,14 +131,20 @@ class FactStore(
     /**
      * v5: 新增一条元事实。自动去重 + 智能重要度。
      * 发现相似已有事实时合并(保留最高重要度和最新更新时间)。
+     *
+     * v8: 新增 scope 参数(默认 "main"),用于指定记忆作用域。
+     *  - "main":主助手作用域(默认),用户与主助手的对话事实
+     *  - assistantId:子助手/团队成员作用域
+     * scope 参数会覆盖 entry.scope,调用方无需在 Fact 上单独设置。
+     * 去重时仅在相同 scope 内查找相似事实,避免跨作用域误合并。
      */
-    suspend fun add(entry: Fact): Long = withContext(Dispatchers.IO) {
+    suspend fun add(entry: Fact, scope: String = "main"): Long = withContext(Dispatchers.IO) {
         val (cleaned, detected) = PiiGuard.scrub(entry.fact)
         if (detected.isNotEmpty()) {
             io.zer0.common.Logger.d("FactStore", "PII detected in fact: $detected")
         }
-        val newEntry = entry.copy(fact = cleaned)
-        val existingSimilar = dao.findSimilar(cleaned.take(40)).firstOrNull { isSimilar(it.fact, cleaned) }
+        val newEntry = entry.copy(fact = cleaned, scope = scope)
+        val existingSimilar = dao.findSimilar(cleaned.take(40), scope).firstOrNull { isSimilar(it.fact, cleaned) }
         if (existingSimilar != null) {
             val merged = mergeSimilar(existingSimilar, newEntry)
             dao.updateEntity(
@@ -139,7 +153,7 @@ class FactStore(
                 merged.source, merged.expiresAt, merged.lastConfirmedAt, merged.lastHitAt,
             )
             dao.insertFts(merged.id, FactFtsManager.toNgram(merged.fact))
-            io.zer0.common.Logger.d("FactStore", "合并相似事实: ${existingSimilar.fact.take(30)}… ↔ ${cleaned.take(30)}… → id=${existingSimilar.id}")
+            io.zer0.common.Logger.d("FactStore", "合并相似事实(scope=$scope): ${existingSimilar.fact.take(30)}… ↔ ${cleaned.take(30)}… → id=${existingSimilar.id}")
             return@withContext existingSimilar.id
         }
         val importance = if (newEntry.importance > 0) newEntry.importance else inferImportance(cleaned)
@@ -158,6 +172,8 @@ class FactStore(
             lastConfirmedAt = newEntry.lastConfirmedAt,
             // v7: 新增事实视为一次命中,默认享受 hitBonus
             lastHitAt = newEntry.lastHitAt ?: now,
+            // v8: 记忆作用域,由调用方指定(默认 "main")
+            scope = scope,
         )
         val insertedId = dao.insert(entity)
         dao.insertFts(insertedId, FactFtsManager.toNgram(cleaned))
@@ -166,8 +182,11 @@ class FactStore(
 
     /**
      * v5: 批量新增。自动去重 + 智能重要度,原子事务保证一致性。
+     *
+     * v8: 新增 scope 参数(默认 "main"),批量写入时统一使用该作用域。
+     * 去重时仅在相同 scope 内查找,避免跨作用域误合并。
      */
-    suspend fun addBatch(entries: List<Fact>): Int = withContext(Dispatchers.IO) {
+    suspend fun addBatch(entries: List<Fact>, scope: String = "main"): Int = withContext(Dispatchers.IO) {
         if (entries.isEmpty()) return@withContext 0
         val now = Instant.now().toString()
         var inserted = 0
@@ -176,8 +195,8 @@ class FactStore(
             if (detected.isNotEmpty()) {
                 io.zer0.common.Logger.d("FactStore", "PII detected in batch fact: $detected")
             }
-            val newEntry = entry.copy(fact = cleaned)
-            val existingSimilar = dao.findSimilar(cleaned.take(40)).firstOrNull { isSimilar(it.fact, cleaned) }
+            val newEntry = entry.copy(fact = cleaned, scope = scope)
+            val existingSimilar = dao.findSimilar(cleaned.take(40), scope).firstOrNull { isSimilar(it.fact, cleaned) }
             if (existingSimilar != null) {
                 val merged = mergeSimilar(existingSimilar, newEntry)
                 dao.updateEntity(
@@ -201,6 +220,7 @@ class FactStore(
                     expiresAt = newEntry.expiresAt,
                     lastConfirmedAt = newEntry.lastConfirmedAt,
                     lastHitAt = newEntry.lastHitAt ?: now,
+                    scope = scope,
                 ))
                 dao.insertFts(insertedId, FactFtsManager.toNgram(cleaned))
             }
@@ -274,9 +294,13 @@ class FactStore(
         dao.tagSearch(SimpleSQLiteQuery(sql, args.toTypedArray())).map { it.toFact() }
     }
 
-    /** 获取所有元事实(按时间降序)。 */
-    suspend fun getAll(): List<Fact> = withContext(Dispatchers.IO) {
-        dao.getAll().map { it.toFact() }
+    /**
+     * 获取所有元事实(按时间降序)。
+     *
+     * v8: 新增可选 scope 参数,null 表示全部作用域,非 null 仅返回指定作用域的事实。
+     */
+    suspend fun getAll(scope: String? = null): List<Fact> = withContext(Dispatchers.IO) {
+        dao.getAll(scope).map { it.toFact() }
     }
 
     /** 按 session_id 查询。 */
@@ -303,11 +327,15 @@ class FactStore(
      *
      * 与 [add] 不同,这里不走 PII 脱敏(用户手动编辑的内容,保持原样),
      * 仅做轻量去空白处理。返回是否更新成功(目标 id 不存在时返回 false)。
+     *
+     * v8: 新增可选 scope 参数:
+     *  - scope 为 null(默认):只更新 content,保留原有作用域
+     *  - scope 非 null:同时更新 content 与 scope(用于 UI 切换事实作用域)
      */
-    suspend fun update(id: Long, content: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun update(id: Long, content: String, scope: String? = null): Boolean = withContext(Dispatchers.IO) {
         val trimmed = content.trim()
         if (trimmed.isEmpty()) return@withContext false
-        val updated = dao.updateContent(id, trimmed) > 0
+        val updated = dao.updateContent(id, trimmed, scope) > 0
         if (updated) {
             dao.insertFts(id, FactFtsManager.toNgram(trimmed))
         }
@@ -385,12 +413,15 @@ class FactStore(
      *  - 已命中(last_hit_at IS NOT NULL)的事实按 (baseImportance + hitBonus) 衰减,并以 last_hit_at 作为时钟起点
      *  - 合并/新增事实时自动记录命中时间
      *
+     * v8 改进:新增可选 scope 参数,null 表示全部作用域(兼容旧调用方),
+     * 非 null 时仅衰减指定作用域的事实,避免一个助手的衰减节奏影响其他助手。
+     *
      * 该方法在 daily pipeline(deepMemory step 之后)由
      * [io.zer0.memory.deep.DeepMemoryProcessor] 调用,每个 assistant 的 FactStore 各跑一次。
      *
      * @return 实际删除的 fact 数
      */
-    suspend fun applyDecay(config: io.zer0.memory.ticker.MemoryConfig): Int = withContext(Dispatchers.IO) {
+    suspend fun applyDecay(config: io.zer0.memory.ticker.MemoryConfig, scope: String? = null): Int = withContext(Dispatchers.IO) {
         val neverHitCutoff = io.zer0.memory.ticker.MemoryConfig.safeCutoffDays(config, hit = false)
         val hitCutoff = io.zer0.memory.ticker.MemoryConfig.safeCutoffDays(config, hit = true)
         if (neverHitCutoff.isInfinite() || neverHitCutoff.isNaN() || hitCutoff.isInfinite() || hitCutoff.isNaN()) {
@@ -399,14 +430,45 @@ class FactStore(
         val now = java.time.Instant.now()
         if (neverHitCutoff <= 0f || hitCutoff <= 0f) {
             // base 已低于阈值,配置上等同于"立即遗忘全部" —— 但 v4: 关键事实(importance=2)仍保留
-            io.zer0.common.Logger.w("FactStore", "applyDecay: cutoff<=0, deleting non-critical facts (config=$config)")
-            return@withContext dao.deleteOlderThanExceptImportant(now.toString(), 2)
+            io.zer0.common.Logger.w("FactStore", "applyDecay: cutoff<=0, deleting non-critical facts (config=$config, scope=$scope)")
+            return@withContext dao.deleteOlderThanExceptImportant(now.toString(), 2, scope)
         }
         val neverHitCutoffInstant = now.minus(neverHitCutoff.toLong(), java.time.temporal.ChronoUnit.DAYS)
         val hitCutoffInstant = now.minus(hitCutoff.toLong(), java.time.temporal.ChronoUnit.DAYS)
         // v4: minImportance=2 表示仅删除 importance < 2 的 fact,关键事实(importance=2)永不衰减
         // v7: 区分命中/未命中事实,分别用不同 cutoff
-        dao.deleteOlderThanWithHit(neverHitCutoffInstant.toString(), hitCutoffInstant.toString(), 2)
+        // v8: scope 非 null 时仅衰减指定作用域
+        dao.deleteOlderThanWithHit(neverHitCutoffInstant.toString(), hitCutoffInstant.toString(), 2, scope)
+    }
+
+    // ── v8: 按作用域(scope)查询/观察/衰减 ────────────────────────────────
+
+    /**
+     * v8: 按 scope 观察事实列表(Flow 形式),用于 UI 实时刷新。
+     * 排序与 [getAll] 一致:importance DESC + time DESC。
+     */
+    fun observeByScope(scope: String): Flow<List<Fact>> =
+        dao.observeByScope(scope).map { entities -> entities.map { it.toFact() } }
+
+    /**
+     * v8: 按 scope 同步查询事实列表。
+     * 用于 system prompt 注入、子助手记忆检索等场景。
+     */
+    suspend fun getByScope(scope: String): List<Fact> = withContext(Dispatchers.IO) {
+        dao.getByScope(scope).map { it.toFact() }
+    }
+
+    /**
+     * v8: 按作用域衰减删除 — 仅删除指定 scope 下早于 [cutoffIso] 且 importance < [minImportance] 的事实。
+     *
+     * 与 [applyDecay] 的区别:
+     *  - [applyDecay] 按 [MemoryConfig] 计算截止时间,使用命中加成时钟
+     *  - 本方法直接传入 [cutoffIso],不区分命中/未命中,用于简单的按时间清理
+     *
+     * @return 实际删除的行数
+     */
+    suspend fun deleteByScopeExceptImportant(scope: String, cutoffIso: String, minImportance: Int): Int = withContext(Dispatchers.IO) {
+        dao.deleteByScopeExceptImportant(scope, cutoffIso, minImportance)
     }
 
     // ════════════════════════════
@@ -427,6 +489,8 @@ class FactStore(
         expiresAt = expiresAt,
         lastConfirmedAt = lastConfirmedAt,
         lastHitAt = lastHitAt,
+        // v8: 透传 scope 字段
+        scope = scope,
     )
 
     private fun FactTagSearchRow.toFact(): Fact = Fact(

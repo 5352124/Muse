@@ -23,9 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
-import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -366,13 +364,12 @@ fun SettingsMcpPage(
 /**
  * 二级页:数据与备份(Backup + WebServer)
  *
- * v1.132: 新增 `onOpenCloudBackup` 回调,把云备份从内嵌 Section 升级为独立二级页入口,
- *         容纳更完整的 WebDAV/S3 配置 + 远端备份列表管理(参考 rikkahub/kelivo 风格)。
+ * v1.132: 原本同时内嵌 [BackupSection] 与跳转 [CloudBackupPage] 的独立入口,二者功能重复,
+ *         v1.133 起只保留 [BackupSection] 内嵌完整云备份配置,删除重复入口。
  */
 @Composable
 fun SettingsDataPage(
     onBack: () -> Unit,
-    onOpenCloudBackup: () -> Unit = {},
 ) {
     val settings: SettingsRepository = koinInject()
     val sessionRepository: io.zer0.muse.data.session.SessionRepository = koinInject()
@@ -388,17 +385,6 @@ fun SettingsDataPage(
                 backupService = backupService,
                 settings = settings,
             )
-        }
-        // v1.132: 云备份独立配置页入口(更精细的 S3/WebDAV 配置 + 远端备份列表 + 自动备份间隔)
-        item {
-            io.zer0.muse.ui.common.SettingsGroup {
-                io.zer0.muse.ui.common.SettingsItemRow(
-                    icon = Icons.Outlined.CloudUpload,
-                    title = stringResource(R.string.cloud_backup_entry_title),
-                    subtitle = stringResource(R.string.cloud_backup_entry_subtitle),
-                    onClick = onOpenCloudBackup,
-                )
-            }
         }
         item { WebServerSection(settings = settings) }
     }

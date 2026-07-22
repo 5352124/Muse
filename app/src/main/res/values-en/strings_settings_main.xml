@@ -342,5 +342,8 @@
     <string name="settings_chat_24h_subtitle">Timestamp display format</string>
     <string name="settings_chat_default_deep_thinking">Default Deep Thinking</string>
     <string name="settings_chat_default_deep_thinking_subtitle">Enable deep thinking by default when creating or switching sessions</string>
+    <!-- v1.0.4 P3-4: Performance mode (MessagePaginator integration) -->
+    <string name="settings_chat_performance_mode">Performance Mode</string>
+    <string name="settings_chat_performance_mode_subtitle">For long chats, render only the latest 50 messages and load more on scroll-up to reduce lag</string>
     <string name="settings_provider_auto_detect">Auto-detect</string>
 </resources>

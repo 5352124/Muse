@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -49,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.zer0.muse.ui.theme.MuseShapes
 import io.zer0.muse.ui.theme.pill
+import io.zer0.muse.tools.DelegationChainTracker
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.uuid.Uuid
@@ -105,8 +108,13 @@ data class TaskCardData(
          */
         fun fromToolCalls(assistantId: Uuid, toolCalls: List<Pair<String, String>>): TaskCardData {
             val steps = toolCalls.mapIndexed { idx, (name, args) ->
+                val delegateArgs = if (name == "delegate_agent") {
+                    parseDelegateAgentArgs(args)
+                } else {
+                    DelegateAgentArgs("", "")
+                }
                 val detail = if (name == "delegate_agent") {
-                    parseDelegateAgentArgs(args).task.take(60)
+                    delegateArgs.task.take(60)
                 } else {
                     args.take(200)
                 }
@@ -116,6 +124,7 @@ data class TaskCardData(
                     detail = detail,
                     status = TaskStepStatus.PENDING,
                     toolCallIndex = idx,
+                    source = delegateArgs.assistantId,
                 )
             }
             return TaskCardData(
@@ -161,6 +170,10 @@ data class TaskStep(
     val toolCallIndex: Int = -1,
     /** v0.49: 工具执行进度文本(如"正在搜索..."),null 或空时不显示。RUNNING 状态下由 SkillExecutor.onProgress 回调更新。 */
     val progressText: String? = null,
+    /** v1.200: 步骤来源(Agent/团队名),用于泳道分组。 */
+    val source: String = "",
+    /** v1.200: 子步骤列表,用于团队/工作流结果下钻。 */
+    val subSteps: List<TaskStep> = emptyList(),
 ) {
     /** 单步耗时(毫秒),null 表示未完成。 */
     val durationMs: Long? get() = if (startedAt != null && finishedAt != null) finishedAt - startedAt else null
@@ -190,6 +203,9 @@ enum class TaskCardPhase(val label: String) {
  * @param data 任务卡数据
  * @param onToggleExpand 切换展开/折叠回调
  * @param onRetryStep 重试失败步骤回调(参数:stepId)
+ * @param delegationChain v1.201: 委派链路根节点列表(可选)。
+ *        非空时在步骤列表下方嵌入 [DelegationChainCard],可视化主助手 → 子助手链路。
+ *        传 null 或空列表则不渲染。
  */
 @Composable
 fun TaskCard(
@@ -198,6 +214,8 @@ fun TaskCard(
     onRetryStep: (String) -> Unit = {},
     // M-TC2 修复: 增加 modifier 参数,允许调用方自定义布局修饰
     modifier: Modifier = Modifier,
+    // v1.201: 委派链路(可选,非空时在步骤列表下方渲染)
+    delegationChain: List<DelegationChainTracker.ChainNode>? = null,
 ) {
     // 渐变色:primary 月桂绿 → tertiary(适配"深夜台灯"调性,不破坏整体调性)
     val gradientColors = listOf(
@@ -258,6 +276,17 @@ fun TaskCard(
                     modifier = Modifier.padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
+                    // v1.200: 泳道说明(多个 source 时显示)
+                    val sources = remember(data.steps) {
+                        data.steps.map { it.source }.filter { it.isNotBlank() }.distinct()
+                    }
+                    if (sources.size > 1) {
+                        Text(
+                            text = "按 Agent 分组: ${sources.joinToString(", ")}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     // 标题
                     Text(
                         text = data.title,
@@ -295,6 +324,10 @@ fun TaskCard(
                                 onRetry = { onRetryStep(step.id) },
                             )
                         }
+                    }
+                    // v1.201: 委派链路图(可选,非空时在步骤列表下方渲染)
+                    if (!delegationChain.isNullOrEmpty()) {
+                        DelegationChainCard(roots = delegationChain)
                     }
                     // 总耗时(DONE 阶段显示)
                     if (data.phase == TaskCardPhase.DONE && data.totalDurationMs > 0) {
@@ -372,6 +405,9 @@ private fun TaskStepRow(
     step: TaskStep,
     onRetry: () -> Unit,
 ) {
+    var isResultExpanded by remember { mutableStateOf(false) }
+    val resultPreviewLength = 120
+
     Row(
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -412,12 +448,31 @@ private fun TaskStepRow(
         }
         // 步骤内容
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = step.title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Medium,
-            )
+            // v1.200: 标题 + 来源徽章
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = step.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Medium,
+                )
+                if (step.source.isNotBlank()) {
+                    Text(
+                        text = step.source,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier
+                            .background(
+                                MaterialTheme.colorScheme.secondaryContainer,
+                                RoundedCornerShape(percent = 50),
+                            )
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
+            }
             if (step.detail.isNotBlank()) {
                 Text(
                     text = step.detail,
@@ -435,16 +490,61 @@ private fun TaskStepRow(
                     modifier = Modifier.padding(start = 8.dp, top = 2.dp),
                 )
             }
-            // 结果
+            // v1.200: 结果(可展开/收起) + 子步骤下钻
             if (step.result.isNotBlank() && step.status != TaskStepStatus.PENDING) {
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    text = "→ ${step.result.take(300)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (step.status == TaskStepStatus.FAILED) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 3,
-                )
+                val showExpand = step.result.length > resultPreviewLength
+                val displayResult = if (isResultExpanded) step.result else step.result.take(resultPreviewLength)
+                Row(
+                    verticalAlignment = Alignment.Top,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = "→ $displayResult",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (step.status == TaskStepStatus.FAILED) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (showExpand) {
+                        Text(
+                            text = if (isResultExpanded) "收起" else "展开",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .padding(start = 4.dp)
+                                .clickable { isResultExpanded = !isResultExpanded },
+                        )
+                    }
+                }
+            }
+            // v1.200: 子步骤泳道
+            if (step.subSteps.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.height(IntrinsicSize.Min),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(2.dp)
+                            .fillMaxHeight()
+                            .background(MaterialTheme.colorScheme.outlineVariant)
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        step.subSteps.forEach { subStep ->
+                            key(subStep.id) {
+                                TaskStepRow(
+                                    step = subStep,
+                                    onRetry = {},
+                                )
+                            }
+                        }
+                    }
+                }
             }
             // 耗时(完成后显示)
             step.durationMs?.let { dur ->

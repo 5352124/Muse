@@ -2,12 +2,14 @@ package io.zer0.muse.data
 
 import android.content.Context
 import io.zer0.ai.ChatService
+import io.zer0.ai.core.ChatStreamEvent
 import io.zer0.ai.core.MessageRole
 import io.zer0.ai.core.Model
 import io.zer0.ai.core.UIMessage
 import io.zer0.common.Logger
 import io.zer0.memory.llm.MemoryLlmClient
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import io.zer0.muse.R
@@ -76,6 +78,26 @@ class MemoryLlmClientImpl(
                 // M-MEM1: 协程取消必须向上抛出,不可在下面的 catch (e: Exception) 中被吞掉或被记录为失败
                 throw e
             } catch (e: Exception) {
+                // 流式降级:部分中转站不支持非流式 /v1/chat/completions(stream=false),
+                // 返回 HTTP 400 invalid_request_error。此时回退到 streamChat 收集完整文本。
+                if (isHttp400(e) && attempt == 1) {
+                    Logger.i("MemoryLlmClient", "completeText HTTP 400,降级为流式调用 (model=${resolvedModel.id})")
+                    return@callText withTimeout(timeoutMs) {
+                        val sb = StringBuilder()
+                        chatService.streamChat(
+                            messages = messages,
+                            model = resolvedModel,
+                            temperature = temperature,
+                            maxTokens = maxTokens,
+                            mode = io.zer0.ai.core.ChatRequestMode.UTILITY,
+                        ).collect { event ->
+                            if (event is ChatStreamEvent.ContentDelta) {
+                                sb.append(event.delta)
+                            }
+                        }
+                        sb.toString()
+                    }
+                }
                 lastError = e
                 if (!isRetryable(e) || attempt == maxAttempts) {
                     Logger.w(
@@ -110,5 +132,13 @@ class MemoryLlmClientImpl(
         if (msg.startsWith("HTTP 429")) return true
         if (Regex("HTTP 5\\d\\d").containsMatchIn(msg)) return true
         return false
+    }
+
+    /**
+     * 判断异常是否为 HTTP 400(中转站不支持非流式请求等)。
+     */
+    private fun isHttp400(e: Throwable): Boolean {
+        val msg = e.message ?: return false
+        return msg.startsWith("HTTP 400")
     }
 }

@@ -18,23 +18,23 @@ interface SessionDao {
     fun observeAll(): Flow<List<SessionEntity>>
 
     /** v0.45: 观察未归档会话(置顶优先,再按 updatedAt 降序)。主列表用。 */
-    @Query("SELECT * FROM sessions WHERE archived = 0 ORDER BY pinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM sessions WHERE archived = 0 AND deletedAt IS NULL ORDER BY pinned DESC, updatedAt DESC")
     fun observeActive(): Flow<List<SessionEntity>>
 
     /** v1.28: 观察未归档的任务会话(排除 Agent Tab 会话)。任务列表用。 */
-    @Query("SELECT * FROM sessions WHERE archived = 0 AND isAgentSession = 0 ORDER BY pinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM sessions WHERE archived = 0 AND isAgentSession = 0 AND deletedAt IS NULL ORDER BY pinned DESC, updatedAt DESC")
     fun observeTaskSessions(): Flow<List<SessionEntity>>
 
     /** v1.28: 观察 Agent Tab 会话(Agent 日常聊天)。 */
-    @Query("SELECT * FROM sessions WHERE isAgentSession = 1 ORDER BY updatedAt DESC")
+    @Query("SELECT * FROM sessions WHERE isAgentSession = 1 AND deletedAt IS NULL ORDER BY updatedAt DESC")
     fun observeAgentSessions(): Flow<List<SessionEntity>>
 
     /** v1.28: 获取最近的 Agent 会话(一次性,用于自动恢复 Agent 对话)。 */
-    @Query("SELECT * FROM sessions WHERE isAgentSession = 1 ORDER BY updatedAt DESC LIMIT 1")
+    @Query("SELECT * FROM sessions WHERE isAgentSession = 1 AND deletedAt IS NULL ORDER BY updatedAt DESC LIMIT 1")
     suspend fun getLatestAgentSession(): SessionEntity?
 
     /** v0.45: 观察已归档会话。v1.67: 排序与主列表一致(pinned DESC, updatedAt DESC)。 */
-    @Query("SELECT * FROM sessions WHERE archived = 1 ORDER BY pinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM sessions WHERE archived = 1 AND deletedAt IS NULL ORDER BY pinned DESC, updatedAt DESC")
     fun observeArchived(): Flow<List<SessionEntity>>
 
     /** v0.45: 切换会话归档状态。 */
@@ -157,7 +157,7 @@ interface SessionDao {
     suspend fun incrementChildCount(id: String)
 
     /** v5: 查询指定会话的分叉子会话(按 updatedAt 降序)。 */
-    @Query("SELECT * FROM sessions WHERE parentSessionId = :parentId ORDER BY updatedAt DESC")
+    @Query("SELECT * FROM sessions WHERE parentSessionId = :parentId AND deletedAt IS NULL ORDER BY updatedAt DESC")
     suspend fun getChildSessions(parentId: String): List<SessionEntity>
 
     /** v5: 查询指定会话的父会话标题。 */

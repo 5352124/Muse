@@ -15,6 +15,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * v5 schema: 新增 category / confidence / source / expires_at / last_confirmed_at 结构化字段。
  * v6 schema: 新增 facts_fts FTS4 虚拟表(中文 ngram 全文索引),保留 LIKE 作为单字/异常回退。
  * v7 schema: 新增 last_hit_at 字段,支持命中加成(hitBonus)重置衰减时钟。
+ * v8 schema: 新增 scope 字段(记忆作用域,默认 "main" 表示主助手作用域),
+ *   用于隔离不同 Agent 的记忆,避免子助手误用主助手事实或团队成员记忆混淆。
  *
  * FTS4 选型说明:
  *  - 部分国产 ROM(如 OPPO Android 16)的 SQLite 未编译 FTS5 模块,
@@ -24,7 +26,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  */
 @Database(
     entities = [FactEntity::class, FactFtsEntity::class],
-    version = 7,
+    version = 8,
     // v1.78 (H4): 开启 schema 导出,未来 v4+ 升级时编写 Migration 替代 destructive
     // 历史 v1→v2→v3 的 destructive migration 已无法补救,从 v3 开始留基线
     exportSchema = true,
@@ -101,10 +103,28 @@ abstract class FactDb : RoomDatabase() {
             }
         }
 
+        /**
+         * v7→v8 迁移: 新增 scope 列(记忆作用域,默认 "main")+ 索引。
+         *
+         * scope 用于隔离不同 Agent(主助手/子助手/团队成员)的记忆:
+         *  - 历史数据全部默认为 "main"(主助手作用域),迁移后行为不变
+         *  - 新增子助手记忆时由 FactStore.add(scope = assistantId) 写入
+         *  - 查询时按 scope 过滤,避免跨作用域误用
+         *
+         * 索引名 index_facts_scope 与 @Index 注解默认命名一致
+         * (Room 自动生成 `index_<table>_<column>`)。
+         */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE facts ADD COLUMN scope TEXT NOT NULL DEFAULT 'main'")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_facts_scope ON facts(scope)")
+            }
+        }
+
         /** 单例数据库实例。全局唯一,内存数据库失败时回退。 */
         fun create(context: Context, name: String = "facts.db"): FactDb {
             return Room.databaseBuilder(context, FactDb::class.java, name)
-                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)

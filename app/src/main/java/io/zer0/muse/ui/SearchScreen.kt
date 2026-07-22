@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Settings
@@ -258,6 +259,28 @@ private fun SearchResults(
         messageResults.isNotEmpty() ||
         matchedSettings.isNotEmpty()
 
+    // v1.0.4 (P2): 搜索中且无结果时,居中显示大号 loading + "正在搜索…"文案
+    // (原仅列表顶部 20dp 小圈,体验偏弱,用户分不清是搜索中还是无结果)
+    if (!hasAny && isSearching) {
+        Box(
+            modifier = modifier,
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(32.dp), strokeWidth = 3.dp)
+                Text(
+                    text = stringResource(R.string.search_searching),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+        }
+        return
+    }
+
     if (!hasAny && !isSearching) {
         // 无匹配结果
         Box(
@@ -294,8 +317,16 @@ private fun SearchResults(
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(8.dp),
                     horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    // v1.0.4 (P2): 加文案,避免单纯小圈太弱
+                    Text(
+                        text = stringResource(R.string.search_searching),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }

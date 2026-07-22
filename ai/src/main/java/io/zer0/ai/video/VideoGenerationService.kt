@@ -78,6 +78,19 @@ data class VideoGenerationRequest(
     val duration: Int = 5,
     val resolution: String = "720p",
     val apiKey: String,
+    /**
+     * v1.136: 视频生成基础 URL。
+     *
+     * 通用 OpenAI 兼容 Provider 使用;留空时回退到 OpenAI 官方默认值。
+     * Kling 等专用 Provider 忽略此字段(使用自身 baseUrl)。
+     */
+    val baseUrl: String? = null,
+    /**
+     * v1.136: 视频生成端点路径。
+     *
+     * 留空时通用 Provider 使用 /videos/generations。
+     */
+    val videoGenerationsPath: String? = null,
 )
 
 /**
@@ -115,19 +128,27 @@ data class VideoTaskResult(
 )
 
 /**
- * 视频生成统一服务 — 按 [providerId] 路由到对应 [VideoGenerationProvider]。
+ * v1.136: 视频生成统一服务 — 按 [providerId] 路由到对应 [VideoGenerationProvider]。
+ *
+ * 不再硬编码 provider ID,而是通过构造时传入的 provider map 动态解析。
+ * 对于未显式注册的 providerId(如用户自定义 OpenAI 兼容供应商),
+ * 若存在 [GenericOpenAiVideoProvider],则作为通用兜底。
  *
  * 用法:
  * ```
- * val service = VideoGenerationService(klingProvider = KlingVideoProvider(client))
+ * val service = VideoGenerationService(mapOf(
+ *     "kling" to KlingVideoProvider(client),
+ *     GenericOpenAiVideoProvider.PROVIDER_ID to GenericOpenAiVideoProvider(client),
+ * ))
  * val videoUrl = service.generateVideo("kling", request).getOrThrow()
  * ```
  *
- * @param klingProvider 可灵 Provider(可选,为 null 时不支持 "kling")
+ * @param providers providerId -> 实现的映射;key 建议与 [ProviderConfig.id] 对齐
+ * @param genericProvider 通用 OpenAI 兼容兜底实现,未命中 map 时使用
  */
 class VideoGenerationService(
-    private val klingProvider: KlingVideoProvider? = null,
-    // 可扩展其他 provider: runwayProvider / pikaProvider 等
+    private val providers: Map<String, VideoGenerationProvider>,
+    private val genericProvider: GenericOpenAiVideoProvider? = null,
 ) {
     /**
      * 生成视频 — 提交任务 → 等待完成 → 返回视频 URL。
@@ -188,18 +209,22 @@ class VideoGenerationService(
     /**
      * 根据 providerId 路由到对应实现。
      *
-     * @param providerId Provider 标识
-     * @return 对应的 [VideoGenerationProvider],未注册时返回 null
+     * 优先查找显式注册的 provider;未命中时,若存在通用 OpenAI 兼容 Provider 则兜底返回。
+     *
+     * @param providerId Provider 标识(通常与 [io.zer0.ai.core.ProviderConfig.id] 一致)
+     * @return 对应的 [VideoGenerationProvider],未注册且没有兜底时返回 null
      */
     private fun resolveProvider(providerId: String): VideoGenerationProvider? {
-        return when (providerId) {
-            "kling" -> klingProvider
-            else -> null
-        }
+        return providers[providerId] ?: genericProvider
     }
 
     companion object {
-        /** 已注册的 Provider ID 列表(用于 UI 层展示可选 Provider)。 */
-        val AVAILABLE_PROVIDER_IDS: List<String> = listOf("kling")
+        /**
+         * 已注册的 Provider ID 列表(用于 UI 层展示可选 Provider)。
+         *
+         * 包含显式注册 key 与通用兜底 key(如果有)。
+         */
+        fun availableProviderIds(providers: Map<String, VideoGenerationProvider>): List<String> =
+            providers.keys.toList()
     }
 }

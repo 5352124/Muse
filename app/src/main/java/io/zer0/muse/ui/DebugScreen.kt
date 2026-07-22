@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,13 +26,22 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.outlined.Analytics
 import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.HealthAndSafety
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -44,6 +54,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -52,19 +63,31 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import io.zer0.muse.crash.MuseCrashHandler
+import io.zer0.muse.data.analytics.AnalyticsSnapshot
+import io.zer0.muse.data.analytics.LocalAnalyticsTracker
+import io.zer0.muse.data.stats.DbIntegrityLogEntity
+import io.zer0.muse.data.stats.IntegrityChecker
 import io.zer0.muse.debug.DebugLogEntry
 import io.zer0.muse.debug.DebugLogStore
 import io.zer0.muse.ui.common.IosDropdown
 import io.zer0.muse.ui.common.IosTopBar
+import io.zer0.muse.ui.common.MuseBottomSheet
 import io.zer0.muse.ui.common.MuseDialog
 import io.zer0.muse.ui.common.MuseToast
 import io.zer0.muse.ui.theme.MuseMonoFontFamily
 import io.zer0.muse.ui.theme.MusePaddings
 import io.zer0.muse.ui.theme.MuseShapes
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.koin.compose.koinInject
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -177,6 +200,30 @@ fun DebugScreen(
     // ── 展开状态:记录当前展开的 entry(用 timestamp+tag+message 作 key,简单近似唯一) ──
     var expandedKey by remember { mutableStateOf<String?>(null) }
 
+    // ── 崩溃日志面板(P1-4:把 MuseCrashHandler 已有但未 UI 化的崩溃日志列表/导出能力透出)
+    //  - 入口:IosTopBar 上的 History 图标
+    //  - 面板内列出 listCrashLogs() 全部崩溃日志文件,可展开查看内容、单条分享、一键打包 ZIP 分享
+    var showCrashSheet by remember { mutableStateOf(false) }
+    if (showCrashSheet) {
+        CrashLogSheet(onDismiss = { showCrashSheet = false })
+    }
+
+    // ── 本地数据分析面板(P3-2:把 LocalAnalyticsTracker 已采集但未 UI 化的指标透出)
+    //  - 入口:IosTopBar 上的 Analytics 图标
+    //  - 面板内展示 DAU/MAU/总会话/总消息/启动次数/崩溃率 + D1/D7/D30 留存 + 功能使用 Top 10
+    var showAnalyticsSheet by remember { mutableStateOf(false) }
+    if (showAnalyticsSheet) {
+        AnalyticsSheet(onDismiss = { showAnalyticsSheet = false })
+    }
+
+    // ── 数据库完整性面板(P3-3:把 IntegrityChecker 已有但未 UI 化的完整性检查结果透出)
+    //  - 入口:IosTopBar 上的 HealthAndSafety 图标
+    //  - 面板内展示最近一次完整性检查结果(状态 / DB 大小 / 时间)+ "立即检查"按钮
+    var showDbIntegritySheet by remember { mutableStateOf(false) }
+    if (showDbIntegritySheet) {
+        DbIntegritySheet(onDismiss = { showDbIntegritySheet = false })
+    }
+
     ScaffoldLayout(
         levelFilter = levelFilter,
         onLevelChange = { levelFilter = it },
@@ -187,6 +234,28 @@ fun DebugScreen(
         paused = paused,
         onTogglePause = { paused = !paused },
         onClear = { showClearDialog = true },
+        onShowCrashLogs = { showCrashSheet = true },
+        onShowAnalytics = { showAnalyticsSheet = true },
+        onShowDbIntegrity = { showDbIntegritySheet = true },
+        // v1.0.4 (P3-7): 一键复制当前过滤后的日志到剪贴板(纯文本),便于内测用户粘贴反馈
+        onCopy = {
+            if (filteredLogs.isEmpty()) {
+                MuseToast.show("当前无日志可复制")
+            } else {
+                val text = buildString {
+                    filteredLogs.forEach { entry ->
+                        append(entry.formatLine())
+                        append('\n')
+                    }
+                }
+                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                    as android.content.ClipboardManager
+                clipboard.setPrimaryClip(
+                    android.content.ClipData.newPlainText("Muse Debug Log", text)
+                )
+                MuseToast.show("已复制 ${filteredLogs.size} 条日志到剪贴板")
+            }
+        },
         onExport = {
             val file = DebugLogStore.exportToFile()
             if (file == null) {
@@ -235,6 +304,10 @@ private fun ScaffoldLayout(
     paused: Boolean,
     onTogglePause: () -> Unit,
     onClear: () -> Unit,
+    onShowCrashLogs: () -> Unit,
+    onShowAnalytics: () -> Unit,
+    onShowDbIntegrity: () -> Unit,
+    onCopy: () -> Unit,
     onExport: () -> Unit,
     logs: List<DebugLogEntry>,
     listState: androidx.compose.foundation.lazy.LazyListState,
@@ -256,6 +329,34 @@ private fun ScaffoldLayout(
                             tint = if (paused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         )
                     }
+                    // 崩溃日志入口(P1-4):展示 MuseCrashHandler 已落盘的崩溃日志列表 + 一键打包 ZIP 分享
+                    IconButton(onClick = onShowCrashLogs) {
+                        Icon(
+                            imageVector = Icons.Outlined.History,
+                            contentDescription = "崩溃日志",
+                        )
+                    }
+                    // 本地数据分析入口(P3-2):展示 LocalAnalyticsTracker 已采集的 DAU/MAU/留存/功能使用
+                    IconButton(onClick = onShowAnalytics) {
+                        Icon(
+                            imageVector = Icons.Outlined.Analytics,
+                            contentDescription = "本地数据分析",
+                        )
+                    }
+                    // 数据库完整性入口(P3-3):展示 IntegrityChecker 最近一次 PRAGMA integrity_check 结果
+                    IconButton(onClick = onShowDbIntegrity) {
+                        Icon(
+                            imageVector = Icons.Outlined.HealthAndSafety,
+                            contentDescription = "数据库完整性",
+                        )
+                    }
+                    // v1.0.4 (P3-7): 复制按钮 — 把当前过滤后的日志复制到剪贴板(纯文本)
+                    IconButton(onClick = onCopy) {
+                        Icon(
+                            imageVector = Icons.Outlined.ContentCopy,
+                            contentDescription = "复制",
+                        )
+                    }
                     // 导出按钮
                     IconButton(onClick = onExport) {
                         Icon(
@@ -273,6 +374,9 @@ private fun ScaffoldLayout(
                 },
             )
 
+            // 顶部栏与过滤器行之间的间距
+            Spacer(Modifier.height(MusePaddings.contentGap))
+
             // ── 过滤器行 ───────────────────────────────────────────────
             FilterRow(
                 levelFilter = levelFilter,
@@ -283,13 +387,19 @@ private fun ScaffoldLayout(
                 onKeywordChange = onKeywordChange,
             )
 
+            // 过滤器行与日志计数之间的间距
+            Spacer(Modifier.height(MusePaddings.contentGap))
+
             // ── 日志计数 ───────────────────────────────────────────────
             Text(
                 text = "共 ${logs.size} 条" + if (paused) " · 已暂停跟随" else "",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(horizontal = MusePaddings.screen, vertical = MusePaddings.tightGap),
+                modifier = Modifier.padding(horizontal = MusePaddings.screen),
             )
+
+            // 计数与日志列表之间的间距(至少 8.dp,避免与 LazyColumn 贴合过紧)
+            Spacer(Modifier.height(MusePaddings.contentGap))
 
             // ── 日志列表 ───────────────────────────────────────────────
             if (logs.isEmpty()) {
@@ -314,6 +424,8 @@ private fun ScaffoldLayout(
                             entry = entry,
                             expanded = expandedKey == entryKey,
                             onClick = { onToggleExpand(entryKey) },
+                            // v1.0.4 (P3-7): 关键字高亮 — 用户在搜索框输入的关键字在消息中高亮显示
+                            highlight = keywordQuery.trim(),
                         )
                     }
                 }
@@ -342,11 +454,11 @@ private fun FilterRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = MusePaddings.screen, vertical = MusePaddings.contentGap),
-        horizontalArrangement = Arrangement.spacedBy(MusePaddings.contentGap),
+            .horizontalScroll(rememberScrollState()),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 横向滚动起始留白(与屏幕水平边距对齐)
+        Spacer(Modifier.width(MusePaddings.screen))
         // 等级下拉(固定宽度,避免横向滚动时占位过多)
         IosDropdown(
             value = levelFilter,
@@ -355,6 +467,7 @@ private fun FilterRow(
             options = levelOptions,
             modifier = Modifier.width(120.dp),
         )
+        Spacer(Modifier.width(MusePaddings.contentGap))
         OutlinedTextField(
             value = tagQuery,
             onValueChange = onTagChange,
@@ -363,6 +476,7 @@ private fun FilterRow(
             shape = MuseShapes.medium,
             modifier = Modifier.width(140.dp),
         )
+        Spacer(Modifier.width(MusePaddings.contentGap))
         OutlinedTextField(
             value = keywordQuery,
             onValueChange = onKeywordChange,
@@ -378,6 +492,8 @@ private fun FilterRow(
             },
             modifier = Modifier.width(180.dp),
         )
+        // 横向滚动末尾留白,避免最后一个控件贴右边缘
+        Spacer(Modifier.width(MusePaddings.screen))
     }
 }
 
@@ -424,11 +540,44 @@ private fun LogEntryItem(
     entry: DebugLogEntry,
     expanded: Boolean,
     onClick: () -> Unit,
+    // v1.0.4 (P3-7): 关键字高亮 — 非空时在 message 中以黄色背景高亮所有匹配子串
+    highlight: String = "",
 ) {
     val timeStr = remember(entry.timestamp) {
         SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date(entry.timestamp))
     }
     val levelColor = remember(entry.level) { levelColor(entry.level) }
+    // v1.0.4 (P3-7): 把 message 构建为带高亮的 AnnotatedString
+    val messageAnnotated = remember(entry.message, highlight) {
+        buildAnnotatedString {
+            if (highlight.isEmpty()) {
+                append(entry.message)
+                return@buildAnnotatedString
+            }
+            // 大小写不敏感查找:遍历所有匹配位置,用 yellow background + black text 高亮
+            val text = entry.message
+            var idx = 0
+            val lowerText = text.lowercase(Locale.US)
+            val lowerHl = highlight.lowercase(Locale.US)
+            while (idx < text.length) {
+                val hit = lowerText.indexOf(lowerHl, idx)
+                if (hit < 0) {
+                    append(text.substring(idx))
+                    break
+                }
+                if (hit > idx) append(text.substring(idx, hit))
+                pushStyle(
+                    androidx.compose.ui.text.SpanStyle(
+                        background = Color(0xFFFFEB3B),
+                        color = Color.Black,
+                    )
+                )
+                append(text.substring(hit, hit + highlight.length))
+                pop()
+                idx = hit + highlight.length
+            }
+        }
+    }
 
     Surface(
         shape = MuseShapes.medium,
@@ -438,7 +587,7 @@ private fun LogEntryItem(
             .clickable(onClick = onClick),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(MusePaddings.cardInner),
         ) {
             // 第一行:时间 + 等级标签 + Tag
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -448,9 +597,9 @@ private fun LogEntryItem(
                     fontFamily = MuseMonoFontFamily,
                     color = MaterialTheme.colorScheme.outline,
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(MusePaddings.contentGap))
                 LevelChip(level = entry.level, color = levelColor)
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(MusePaddings.contentGap))
                 Text(
                     text = entry.tag,
                     style = MaterialTheme.typography.bodySmall,
@@ -461,10 +610,11 @@ private fun LogEntryItem(
                     modifier = Modifier.weight(1f),
                 )
             }
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(MusePaddings.tightGap))
             // 第二行:消息(折叠时 2 行省略,展开时全量)
+            // v1.0.4 (P3-7): 用 messageAnnotated 渲染,支持关键字高亮
             Text(
-                text = entry.message,
+                text = messageAnnotated,
                 style = MaterialTheme.typography.bodySmall,
                 fontFamily = FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -478,7 +628,7 @@ private fun LogEntryItem(
                 exit = fadeOut() + shrinkVertically(),
             ) {
                 Column {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(MusePaddings.contentGap))
                     Surface(
                         shape = MuseShapes.small,
                         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -490,7 +640,7 @@ private fun LogEntryItem(
                             fontFamily = FontFamily.Monospace,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
-                                .padding(8.dp)
+                                .padding(MusePaddings.contentGap)
                                 .horizontalScroll(rememberScrollState()),
                         )
                     }
@@ -516,7 +666,7 @@ private fun LevelChip(level: String, color: Color) {
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
             color = color,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            modifier = Modifier.padding(MusePaddings.tightGap),
         )
     }
 }
@@ -534,3 +684,863 @@ private fun levelColor(level: String): Color {
         else -> Color(0xFF616161)
     }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// P1-4:崩溃日志面板 — 把 MuseCrashHandler 已有但仅 SafeMode 使用的崩溃日志
+//       列表 / ZIP 打包 / 单条分享能力,在正常模式下也透出给用户。
+//
+//  数据源:MuseCrashHandler.listCrashLogs(context) → List<File>
+//  打包  :MuseCrashHandler.packageCrashLogsToZip(context) → File?(cacheDir/zip)
+//  分享  :FileProvider + ACTION_SEND(走 file_paths.xml 中已声明的 files-path / cache-path)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 崩溃日志底部面板。
+ *
+ * 行为:
+ *  - 打开时异步拉取 [MuseCrashHandler.listCrashLogs],按 mtime 降序展示
+ *  - 每条崩溃日志可点击展开,内联预览前 [CRASH_PREVIEW_CHARS] 字符
+ *  - 顶部"导出 ZIP 并分享"按钮调用 [MuseCrashHandler.packageCrashLogsToZip]
+ *    打包全部崩溃日志 + 设备信息,通过 ACTION_SEND 分享
+ *  - 每条日志右侧"分享"按钮单独分享该 .txt 文件
+ *
+ * 设计参考:SafeModeScreen 已有的 shareCrashLog,这里把同一能力在正常模式下复用。
+ */
+@Composable
+private fun CrashLogSheet(
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+
+    // ── 数据状态 ─────────────────────────────────────────────────────────
+    var logs by remember { mutableStateOf<List<File>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    // 当前展开的崩溃日志文件名(null = 全部折叠)
+    var expandedFile by remember { mutableStateOf<String?>(null) }
+    // 展开后懒加载的文件内容(避免一次性把所有日志读入内存)
+    var expandedContent by remember { mutableStateOf<String?>(null) }
+
+    // 打开时拉一次崩溃日志列表(读 filesDir 是 IO,放 Dispatchers.IO)
+    LaunchedEffect(Unit) {
+        logs = withContext(Dispatchers.IO) { MuseCrashHandler.listCrashLogs(context) }
+        loading = false
+    }
+
+    // expandedFile 变化时,异步读取对应文件内容(截断到预览长度,避免大文件 OOM)
+    LaunchedEffect(expandedFile) {
+        val name = expandedFile
+        if (name == null) {
+            expandedContent = null
+        } else {
+            val file = logs.firstOrNull { it.name == name }
+            expandedContent = if (file != null) {
+                withContext(Dispatchers.IO) {
+                    runCatching { file.readText().take(CRASH_PREVIEW_CHARS) }.getOrNull()
+                }
+            } else {
+                null
+            }
+        }
+    }
+
+    MuseBottomSheet(onDismissRequest = onDismiss) {
+        // ── 标题行 + ZIP 导出按钮 ────────────────────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "崩溃日志",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            // ZIP 打包分享:即使只有 1 条崩溃日志也走 zip 路径,统一带 device_info
+            Button(onClick = { shareCrashZip(context) }) {
+                Icon(
+                    imageVector = Icons.Outlined.Share,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("导出 ZIP 并分享")
+            }
+        }
+
+        Spacer(Modifier.height(MusePaddings.contentGap))
+
+        // ── 计数 + 状态分支 ──────────────────────────────────────────────
+        when {
+            loading -> {
+                Text(
+                    text = "正在读取崩溃日志…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = MusePaddings.contentGap),
+                )
+            }
+            logs.isEmpty() -> {
+                Text(
+                    text = "暂无崩溃日志\n\n应用未崩溃过,或日志已被自动清理(保留最近 5 份)。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = MusePaddings.contentGap),
+                )
+            }
+            else -> {
+                Text(
+                    text = "共 ${logs.size} 份(按时间倒序,仅保留最近 5 份)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+                Spacer(Modifier.height(MusePaddings.tightGap))
+                // 限制最大高度,避免列表过长撑爆 BottomSheet
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp),
+                    verticalArrangement = Arrangement.spacedBy(MusePaddings.tightGap),
+                ) {
+                    items(
+                        items = logs,
+                        key = { it.name },
+                    ) { file ->
+                        CrashLogItem(
+                            file = file,
+                            expanded = expandedFile == file.name,
+                            expandedContent = if (expandedFile == file.name) expandedContent else null,
+                            onToggleExpand = {
+                                expandedFile = if (expandedFile == file.name) null else file.name
+                            },
+                            onShare = { shareCrashFile(context, file) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 单条崩溃日志条目。
+ *
+ * 折叠时:文件名 + 大小 + 修改时间 + 分享按钮
+ * 展开时:在折叠信息下方追加内联预览(等宽字体,可垂直滚动)
+ */
+@Composable
+private fun CrashLogItem(
+    file: File,
+    expanded: Boolean,
+    expandedContent: String?,
+    onToggleExpand: () -> Unit,
+    onShare: () -> Unit,
+) {
+    // 文件名形如 crash-20260721-153012.txt;直接展示原文件名,保持与磁盘一致便于排查
+    val sizeStr = remember(file.length()) { formatFileSize(file.length()) }
+    val timeStr = remember(file.lastModified()) {
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(file.lastModified()))
+    }
+
+    Surface(
+        shape = MuseShapes.medium,
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggleExpand),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.Description,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = file.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontFamily = MuseMonoFontFamily,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "$timeStr · $sizeStr",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = onShare) {
+                    Icon(
+                        imageVector = Icons.Outlined.Share,
+                        contentDescription = "分享此条日志",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            // 展开后:内联预览(等宽字体 + 垂直滚动)
+            AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                Column {
+                    Spacer(Modifier.height(8.dp))
+                    val preview = expandedContent
+                    Surface(
+                        shape = MuseShapes.small,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = preview ?: "正在读取…",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .padding(8.dp)
+                                .heightIn(max = 240.dp)
+                                .verticalScroll(rememberScrollState()),
+                        )
+                    }
+                    if (preview != null && preview.length >= CRASH_PREVIEW_CHARS) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "仅显示前 $CRASH_PREVIEW_CHARS 字符,完整内容请通过分享按钮导出查看。",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// P3-2:本地数据分析面板 — 把 LocalAnalyticsTracker 已采集但未 UI 化的指标透出
+//
+//  数据源:LocalAnalyticsTracker.getSnapshot() → AnalyticsSnapshot
+//         LocalAnalyticsTracker.getFeatureUsage() → List<Pair<String, Int>>(已按 count 降序)
+//  隐私:所有数据仅本地 DataStore,无任何上报
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 本地数据分析底部面板。
+ *
+ * 展示内容:
+ *  - 核心指标卡片:DAU 今日 / MAU 本月 / 总会话 / 总消息 / 启动次数 / 崩溃次数(含崩溃率)
+ *  - 留存卡片:D1 / D7 / D30 留存标记
+ *  - 最近活跃日期
+ *  - 功能使用 Top 10(按 count 降序,空时提示)
+ */
+@Composable
+private fun AnalyticsSheet(onDismiss: () -> Unit) {
+    val tracker: LocalAnalyticsTracker = koinInject()
+
+    var snapshot by remember { mutableStateOf<AnalyticsSnapshot?>(null) }
+    var featureUsage by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        snapshot = tracker.getSnapshot()
+        featureUsage = tracker.getFeatureUsage()
+        loading = false
+    }
+
+    MuseBottomSheet(onDismissRequest = onDismiss) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "本地数据分析",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        Spacer(Modifier.height(MusePaddings.contentGap))
+
+        when {
+            loading -> {
+                Text(
+                    text = "正在读取分析数据…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = MusePaddings.contentGap),
+                )
+            }
+            snapshot == null -> {
+                Text(
+                    text = "无法读取分析数据",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(vertical = MusePaddings.contentGap),
+                )
+            }
+            else -> {
+                val s = snapshot!!
+                // ── 核心指标:2 列网格 ─────────────────────────────────────────
+                MetricGrid(
+                    metrics = listOf(
+                        "DAU 今日" to s.dauToday.toString(),
+                        "MAU 本月" to s.mauMonth.toString(),
+                        "总会话数" to s.totalSessions.toString(),
+                        "总消息数" to s.totalMessages.toString(),
+                        "启动次数" to s.launchCount.toString(),
+                        "崩溃次数" to "${s.crashCount}(${formatPercent(s.crashRate)})",
+                    ),
+                )
+
+                Spacer(Modifier.height(MusePaddings.contentGap))
+
+                // ── 留存卡片 ─────────────────────────────────────────────────
+                RetentionCard(
+                    d1 = s.d1Retention,
+                    d7 = s.d7Retention,
+                    d30 = s.d30Retention,
+                )
+
+                Spacer(Modifier.height(MusePaddings.contentGap))
+
+                // ── 其他状态:首次对话 / 记忆系统 / 最近活跃 ──────────────────
+                StatusRow(label = "首次对话完成", value = if (s.firstChatCompleted) "是" else "否")
+                StatusRow(label = "记忆系统采用", value = if (s.memoryAdopted) "是" else "否")
+                if (s.lastActiveDate.isNotBlank()) {
+                    StatusRow(label = "最近活跃日期", value = s.lastActiveDate)
+                }
+
+                Spacer(Modifier.height(MusePaddings.contentGap))
+
+                // ── 功能使用 Top 10 ──────────────────────────────────────────
+                FeatureUsageSection(usage = featureUsage)
+            }
+        }
+    }
+}
+
+/**
+ * 指标网格 — 2 列展示键值对,简洁卡片样式。
+ */
+@Composable
+private fun MetricGrid(metrics: List<Pair<String, String>>) {
+    // 用 columnCount=2 的简化网格:每两个一组渲染一行
+    val rows = metrics.chunked(2)
+    Column(verticalArrangement = Arrangement.spacedBy(MusePaddings.tightGap)) {
+        rows.forEach { rowItems ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(MusePaddings.tightGap),
+            ) {
+                rowItems.forEach { (label, value) ->
+                    Surface(
+                        shape = MuseShapes.medium,
+                        color = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = value,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontFamily = FontFamily.Monospace,
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                }
+                // 若最后一行只有 1 个,补一个占位以保持网格对齐
+                if (rowItems.size == 1) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 留存卡片:D1 / D7 / D30 三段进度。
+ */
+@Composable
+private fun RetentionCard(d1: Int, d7: Int, d30: Int) {
+    Surface(
+        shape = MuseShapes.large,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = "留存(自首次启动)",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                RetentionItem(label = "次日(D1)", retained = d1)
+                RetentionItem(label = "7 日(D7)", retained = d7)
+                RetentionItem(label = "30 日(D30)", retained = d30)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RetentionItem(label: String, retained: Int) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Surface(
+            shape = androidx.compose.foundation.shape.CircleShape,
+            color = if (retained > 0) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            },
+            modifier = Modifier.size(32.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = if (retained > 0) {
+                        Icons.Filled.Check
+                    } else {
+                        Icons.Filled.Close
+                    },
+                    contentDescription = null,
+                    tint = if (retained > 0) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 键值对行(标签 + 值)。 */
+@Composable
+private fun StatusRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+/**
+ * 功能使用 Top 10 列表。
+ *
+ * 空列表显示提示;非空时显示条形图风格的进度条(相对最大值的比例)。
+ */
+@Composable
+private fun FeatureUsageSection(usage: List<Pair<String, Int>>) {
+    Text(
+        text = "功能使用 Top 10",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(8.dp))
+    if (usage.isEmpty()) {
+        Text(
+            text = "暂无功能使用记录",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = MusePaddings.contentGap),
+        )
+    } else {
+        val maxCount = usage.maxOf { it.second }.coerceAtLeast(1)
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            usage.take(10).forEach { (name, count) ->
+                FeatureUsageRow(
+                    name = name,
+                    count = count,
+                    fraction = count.toFloat() / maxCount,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeatureUsageRow(name: String, count: Int, fraction: Float) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = name,
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(2.dp))
+        // 简化条形图:用 Surface 高度表示比例
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp),
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(fraction),
+                color = MaterialTheme.colorScheme.primary,
+                content = {},
+            )
+        }
+    }
+}
+
+/** 把 0..1 的浮点数格式化为百分比字符串(保留 1 位小数)。 */
+private fun formatPercent(value: Float): String = "%.1f%%".format(value * 100)
+
+// ════════════════════════════════════════════════════════════════════════════
+// P3-3:数据库完整性面板 — 把 IntegrityChecker 已有但未 UI 化的检查结果透出
+//
+//  数据源:IntegrityChecker.getLatestStatus() → DbIntegrityLogEntity?
+//  触发检查:IntegrityChecker.checkAndLog() → Boolean(同步等待结果)
+//  落盘:每次检查结果写入 db_integrity_log 表,自动保留最近 30 条
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 数据库完整性底部面板。
+ *
+ * 展示内容:
+ *  - 最近一次检查结果:状态(ok / error)+ DB 大小 + 检查时间 + 详情
+ *  - "立即检查"按钮:触发 [IntegrityChecker.checkAndLog],显示 loading + 结果
+ *  - 异常状态显示备份提示(引导用户从自动备份恢复)
+ */
+@Composable
+private fun DbIntegritySheet(onDismiss: () -> Unit) {
+    val checker: IntegrityChecker = koinInject()
+    val scope = rememberCoroutineScope()
+
+    var latest by remember { mutableStateOf<DbIntegrityLogEntity?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var checking by remember { mutableStateOf(false) }
+    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
+
+    // 打开时拉一次最近状态
+    LaunchedEffect(Unit) {
+        latest = checker.getLatestStatus()
+        loading = false
+    }
+
+    MuseBottomSheet(onDismissRequest = onDismiss) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "数据库完整性",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        Spacer(Modifier.height(MusePaddings.contentGap))
+
+        when {
+            loading -> {
+                Text(
+                    text = "正在读取最近检查记录…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = MusePaddings.contentGap),
+                )
+            }
+            else -> {
+                latest?.let { entity ->
+                    val isOk = entity.status.equals("ok", ignoreCase = true)
+                    // ── 状态卡片:圆形图标 + 状态文字 + DB 大小 + 检查时间 ────────
+                    Surface(
+                        shape = MuseShapes.large,
+                        color = if (isOk) {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                        } else {
+                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Surface(
+                                shape = androidx.compose.foundation.shape.CircleShape,
+                                color = if (isOk) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.error
+                                },
+                                modifier = Modifier.size(40.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (isOk) {
+                                            Icons.Filled.Check
+                                        } else {
+                                            Icons.Filled.Close
+                                        },
+                                        contentDescription = null,
+                                        tint = if (isOk) {
+                                            MaterialTheme.colorScheme.onPrimary
+                                        } else {
+                                            MaterialTheme.colorScheme.onError
+                                        },
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (isOk) "数据库正常" else "数据库异常",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = if (isOk) {
+                                        MaterialTheme.colorScheme.onSurface
+                                    } else {
+                                        MaterialTheme.colorScheme.error
+                                    },
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = "DB 大小:${formatFileSize(entity.dbSizeBytes)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "检查时间:${dateFormat.format(Date(entity.checkedAt))}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+
+                    // ── 异常时显示详情 + 备份提示 ─────────────────────────────
+                    if (!isOk) {
+                        Spacer(Modifier.height(MusePaddings.contentGap))
+                        Surface(
+                            shape = MuseShapes.small,
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                text = entity.details.takeIf { it.isNotBlank() } ?: "(无详情)",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier
+                                    .padding(MusePaddings.contentGap)
+                                    .heightIn(max = 160.dp)
+                                    .verticalScroll(rememberScrollState()),
+                            )
+                        }
+                        Spacer(Modifier.height(MusePaddings.contentGap))
+                        Text(
+                            text = "建议:请从「设置 → 备份与恢复」恢复最近一次自动备份,或导出关键会话后重新安装应用。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+
+                    Spacer(Modifier.height(MusePaddings.contentGap))
+
+                    // ── 立即检查按钮 ─────────────────────────────────────────
+                    Button(
+                        onClick = {
+                            if (checking) return@Button
+                            scope.launch {
+                                checking = true
+                                val ok = checker.checkAndLog()
+                                latest = checker.getLatestStatus()
+                                checking = false
+                                MuseToast.show(if (ok) "完整性检查通过" else "完整性检查异常,请查看详情")
+                            }
+                        },
+                        enabled = !checking,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MuseShapes.medium,
+                    ) {
+                        if (checking) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("正在检查…")
+                        } else {
+                            Icon(
+                                imageVector = Icons.Outlined.HealthAndSafety,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("立即检查")
+                        }
+                    }
+                } ?: run {
+                    // 无任何检查记录(首次使用 / 表为空)
+                    Text(
+                        text = "暂无检查记录\n\n点击下方按钮立即执行一次完整性检查。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = MusePaddings.contentGap),
+                    )
+                    Button(
+                        onClick = {
+                            if (checking) return@Button
+                            scope.launch {
+                                checking = true
+                                checker.checkAndLog()
+                                latest = checker.getLatestStatus()
+                                checking = false
+                            }
+                        },
+                        enabled = !checking,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MuseShapes.medium,
+                    ) {
+                        if (checking) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("正在检查…")
+                        } else {
+                            Icon(
+                                imageVector = Icons.Outlined.HealthAndSafety,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("立即检查")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 打包全部崩溃日志为 ZIP 并通过 ACTION_SEND 分享。
+ *
+ * ZIP 内容由 [MuseCrashHandler.packageCrashLogsToZip] 决定:device_info.txt + 各 crash-*.txt。
+ * 文件位于 cacheDir(已在 file_paths.xml 中通过 cache-path 暴露给 FileProvider)。
+ */
+private fun shareCrashZip(context: android.content.Context) {
+    val zipFile = MuseCrashHandler.packageCrashLogsToZip(context)
+    if (zipFile == null) {
+        MuseToast.show("导出失败:暂无崩溃日志")
+        return
+    }
+    runCatching {
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            zipFile,
+        )
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "application/zip"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            putExtra(android.content.Intent.EXTRA_SUBJECT, "muse crash logs — ${zipFile.name}")
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(
+            android.content.Intent.createChooser(intent, "分享崩溃日志 ZIP")
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }.onFailure {
+        MuseToast.show("分享失败:无法获取文件 URI")
+    }
+}
+
+/**
+ * 分享单条崩溃日志文件(.txt)。
+ *
+ * 文件位于 filesDir/crash/(已在 file_paths.xml 中通过 files-path 暴露给 FileProvider)。
+ */
+private fun shareCrashFile(context: android.content.Context, file: File) {
+    runCatching {
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file,
+        )
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            putExtra(android.content.Intent.EXTRA_SUBJECT, "muse crash log — ${file.name}")
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(
+            android.content.Intent.createChooser(intent, "分享崩溃日志")
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }.onFailure {
+        MuseToast.show("分享失败:无法获取文件 URI")
+    }
+}
+
+/** 把字节数格式化为人类可读的文件大小(B / KB / MB)。 */
+private fun formatFileSize(bytes: Long): String {
+    if (bytes < 1024) return "$bytes B"
+    val kb = bytes / 1024.0
+    if (kb < 1024) return "%.1f KB".format(kb)
+    val mb = kb / 1024.0
+    return "%.1f MB".format(mb)
+}
+
+/** 崩溃日志内联预览的最大字符数,避免一次性把超大堆栈读入 Compose 状态。 */
+private const val CRASH_PREVIEW_CHARS = 2000

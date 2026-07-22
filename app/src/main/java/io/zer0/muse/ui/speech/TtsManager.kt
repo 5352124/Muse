@@ -98,6 +98,15 @@ class TtsManager(
     private val appContext = context.applicationContext
     private val cacheDir: File = appContext.cacheDir
     private val ready = AtomicBoolean(false)
+    /**
+     * v1.0.4 (P2): TTS 初始化就绪状态(暴露给 UI)。
+     *
+     * 系统 TTS 引擎异步初始化,首次点击朗读时可能尚未就绪。
+     * UI 可读取此 Flow 判断是否需要提示"TTS 正在初始化"。
+     * (云端 TTS 引擎不需要此判断,直接调 speak 即可)
+     */
+    private val _isReady = MutableStateFlow(false)
+    val isReady: StateFlow<Boolean> = _isReady.asStateFlow()
     private var currentUtteranceId: String? = null
 
     /** v0.52: 流式朗读的句子缓冲(等完整句子再交给 TTS,避免 token 级断句拗口)。 */
@@ -127,6 +136,8 @@ class TtsManager(
             // 默认中文(系统 TTS 不支持时回退默认语言)
             applyLanguage(Locale.CHINESE)
             ready.set(true)
+            // v1.0.4 (P2): 同步暴露给 UI
+            _isReady.value = true
         } else {
             Logger.e("TtsManager", "TTS init failed: status=$status")
             // v1.98: 移除 Toast 提示,静默处理(朗读功能不可用时用户自然知晓)
@@ -704,6 +715,8 @@ class TtsManager(
         currentUtteranceId = null
         sentenceBuffer.clear() // v0.52: 清空流式缓冲
         ready.set(false)
+        // v1.0.4 (P2): 同步暴露给 UI
+        _isReady.value = false
     }
 }
 

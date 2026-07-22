@@ -159,6 +159,10 @@ class GeminiProvider(
         val currentCall = AtomicReference<Call?>(null)
         // M-GEM3: 为每个 functionCall 分配递增 index(原固定 0 导致多工具调用合并为一个)
         val toolCallIndex = AtomicInteger(0)
+        // v1.0.1 (P1): 任何 ContentDelta/ImageDelta/ToolCallDelta 发出后置 true,
+        //   重试前检查 !anyDeltaSent.get(),避免已流出内容被重发(与 OpenAI/Anthropic 对齐)。
+        //   原 Gemini 仅用 generation 计数器区分新旧流,但未防止"重连后重新发送已发内容"。
+        val anyDeltaSent = AtomicBoolean(false)
 
         /**
          * M-GEM2: 启动(或重启)SSE 流。可重试错误(UNAVAILABLE/5xx/429/网络异常)按指数退避重试,
@@ -166,8 +170,18 @@ class GeminiProvider(
          */
         fun startStream() {
             val myGen = generation.incrementAndGet()
+            // v1.0.1 (P0): 每次重连重新构建 URL(多 key 切换后 ?key= 参数需更新)
+            val currentUrl = try {
+                buildUrl(model = request.model.id, stream = true)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                trySend(ChatStreamEvent.Error(e.message ?: ErrorCode.SERVICE_UNAVAILABLE.toMessage("url_build")))
+                close()
+                return
+            }
             val httpRequest = Request.Builder()
-                .url(url)
+                .url(currentUrl)
                 .header("Accept", "text/event-stream")
                 .apply {
                     // Phase 9.4: Vertex AI 服务账号鉴权用 Bearer token,优先于 API Key
@@ -187,8 +201,26 @@ class GeminiProvider(
                     if (!response.isSuccessful) {
                         val errText = ProviderHttpSupport.readBodyCapped(response)
                         val code = response.code
+                        // v1.0.1 (P0): 429 限流时先尝试切换 key(多 key 场景),立即重试无需 backoff
+                        if (code == 429 && !anyDeltaSent.get() && attempt.get() < MAX_RETRIES &&
+                            !request.abortSignal.aborted && !scope.isClosedForSend &&
+                            switchToNextKey()
+                        ) {
+                            attempt.incrementAndGet()
+                            generation.incrementAndGet()
+                            eventSource.cancel()
+                            call.cancel()
+                            Logger.i(TAG, "streamChat onOpen 429 限流,已切换到下一个 key,立即重试 " +
+                                "(${attempt.get()}/$MAX_RETRIES)")
+                            scope.launch {
+                                if (request.abortSignal.aborted || scope.isClosedForSend) return@launch
+                                startStream()
+                            }
+                            return
+                        }
+                        // v1.0.1 (P1): anyDeltaSent 保护 — 已流出内容则不重试(避免重复发送)
                         // M-GEM2: 可重试错误(5xx/429)重试
-                        if (attempt.get() < MAX_RETRIES && isRetryableError(code, null)) {
+                        if (attempt.get() < MAX_RETRIES && !anyDeltaSent.get() && isRetryableError(code, null)) {
                             attempt.incrementAndGet()
                             // H-GEM1: 推进 generation 使旧流的后续 onClosed/onFailure 失效
                             generation.incrementAndGet()
@@ -211,6 +243,10 @@ class GeminiProvider(
                             return
                         }
                         val msg = parseErrorMessage(code, errText)
+                        // v1.0.1: 401/403 鉴权失败时标记当前 key 失败(多 key 场景)
+                        if (code == 401 || code == 403) {
+                            markKeyFailed(hardBlock = true)
+                        }
                         finished.set(true)
                         trySend(ChatStreamEvent.Error(msg))
                         close()
@@ -242,11 +278,14 @@ class GeminiProvider(
                     // Phase 8.6: 遍历 parts,文本 → ContentDelta,图片 → ImageDelta
                     candidate.content?.parts?.forEach { part ->
                         if (part.text.isNotEmpty()) {
+                            // v1.0.1 (P1): 标记已发出内容,防止重连后重发
+                            anyDeltaSent.set(true)
                             trySend(ChatStreamEvent.ContentDelta(part.text))
                         }
                         // Phase 8.6: Gemini 绘图返回的 inlineData(base64)
                         val inline = part.inlineData
                         if (inline != null && inline.data.isNotEmpty()) {
+                            anyDeltaSent.set(true)
                             trySend(ChatStreamEvent.ImageDelta(
                                 imageBase64 = inline.data,
                                 mimeType = inline.mimeType,
@@ -257,6 +296,7 @@ class GeminiProvider(
                         val fc = part.functionCall
                         if (fc != null) {
                             val argsJson = fc.args?.let { AppJson.encodeToString(it) } ?: "{}"
+                            anyDeltaSent.set(true)
                             trySend(ChatStreamEvent.ToolCallDelta(
                                 index = toolCallIndex.getAndIncrement(),
                                 id = fc.name,
@@ -302,8 +342,26 @@ class GeminiProvider(
                         close()
                         return
                     }
+                    val code = response?.code
+                    // v1.0.1 (P0): 429 限流时先尝试切换 key(多 key 场景),立即重试无需 backoff
+                    if (code == 429 && !anyDeltaSent.get() && attempt.get() < MAX_RETRIES &&
+                        !request.abortSignal.aborted && !scope.isClosedForSend &&
+                        switchToNextKey()
+                    ) {
+                        attempt.incrementAndGet()
+                        // H-GEM1: 推进 generation 使旧流的后续 onClosed 失效
+                        generation.incrementAndGet()
+                        Logger.i(TAG, "streamChat onFailure 429 限流,已切换到下一个 key,立即重试 " +
+                            "(${attempt.get()}/$MAX_RETRIES)")
+                        scope.launch {
+                            if (request.abortSignal.aborted || scope.isClosedForSend) return@launch
+                            startStream()
+                        }
+                        return
+                    }
+                    // v1.0.1 (P1): anyDeltaSent 保护 — 已流出内容则不重试(避免重复发送)
                     // M-GEM2: 可重试错误(网络异常/5xx/429/UNAVAILABLE)指数退避
-                    if (attempt.get() < MAX_RETRIES && isRetryableError(response?.code, t)) {
+                    if (attempt.get() < MAX_RETRIES && !anyDeltaSent.get() && isRetryableError(code, t)) {
                         attempt.incrementAndGet()
                         // H-GEM1: 推进 generation 使旧流的后续 onClosed 失效
                         generation.incrementAndGet()
@@ -322,6 +380,10 @@ class GeminiProvider(
                             startStream()
                         }
                         return
+                    }
+                    // v1.0.1: 401/403 鉴权失败时标记当前 key 失败(多 key 场景)
+                    if (code == 401 || code == 403) {
+                        markKeyFailed(hardBlock = true)
                     }
                     // v1.109 修复: SSE 已建立(2xx)后中断是连接断开,优先用 Throwable 信息
                     val msg = response?.let {
@@ -390,9 +452,20 @@ class GeminiProvider(
             val response = call.execute()
             response.use { resp ->
                 if (!resp.isSuccessful) {
+                    val code = resp.code
+                    // v1.0.1 (P0): 429 切换 key 重试(多 key 场景);buildUrl 内部用 effectiveApiKey(),
+                    //   递归调用 completeText 会用新 key 重新构建 URL(?key= 参数更新)
+                    if (code == 429 && switchToNextKey()) {
+                        Logger.i(TAG, "completeText 429 限流,已切换到下一个 key,重试")
+                        return@withContext completeText(request)
+                    }
+                    // v1.0.1: 401/403 鉴权失败时标记当前 key 失败(多 key 场景)
+                    if (code == 401 || code == 403) {
+                        markKeyFailed(hardBlock = true)
+                    }
                     // M-GEM14: 用 readBodyCapped 替代 runCatching { resp.body.string() }
                     val errText = ProviderHttpSupport.readBodyCapped(resp)
-                    throw RuntimeException(parseErrorMessage(resp.code, errText))
+                    throw RuntimeException(parseErrorMessage(code, errText))
                 }
                 val raw = resp.body.string()
                 val parsed = AppJson.decodeFromString<GeminiResponse>(raw)
@@ -645,9 +718,10 @@ class GeminiProvider(
         }
 
         // generativelanguage API(默认)
+        // v1.0.1: 用 effectiveApiKey() 支持多 key 轮换(429 切换 key 后 URL ?key= 参数需更新)
         val base = config.resolvedBaseUrl().trimEnd('/')
         val urlBuilder = ("$base/models/$model:$action").toHttpUrl().newBuilder()
-            .addQueryParameter("key", config.apiKey)
+            .addQueryParameter("key", effectiveApiKey())
         if (stream) urlBuilder.addQueryParameter("alt", "sse")
         return urlBuilder.build().toString()
     }

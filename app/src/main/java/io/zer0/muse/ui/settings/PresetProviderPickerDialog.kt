@@ -63,7 +63,9 @@ import io.zer0.muse.ui.theme.huge
  * v1.38: 预置供应商选择器 — 全屏页面(替代原 ModalBottomSheet,根治关闭后卡死 bug)。
  *
  * 设计:
- *  - 17 个预置供应商(海外官方 9 + 国产官方 8 + 中转站 6),覆盖主流模型厂商
+ *  - v1.0.6: 43 个预置供应商(海外官方 15 + 国产官方 22 + 中转站 6),
+ *    全量对齐 openhanako 37 个内置供应商 + 1muse 特有 8 个(deepinfra / lingyi /
+ *    github-copilot / 6 个中转站模板)。覆盖主流模型厂商。
  *  - 顶部三段式导航(左返回 + 中标题 + 右空),与 [SettingsSubPageScaffold] 保持一致
  *  - 搜索栏实时过滤 displayName / baseUrl / id
  *  - 卡片:surface 背景 + 1dp outlineVariant 细边框 + 20dp 大圆角(无 elevation)

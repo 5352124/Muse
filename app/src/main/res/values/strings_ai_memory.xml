@@ -55,4 +55,10 @@
     <string name="memory_error_trace_message">消息: </string>
     <string name="memory_error_trace_device">设备: </string>
     <string name="memory_error_trace_stack_header">== Stack Trace ==</string>
+
+    <!-- v8: 记忆作用域(scope)相关 -->
+    <string name="memory_scope_all">全部</string>
+    <string name="memory_scope_main">主助手</string>
+    <string name="memory_scope_assistant">助手记忆</string>
+    <string name="memory_scope_label">记忆作用域</string>
 </resources>

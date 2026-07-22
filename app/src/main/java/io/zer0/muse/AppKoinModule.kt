@@ -107,7 +107,15 @@ val appModule = module {
     // v1.134 P1-1/P1-2: 孤儿组件接入所需的 DAO(AutoBackupHelper / StatsCacheManager 依赖)
     single { get<MuseDb>().autoBackupLogDao() }  // 自动备份日志
     single { get<MuseDb>().statsCacheDao() }  // 统计缓存
+    single { get<MuseDb>().integrityLogDao() }  // P3-3: 数据库完整性日志
     single { AuditLogger(get()) }  // P2-4: 审计日志记录器
+    // P3-3: 数据库完整性校验器(供 DebugScreen 触发检查 + 展示最近一次结果)
+    single {
+        io.zer0.muse.data.stats.IntegrityChecker(
+            integrityLogDao = get(),
+            db = get<MuseDb>().openHelper.writableDatabase,
+        )
+    }
     single { io.zer0.muse.data.milestone.MilestoneChecker(get(), get(), get()) }  // Phase 2 2B: milestone checker
     single { io.zer0.muse.data.experience.ExperienceRepository(get()) }  // v1.98
     single { io.zer0.muse.data.agentdm.AgentDmRepository(get()) }  // HanaAgent port: agent DM
@@ -157,11 +165,11 @@ val appModule = module {
     // 主动消息调度�?陪伴助手定时主动给用户发消息 + 弹通知)
     // 依赖顺序:SettingsRepository / ChatService(ai 模块) / SessionRepository / AssistantRepository /
     //         MuseNotificationManager / Context / AppScope
-    single { io.zer0.muse.schedule.ProactiveMessageRunner(get(), get(), get(), get(), get(), androidContext(), get()) }
+    single { io.zer0.muse.schedule.ProactiveMessageRunner(get(), get(), get(), get(), get(), get(), androidContext(), get()) }
 
     // v1.30: 群聊调度�?用户发消息后串行触发�?Agent 轮转发言)
     // v1.111: �?appScope/appContext/chatGenerationManager �?群聊轮转运行�?appScope,切页/后台不中�?
-    single { io.zer0.muse.schedule.GroupChatScheduler(get(), get(), get(), get(), get(), androidContext(), get()) }
+    single { io.zer0.muse.schedule.GroupChatScheduler(get(), get(), get(), get(), get(), androidContext(), get(), get(), get()) }
 
     // v1.43: 应用级聊天生成管理器(切页/后台保持生成不中�?
     single { io.zer0.muse.schedule.ChatGenerationManager(get()) }
@@ -249,8 +257,21 @@ val appModule = module {
             ragConfigProvider = { get<io.zer0.muse.data.SettingsRepository>().getRagConfig() },
             stickerLibraryRepository = get(),
             imageService = get(),
+            multiAgentConfigProvider = { get<io.zer0.muse.data.SettingsRepository>().multiAgentConfigCache },
+            llmAggregator = get(),
+            pauseManager = get(),
+            delegationChainTracker = get(),
         )
     }
+
+    // v1.201: 委派暂停管理器(全局单例,ChatViewModel 与 SkillExecutor 共享)
+    single { io.zer0.muse.tools.DelegationPauseManager() }
+    // v1.201: 委派链路追踪器(全局单例,ChatViewModel 与 SkillExecutor 共享)
+    single { io.zer0.muse.tools.DelegationChainTracker() }
+    // v1.201: LLM 综合评审聚合器(用于 TeamWorkflow LLM_REVIEW 策略)
+    single { io.zer0.muse.tools.LlmAggregator(get(), get()) }
+    // v1.200: Agent 自动路由(根据任务文本 + 能力标签推荐最佳助手/团队)
+    single { io.zer0.muse.tools.AgentRouter(get(), get()) }
 
     // Phase 5-E: 文档解析�?
     single { DocumentParser() }
@@ -402,10 +423,11 @@ val appModule = module {
 
     single { BackupService(get(), get(), get(), get(), get()) }
 
-    // Phase 8.9: 云备份服�?S3/WebDAV 派发) + 余额查询服务(JsonPath 提取)
+    // Phase 8.9: 云备份服务(S3/WebDAV 派发)
+    // v1.0.4 (P3-8): 移除 BalanceService Koin 注册 — 该类从未被业务代码调用,
+    // ProviderSection.kt 内联实现了带本地化错误反馈的余额查询,BalanceService 为死代码,已删除。
     single { io.zer0.muse.backup.CloudBackupService(get(named("chat"))) }
-    single { io.zer0.muse.balance.BalanceService(get(named("chat"))) }
-    // Phase 8.9: CherryStudio/Chatbox 配置导入�?
+    // Phase 8.9: CherryStudio/Chatbox 配置导入
     single { io.zer0.muse.importer.ConfigImporter(get()) }
 
     // Phase 8.10: 通知管理�?3 渠道:chat_completed/live_update/web_server)
@@ -463,8 +485,9 @@ val appModule = module {
     single {
         ChatViewModel(
             get(), get(), get(), get(), get(), get(), get(), get(), get(),
-            get(), get(), get(), get(), get(), get(), get(), get(), get(),
-            get(), get(), get(), get(), get(), get(), get(), get(), get(),
+            get(), get(), get(), get(), get(), get(), get(), get(),
+            get(), get(), get(),
+            get(), get(), get(), get(), get(), get(), get(), get(), get(), get(),
         )
     }
 
@@ -480,6 +503,7 @@ val appModule = module {
             memoryTicker = get(),
             settings = get(),
             experienceRepository = get(),
+            assistantRepository = get(),
         )
     }
 

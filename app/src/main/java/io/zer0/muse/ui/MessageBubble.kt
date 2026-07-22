@@ -42,7 +42,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Build
@@ -63,6 +62,7 @@ import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.automirrored.outlined.CallSplit
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -123,6 +123,8 @@ import io.zer0.muse.ui.common.ContextMenuItem
 import io.zer0.muse.ui.common.DesktopContextMenu
 import io.zer0.muse.ui.common.rememberDesktopShortcutsEnabled
 import io.zer0.muse.ui.markdown.MarkdownText
+import io.zer0.muse.ui.taskcard.AgentPlan
+import io.zer0.muse.ui.taskcard.PlanCard
 import io.zer0.muse.ui.theme.MuseDateFormats
 import io.zer0.muse.ui.theme.MuseShapes
 import io.zer0.muse.ui.theme.pill
@@ -133,13 +135,6 @@ import io.zer0.muse.ui.theme.MuseIconSizes
 import io.zer0.muse.ui.theme.MuseElevation
 import io.zer0.muse.ui.theme.MuseMonoFontFamily
 import io.zer0.muse.ui.theme.MusePaddings
-// 功能1: 消息表情回应图标
-import androidx.compose.material.icons.filled.ThumbUp
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.SentimentSatisfied
-import androidx.compose.material.icons.filled.SentimentDissatisfied
-import androidx.compose.material.icons.filled.MoodBad
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.VideoLibrary
@@ -207,11 +202,12 @@ internal fun MessageBubble(
     onArtifactClick: (io.zer0.muse.data.artifact.ArtifactEntity) -> Unit = {},
     // 功能1: 会话内搜索高亮文本
     highlightText: String? = null,
-    // 功能1: 消息表情回应
-    reaction: String? = null,
-    onReact: (String) -> Unit = {},
     // v2.3: debug 模式性能摘要(仅最后一条 assistant 消息底部显示)
     debugInfo: String? = null,
+    // v1.55: Agent 工作流计划卡(显示最新的活跃计划,随消息一起滚动)
+    agentPlan: AgentPlan? = null,
+    // v1.201: 委派链路根节点(仅 AI 消息,有委派时显示)
+    delegationChain: List<io.zer0.muse.tools.DelegationChainTracker.ChainNode>? = null,
     // v1.45: mood/reasoning 折叠状态由外部控制,切页后不丢失
     isMoodExpanded: Boolean? = null,
     isReasoningExpanded: Boolean? = null,
@@ -223,6 +219,10 @@ internal fun MessageBubble(
     onHtmlPreview: (String) -> Unit = {},
     // 视频附件(仅 USER 消息):视频缩略图 + 时长 + 播放图标,点击用 ACTION_VIEW 调起系统播放器
     videoAttachment: VideoAttachment? = null,
+    // v1.138: 视觉辅助 UI — 分析中进度(null=未在分析)
+    visionAssistProgress: io.zer0.muse.vision.VisionProgress? = null,
+    // v1.138: 视觉辅助 UI — 是否已对该消息做过视觉辅助(显示"辅助视觉"标签)
+    visionAssisted: Boolean = false,
 ) {
     val isUser = msg.role == MessageRole.USER
     // 阶段 4: 长按菜单状态(主菜单 + 翻译语言子菜单)
@@ -231,8 +231,6 @@ internal fun MessageBubble(
     var showLanguageSubmenu by rememberSaveable { mutableStateOf(false) }
     // P2-13: 桌面端右键上下文菜单(仅 Expanded 窗口 + 物理键盘场景显示)
     var showDesktopContextMenu by rememberSaveable { mutableStateOf(false) }
-    // 功能1: 表情回应选择面板
-    var showReactionPicker by rememberSaveable { mutableStateOf(false) }
     // v1.60-B: 全屏媒体查看器状态 — 图片列表 + 初始索引
     // mediaPreview 为 Pair 类型,自定义 Saver 过于复杂,保持 remember
     var mediaPreview by remember { mutableStateOf<Pair<List<String>, Int>?>(null) }
@@ -258,26 +256,26 @@ internal fun MessageBubble(
     val body = if (msg.quotedContent != null) msg.content else parsedBody
     // P2-13: 桌面快捷键总开关(Expanded 窗口 + 物理键盘)— 控制右键菜单是否启用
     val desktopShortcutsEnabled = rememberDesktopShortcutsEnabled()
+    // M-UI1: 长按菜单/桌面菜单手势统一收口,后续分别附加到用户/助手气泡上,
+    // 避免整行 Column 都被点击高亮覆盖。
+    val bubbleClickModifier = Modifier.combinedClickable(
+        // v1.48: 改为仅长按弹菜单 — 单击弹菜单过于激进,且与 MarkdownText 链接点击冲突
+        // (点正文文字时 LinkableText 消费 tap 事件导致不弹菜单,行为不可预测)
+        onClick = {},
+        onLongClick = {
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            if (desktopShortcutsEnabled) {
+                showDesktopContextMenu = true
+            } else {
+                showActionMenu = true
+            }
+        },
+    )
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (isAnimating) Modifier.animateContentSize() else Modifier)
-            // P2-13: 桌面端用长按触发桌面菜单,移动端用长按触发普通菜单
-            // (Compose 1.7.6 中 PointerInputChange.buttons API 不稳定,改用 longClick 路径统一处理)
-            .combinedClickable(
-                // v1.48: 改为仅长按弹菜单 — 单击弹菜单过于激进,且与 MarkdownText 链接点击冲突
-                // (点正文文字时 LinkableText 消费 tap 事件导致不弹菜单,行为不可预测)
-                onClick = {},
-                onLongClick = {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    if (desktopShortcutsEnabled) {
-                        showDesktopContextMenu = true
-                    } else {
-                        showActionMenu = true
-                    }
-                },
-            ),
+            .then(if (isAnimating) Modifier.animateContentSize() else Modifier),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
     ) {
         // v0.48: 消息分组头 — AI 消息显示头像 + 助手名 + 时间戳(连续同角色时压缩)
@@ -500,6 +498,8 @@ internal fun MessageBubble(
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 // v1.48 (h18): 用 BubbleShape 令牌统一气泡圆角(原裸值 20/20/20/6)
                 shape = MuseShapes.userBubble,
+                // M-UI1: 手势收口到气泡本身,避免整行高亮
+                modifier = bubbleClickModifier,
             ) {
                 Column(
                     modifier = Modifier
@@ -620,6 +620,60 @@ internal fun MessageBubble(
                                     .clickable { mediaPreview = userImageUris to index },
                             )
                         }
+                        // v1.138: 视觉辅助标签 — 在图片下方显示"辅助视觉"状态
+                        // 分析中:显示进度"辅助视觉 · 分析中 x/y"
+                        // 已完成:显示"辅助视觉 · 已分析"(成功)或"辅助视觉 · 失败"
+                        val showVisionLabel = visionAssistProgress?.isActive == true || visionAssisted
+                        if (showVisionLabel) {
+                            val (labelText, labelColor, labelIcon) = when {
+                                visionAssistProgress?.isActive == true -> Triple(
+                                    stringResource(R.string.vision_assist_analyzing, visionAssistProgress.index, visionAssistProgress.total),
+                                    MaterialTheme.colorScheme.tertiary,
+                                    Icons.Outlined.Visibility,
+                                )
+                                visionAssisted -> Triple(
+                                    stringResource(R.string.vision_assist_done),
+                                    MaterialTheme.colorScheme.primary,
+                                    Icons.Default.Check,
+                                )
+                                else -> Triple(
+                                    stringResource(R.string.vision_assist_label),
+                                    MaterialTheme.colorScheme.outline,
+                                    Icons.Outlined.Visibility,
+                                )
+                            }
+                            Surface(
+                                color = labelColor.copy(alpha = 0.12f),
+                                shape = MuseShapes.tiny,
+                                modifier = Modifier.padding(top = 2.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    if (visionAssistProgress?.isActive == true) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(12.dp),
+                                            strokeWidth = 1.5.dp,
+                                            color = labelColor,
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = labelIcon,
+                                            contentDescription = null,
+                                            tint = labelColor,
+                                            modifier = Modifier.size(12.dp),
+                                        )
+                                    }
+                                    Text(
+                                        text = labelText,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = labelColor,
+                                    )
+                                }
+                            }
+                        }
                     }
                     val userText = body.ifEmpty { if (hasImages || videoAttachment != null) "" else " " }
                     if (userText.isNotBlank()) {
@@ -640,17 +694,13 @@ internal fun MessageBubble(
                     modifier = Modifier.padding(top = 2.dp, end = 4.dp),
                 )
             }
-            // 功能1: USER 消息右下角反应图标
-            ReactionIcon(
-                reaction = reaction,
-                modifier = Modifier.padding(top = 2.dp, end = 4.dp),
-            )
         } else {
             // Phase 1 1A: AI 消息添加 surfaceVariant 气泡背景 + assistantBubble 形状
             Surface(
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = MuseShapes.assistantBubble,
-                modifier = Modifier.fillMaxWidth(0.85f),
+                // M-UI1: 手势收口到气泡本身,避免整行高亮
+                modifier = Modifier.fillMaxWidth(0.85f).then(bubbleClickModifier),
             ) {
                 Column(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -699,6 +749,7 @@ internal fun MessageBubble(
                         data = taskCard,
                         onToggleExpand = onToggleTaskCardExpand,
                         onRetryStep = onRetryTaskCardStep,
+                        delegationChain = delegationChain,
                     )
                     ToolCallCard(
                         toolName = toolInfo.toolName,
@@ -718,6 +769,7 @@ internal fun MessageBubble(
                             onToggleExpand = onToggleTaskCardExpand,
                             onRetryStep = onRetryTaskCardStep,
                             modifier = Modifier.weight(1f),
+                            delegationChain = delegationChain,
                         )
                         ToolCallCard(
                             toolName = toolInfo.toolName,
@@ -734,6 +786,7 @@ internal fun MessageBubble(
                     data = taskCard,
                     onToggleExpand = onToggleTaskCardExpand,
                     onRetryStep = onRetryTaskCardStep,
+                    delegationChain = delegationChain,
                 )
             } else if (toolInfo != null) {
                 // 只有 ToolCallInfo,没有 TaskCard
@@ -917,23 +970,24 @@ internal fun MessageBubble(
                     modifier = Modifier.padding(top = MusePaddings.contentGap),
                 )
             }
-            // 功能1: AI 消息右下角反应图标
-            ReactionIcon(
-                reaction = reaction,
-                modifier = Modifier.padding(top = 4.dp),
-            )
             }   // closes inner else (no taskCard/toolInfo)
+            // v1.55: Agent 工作流计划卡随消息一起滚动,而不是固定在消息列表底部
+            if (agentPlan != null) {
+                PlanCard(plan = agentPlan)
+            }
                 }   // closes AI bubble Surface Column
             }       // closes AI bubble Surface
         }
 
-        // v1.97: 每条助手消息都显示快捷按钮(复制);最后一条额外显示"重新生成"
+        // v1.138: 助手消息底部快捷按钮 — 复制/翻译/分享(所有助手消息),重新生成(仅最后一条)
+        // 翻译按钮复用长按菜单的语言子菜单(showActionMenu + showLanguageSubmenu)
+        // 分享按钮用系统 share sheet 分享单条消息内容
         if (!isUser && msg.content.isNotEmpty() && !isStreaming && !isTranslating) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // 复制按钮(所有助手消息都显示)
+                // 复制
                 IconButton(
                     onClick = {
                         onCopyMessage(msg.content)
@@ -948,7 +1002,44 @@ internal fun MessageBubble(
                         modifier = Modifier.size(MuseIconSizes.iconSmall),
                     )
                 }
-                // 重新生成按钮(仅最后一条助手消息显示)
+                // 翻译(弹语言子菜单)
+                IconButton(
+                    onClick = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        showActionMenu = true
+                        showLanguageSubmenu = true
+                    },
+                    modifier = Modifier.size(MuseIconSizes.touchTarget),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Language,
+                        contentDescription = stringResource(R.string.action_translate),
+                        tint = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(MuseIconSizes.iconSmall),
+                    )
+                }
+                // 分享(系统 share sheet 分享单条消息)
+                IconButton(
+                    onClick = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        scope.launch {
+                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, msg.content)
+                            }
+                            context.startActivity(Intent.createChooser(sendIntent, null))
+                        }
+                    },
+                    modifier = Modifier.size(MuseIconSizes.touchTarget),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Share,
+                        contentDescription = stringResource(R.string.action_share),
+                        tint = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(MuseIconSizes.iconSmall),
+                    )
+                }
+                // 重新生成(仅最后一条助手消息)
                 if (isLastAssistant) {
                     IconButton(
                         onClick = {
@@ -999,16 +1090,8 @@ internal fun MessageBubble(
                                 )
                             }
                         } else {
-                            // 主菜单项
-                            ActionMenuItem(
-                                icon = Icons.Default.Edit,
-                                text = stringResource(R.string.action_edit),
-                                contentDescription = stringResource(R.string.action_edit),
-                                onClick = {
-                                    showActionMenu = false
-                                    onEdit()
-                                },
-                            )
+                            // M-UI2: 助手消息长按菜单严格精简为 引用/委托/分支,
+                            // 用户消息保留原有完整菜单(编辑/翻译/收藏/复制/分享/删除等)。
                             ActionMenuItem(
                                 icon = Icons.AutoMirrored.Outlined.Reply,
                                 text = stringResource(R.string.message_action_quote),
@@ -1027,87 +1110,6 @@ internal fun MessageBubble(
                                     onDelegate()
                                 },
                             )
-                            if (!isUser && isLastAssistant && msg.content.isNotEmpty()) {
-                                ActionMenuItem(
-                                    icon = Icons.Default.Refresh,
-                                    text = stringResource(R.string.chat_regenerate_action),
-                                    contentDescription = stringResource(R.string.chat_regenerate_cd),
-                                    onClick = {
-                                        showActionMenu = false
-                                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        onRegenerate()
-                                    },
-                                )
-                            }
-                            if (msg.content.isNotBlank()) {
-                                ActionMenuItem(
-                                    icon = Icons.Outlined.Language,
-                                    text = stringResource(R.string.chat_translate_action),
-                                    contentDescription = stringResource(R.string.chat_translate_action),
-                                    onClick = { showLanguageSubmenu = true },
-                                )
-                            }
-                            if (!isUser && msg.content.isNotBlank()) {
-                                ActionMenuItem(
-                                    icon = if (isSpeaking) Icons.Default.Stop
-                                           else Icons.AutoMirrored.Filled.VolumeUp,
-                                    text = if (isSpeaking) stringResource(R.string.chat_tts_stop) else stringResource(R.string.chat_tts_play),
-                                    contentDescription = if (isSpeaking) stringResource(R.string.chat_tts_stop) else stringResource(R.string.chat_tts_play),
-                                    onClick = {
-                                        showActionMenu = false
-                                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        onToggleTts()
-                                    },
-                                )
-                            }
-                            if (msg.content.isNotBlank() || msg.reasoning?.isNotBlank() == true) {
-                                ActionMenuItem(
-                                    icon = if (msg.favorite) Icons.Outlined.StarBorder
-                                           else Icons.Default.Star,
-                                    text = if (msg.favorite) stringResource(R.string.chat_favorite_remove) else stringResource(R.string.chat_favorite_add),
-                                    contentDescription = if (msg.favorite) stringResource(R.string.chat_favorite_remove) else stringResource(R.string.chat_favorite_add),
-                                    onClick = {
-                                        showActionMenu = false
-                                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        onToggleFavorite()
-                                    },
-                                )
-                            }
-                            // 功能1: 消息表情回应
-                            ActionMenuItem(
-                                icon = Icons.Default.Star,
-                                text = if (reaction != null) stringResource(R.string.chat_reaction_change) else stringResource(R.string.chat_reaction_add),
-                                contentDescription = stringResource(R.string.chat_reaction_add),
-                                onClick = {
-                                    showActionMenu = false
-                                    showReactionPicker = true
-                                },
-                            )
-                            if (reaction != null) {
-                                ActionMenuItem(
-                                    icon = Icons.Default.Close,
-                                    text = stringResource(R.string.chat_reaction_remove),
-                                    contentDescription = stringResource(R.string.chat_reaction_remove),
-                                    onClick = {
-                                        showActionMenu = false
-                                        onReact("")
-                                    },
-                                )
-                            }
-                            // 阶段 J: 复制消息内容(iOS 风格长按 → 复制)
-                            if (msg.content.isNotBlank()) {
-                                ActionMenuItem(
-                                    icon = Icons.Default.ContentCopy,
-                                    text = stringResource(R.string.action_copy),
-                                    contentDescription = stringResource(R.string.action_copy),
-                                    onClick = {
-                                        showActionMenu = false
-                                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        onCopyMessage(msg.content)
-                                    },
-                                )
-                            }
-                            // v1.58: 从此消息分叉对话(复制历史到新会话,在新会话探索不同方向)
                             ActionMenuItem(
                                 icon = Icons.AutoMirrored.Outlined.CallSplit,
                                 text = stringResource(R.string.chat_fork_action),
@@ -1117,27 +1119,70 @@ internal fun MessageBubble(
                                     onFork()
                                 },
                             )
-                            // v0.29 P0-3: 分享整段对话(导出 Markdown,系统 share sheet)
-                            ActionMenuItem(
-                                icon = Icons.Outlined.Share,
-                                text = stringResource(R.string.chat_share_action),
-                                contentDescription = stringResource(R.string.chat_share_action),
-                                onClick = {
-                                    showActionMenu = false
-                                    onShareSession()
-                                },
-                            )
-                            // v1.48: 删除消息(误发消息可从菜单删除)
-                            ActionMenuItem(
-                                icon = Icons.Default.Delete,
-                                text = stringResource(R.string.chat_delete_message),
-                                contentDescription = stringResource(R.string.chat_delete_message),
-                                tint = MaterialTheme.colorScheme.error,
-                                onClick = {
-                                    showActionMenu = false
-                                    showDeleteConfirm = true
-                                },
-                            )
+                            if (isUser) {
+                                // 用户消息保留完整菜单
+                                ActionMenuItem(
+                                    icon = Icons.Default.Edit,
+                                    text = stringResource(R.string.action_edit),
+                                    contentDescription = stringResource(R.string.action_edit),
+                                    onClick = {
+                                        showActionMenu = false
+                                        onEdit()
+                                    },
+                                )
+                                if (msg.content.isNotBlank()) {
+                                    ActionMenuItem(
+                                        icon = Icons.Outlined.Language,
+                                        text = stringResource(R.string.chat_translate_action),
+                                        contentDescription = stringResource(R.string.chat_translate_action),
+                                        onClick = { showLanguageSubmenu = true },
+                                    )
+                                }
+                                if (msg.content.isNotBlank() || msg.reasoning?.isNotBlank() == true) {
+                                    ActionMenuItem(
+                                        icon = if (msg.favorite) Icons.Outlined.StarBorder
+                                               else Icons.Default.Star,
+                                        text = if (msg.favorite) stringResource(R.string.chat_favorite_remove) else stringResource(R.string.chat_favorite_add),
+                                        contentDescription = if (msg.favorite) stringResource(R.string.chat_favorite_remove) else stringResource(R.string.chat_favorite_add),
+                                        onClick = {
+                                            showActionMenu = false
+                                            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            onToggleFavorite()
+                                        },
+                                    )
+                                }
+                                if (msg.content.isNotBlank()) {
+                                    ActionMenuItem(
+                                        icon = Icons.Default.ContentCopy,
+                                        text = stringResource(R.string.action_copy),
+                                        contentDescription = stringResource(R.string.action_copy),
+                                        onClick = {
+                                            showActionMenu = false
+                                            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            onCopyMessage(msg.content)
+                                        },
+                                    )
+                                }
+                                ActionMenuItem(
+                                    icon = Icons.Outlined.Share,
+                                    text = stringResource(R.string.chat_share_action),
+                                    contentDescription = stringResource(R.string.chat_share_action),
+                                    onClick = {
+                                        showActionMenu = false
+                                        onShareSession()
+                                    },
+                                )
+                                ActionMenuItem(
+                                    icon = Icons.Default.Delete,
+                                    text = stringResource(R.string.chat_delete_message),
+                                    contentDescription = stringResource(R.string.chat_delete_message),
+                                    tint = MaterialTheme.colorScheme.error,
+                                    onClick = {
+                                        showActionMenu = false
+                                        showDeleteConfirm = true
+                                    },
+                                )
+                            }
                         }
                     }
                 },
@@ -1247,37 +1292,6 @@ internal fun MessageBubble(
                     }
                 }
             }
-        }
-        // 功能1: 表情回应选择面板
-        if (showReactionPicker) {
-            MuseDialog(
-                onDismissRequest = { showReactionPicker = false },
-                title = stringResource(R.string.chat_reaction_picker_title),
-                content = {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                    ) {
-                        ReactionEmojis.forEach { (key, emoji) ->
-                            IconButton(
-                                onClick = {
-                                    showReactionPicker = false
-                                    onReact(key)
-                                },
-                                modifier = Modifier.size(48.dp),
-                            ) {
-                                Text(
-                                    text = emoji,
-                                    style = MaterialTheme.typography.headlineMedium,
-                                )
-                            }
-                        }
-                    }
-                },
-                onConfirm = null,
-                dismissText = stringResource(R.string.action_cancel),
-                onDismiss = { showReactionPicker = false },
-            )
         }
         if (showDeleteConfirm) {
             MuseDialog(
@@ -1669,10 +1683,16 @@ private fun ZoomableImage(
 /**
  * 阶段 4: 流式光标 — 末尾 AI 流式消息文本后追加的闪烁竖线。
  *
- * 设计: 2dp 宽 / 16dp 高竖条,通过 [rememberInfiniteTransition] + [animateFloat]
- *       在 1.0 ↔ 0.0 间线性往返(1s 周期),呈现"打字机呼吸感"。
+ * 设计: 2.5dp 宽 / 18dp 高竖条,通过 [rememberInfiniteTransition] + [animateFloat]
+ *       在 1.0 ↔ 0.2 间用 FastOutSlowInEasing 往返(530ms 周期),呈现"打字机呼吸感"。
  * 颜色: 取自 MaterialTheme.colorScheme.primary(月桂绿 #2D8C5F),
  *       与品牌色保持一致,符合"深夜台灯"配色铁律(<5% 品牌色点缀)。
+ *
+ * v1.0.3 改进:
+ *  - 周期从 1s 缩短到 530ms,看起来更"活跃",与更快的内容流入节奏匹配
+ *  - alpha 范围从 0~1 改为 0.2~1,避免完全消失,视觉更连贯
+ *  - 缓动从 LinearEasing 改为 FastOutSlowInEasing,呼吸感更自然
+ *  - 宽度从 2dp 加到 2.5dp,高度从 16dp 加到 18dp,略微更醒目
  */
 @Composable
 private fun StreamingCursor(
@@ -1682,16 +1702,16 @@ private fun StreamingCursor(
     val transition = rememberInfiniteTransition(label = "streaming_cursor")
     val alpha by transition.animateFloat(
         initialValue = 1f,
-        targetValue = 0f,
+        targetValue = 0.2f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1000, easing = LinearEasing),
+            animation = tween(durationMillis = 530, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "cursor_alpha",
     )
     Box(
         modifier = modifier
-            .size(width = 2.dp, height = 16.dp)
+            .size(width = 2.5.dp, height = 18.dp)
             .background(color = color.copy(alpha = alpha)),
     )
 }
@@ -2157,34 +2177,6 @@ private fun buildHighlightedText(text: String, query: String): AnnotatedString {
                 append(text.substring(index, index + query.length))
             }
             start = index + query.length
-        }
-    }
-}
-
-// Phase 3 3A: 消息表情回应 emoji 映射(6 个常用 emoji,替代 Material Icons)。
-private val ReactionEmojis: List<Pair<String, String>> = listOf(
-    "heart" to "❤\uFE0F",
-    "star" to "⭐",
-    "smile" to "😊",
-    "sad" to "😢",
-    "angry" to "😤",
-    "bolt" to "⚡",
-)
-
-/** Phase 3 3A: 反应图标渲染 — 消息右下角小 emoji。 */
-@Composable
-private fun ReactionIcon(
-    reaction: String?,
-    modifier: Modifier = Modifier,
-) {
-    if (reaction != null && reaction.isNotEmpty()) {
-        val emoji = ReactionEmojis.firstOrNull { it.first == reaction }?.second
-        if (emoji != null) {
-            Text(
-                text = emoji,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = modifier,
-            )
         }
     }
 }

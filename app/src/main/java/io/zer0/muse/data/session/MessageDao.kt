@@ -106,6 +106,15 @@ interface MessageDao {
     suspend fun getLastAssistantMessage(): MessageEntity?
 
     /**
+     * v1.0.4: 取全局最近 N 条 assistant 消息(跨会话,情绪追踪 / 报告页用)。
+     *
+     * 用于 [io.zer0.muse.data.emotion.MoodParser] 从消息内容中解析 `<mood>` 标签,
+     * 聚合情绪趋势展示在报告页。
+     */
+    @Query("SELECT * FROM messages WHERE role = 'ASSISTANT' ORDER BY createdAt DESC LIMIT :limit")
+    suspend fun getRecentAssistantMessages(limit: Int): List<MessageEntity>
+
+    /**
      * Phase 10.3 之前:LIKE 搜索(保留作为 fallback,单字查询 / FTS4 不可用时用)。
      *
      * M-SESS2: 用 ESCAPE '\' + 预转义 pattern,避免 query 内的 %/_ 被当作通配符。

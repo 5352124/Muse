@@ -52,6 +52,7 @@
     <string name="skill_installed">Skill installed: %1$s (id=%2$s, impl=%3$s). You can view/toggle it in Settings → Skill.</string>
     <string name="skill_install_validate_failed">Skill definition validation failed: %1$s</string>
     <string name="skill_unknown_error">Unknown error</string>
+    <string name="chat_auto_route_prefix">Auto-delegated to %1$s</string>
     <string name="skill_assistant_not_found">Sub-assistant with id %1$s not found; please create it in Assistant management</string>
     <string name="skill_delegate_failed">Sub-assistant %1$s call failed: %2$s</string>
     <string name="skill_delegate_timeout">Sub-assistant %1$s call timed out (%2$d s)</string>

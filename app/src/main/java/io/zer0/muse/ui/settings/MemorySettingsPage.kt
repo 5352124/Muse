@@ -58,7 +58,6 @@ import kotlin.math.roundToInt
  *
  * + 经验库开关(默认关)
  * + 保持唤醒(默认关)
- * + 开机自启动
  * + 通知策略(never / when_unfocused / always)
  */
 @Composable
@@ -69,7 +68,6 @@ fun MemorySettingsPage(
     val memoryConfig by settings.memoryConfigFlow.collectAsStateWithLifecycle(initialValue = MemoryConfig())
     val experienceEnabled by settings.experienceEnabledFlow.collectAsStateWithLifecycle(initialValue = false)
     val keepAwake by settings.keepAwakeFlow.collectAsStateWithLifecycle(initialValue = false)
-    val autoLaunch by settings.autoLaunchFlow.collectAsStateWithLifecycle(initialValue = false)
     val notificationPolicy by settings.notificationPolicyFlow.collectAsStateWithLifecycle(initialValue = "when_unfocused")
     val scope = rememberCoroutineScope()
 
@@ -195,16 +193,6 @@ fun MemorySettingsPage(
                     checked = keepAwake,
                     onCheckedChange = { v ->
                         scope.launch { settings.saveKeepAwake(v) }
-                    },
-                )
-                SettingsGroupDivider()
-                SettingsSwitchRow(
-                    icon = Icons.Outlined.Speed,
-                    title = stringResource(R.string.settings_memory_auto_launch),
-                    subtitle = stringResource(R.string.settings_memory_auto_launch_subtitle),
-                    checked = autoLaunch,
-                    onCheckedChange = { v ->
-                        scope.launch { settings.saveAutoLaunch(v) }
                     },
                 )
             }

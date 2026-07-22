@@ -112,16 +112,12 @@
     <string name="onboarding_add_provider">Add a model provider first</string>
     <string name="onboarding_provider_hint">You need to configure an AI provider to start chatting. This step is recommended.</string>
     <string name="onboarding_back">Back</string>
-    <string name="onboarding_feature_chat_title">Smart chat</string>
-    <string name="onboarding_feature_chat_desc">Connect to OpenAI, Claude, Gemini, DeepSeek and other popular models. Manage all AI conversations in one app.</string>
     <string name="onboarding_feature_assistant_title">Personalized assistant</string>
     <string name="onboarding_feature_assistant_desc">Create your own assistant with custom prompts, memory and extended capabilities so the AI understands you better.</string>
     <string name="onboarding_feature_privacy_title">Privacy first</string>
     <string name="onboarding_feature_privacy_desc">Conversations and config are stored locally. Provider keys stay under your control, with local backup and restore support.</string>
     <string name="onboarding_feature_search_title">Web Search</string>
     <string name="onboarding_feature_search_desc">Supports Bing/Jina/SearXNG/Tavily search engines, AI answers auto-cite sources, real-time and reliable</string>
-    <string name="onboarding_feature_tools_title">Tool Capabilities</string>
-    <string name="onboarding_feature_tools_desc">Built-in file I/O, HTTP requests, email, skill extensions, AI can autonomously call them for complex tasks</string>
     <string name="onboarding_name_setup_hint">These names will be used in conversations, can be changed in settings anytime</string>
 
     <!-- ===== ui/schedule ===== -->
@@ -309,6 +305,22 @@
     <string name="taskcard_steps_completed">%1$d/%2$d steps done</string>
     <string name="taskcard_failed_suffix"> · %1$d failed</string>
 
+    <!-- ===== ui/taskcard: delegation chain (v1.201) ===== -->
+    <string name="delegation_chain_title">Delegation Chain</string>
+    <string name="delegation_status_running">Running…</string>
+    <string name="delegation_status_completed">Completed</string>
+    <string name="delegation_status_failed">Failed</string>
+    <string name="delegation_status_timeout">Timeout</string>
+    <string name="delegation_status_cancelled">Cancelled</string>
+    <string name="delegation_status_paused">Waiting for confirmation</string>
+    <string name="delegation_node_count">Nodes %1$d</string>
+    <string name="delegation_task_label">Task</string>
+    <string name="delegation_target_label">Target</string>
+    <string name="delegation_duration_label">Duration</string>
+    <string name="delegation_error_label">Error</string>
+    <string name="delegation_result_label">Result</string>
+    <string name="delegation_no_chain">No delegation chain</string>
+
     <!-- ===== ui/artifact ===== -->
     <string name="artifact_untitled">Untitled</string>
     <string name="artifact_close">Close</string>
@@ -324,4 +336,29 @@
     <string name="groupchat_edit_btn">Save</string>
     <string name="groupchat_edit_name_hint">Group chat name</string>
     <string name="groupchat_edit_member_required">Please keep at least one member</string>
+
+    <!-- ===== v1.201: human-in-the-loop / delegation pause ===== -->
+    <string name="delegation_pause_section_title">Human-in-the-loop</string>
+    <string name="delegation_pause_before_team">Pause before team execution</string>
+    <string name="delegation_pause_before_member">Pause before each member</string>
+    <string name="delegation_pause_intermediate">Confirm intermediate result</string>
+    <string name="delegation_pause_high_risk">Confirm high-risk task</string>
+    <string name="delegation_pause_timeout">Pause wait timeout</string>
+    <string name="delegation_pause_sec">sec</string>
+    <string name="delegation_confirm_title">Task confirmation</string>
+    <string name="delegation_confirm_task">Task</string>
+    <string name="delegation_confirm_target">Target</string>
+    <string name="delegation_confirm_reason">Reason</string>
+    <string name="delegation_confirm_intermediate">Intermediate result</string>
+    <string name="delegation_confirm_modify_hint">Enter the modified instruction</string>
+    <string name="delegation_option_approve">Approve</string>
+    <string name="delegation_option_reject">Reject</string>
+    <string name="delegation_option_cancel">Cancel delegation</string>
+    <string name="delegation_option_modify">Modify and continue</string>
+
+    <!-- ===== v1.201: LLM Review (LLM_REVIEW aggregation strategy) ===== -->
+    <string name="multi_agent_llm_review_enabled">Enable LLM Review</string>
+    <string name="multi_agent_llm_review_model">Review Model</string>
+    <string name="multi_agent_strategy_llm_review">LLM Review</string>
+    <string name="multi_agent_llm_review_desc">Use a separate LLM call to review multi-agent results; higher quality but increased latency and token usage</string>
 </resources>

@@ -117,16 +117,12 @@
     <string name="onboarding_add_provider">先添加模型供应商</string>
     <string name="onboarding_provider_hint">需要先配置 AI 供应商才能开始对话,推荐先完成此步</string>
     <string name="onboarding_back">返回</string>
-    <string name="onboarding_feature_chat_title">智能对话</string>
-    <string name="onboarding_feature_chat_desc">连接 OpenAI、Claude、Gemini、DeepSeek 等主流模型,一个应用管理所有 AI 对话。</string>
     <string name="onboarding_feature_assistant_title">个性化助手</string>
     <string name="onboarding_feature_assistant_desc">创建专属助手,定制提示词、记忆与扩展能力,让 AI 更懂你。</string>
     <string name="onboarding_feature_privacy_title">隐私优先</string>
     <string name="onboarding_feature_privacy_desc">对话与配置本地存储,Provider 密钥由你掌控,支持本地备份与恢复。</string>
     <string name="onboarding_feature_search_title">联网搜索</string>
     <string name="onboarding_feature_search_desc">支持 Bing/Jina/SearXNG/Tavily 多搜索引擎,AI 回答自动引用来源,信息实时可靠</string>
-    <string name="onboarding_feature_tools_title">工具能力</string>
-    <string name="onboarding_feature_tools_desc">内置文件读写、HTTP 请求、邮件发送、技能扩展等工具,AI 可自主调用完成复杂任务</string>
     <string name="onboarding_name_setup_hint">这些称呼将在对话中使用,可随时在设置中修改</string>
 
     <!-- ===== onboarding v2 (5-step redesign) ===== -->
@@ -343,6 +339,22 @@
     <string name="taskcard_steps_completed">%1$d/%2$d 步完成</string>
     <string name="taskcard_failed_suffix"> · %1$d 失败</string>
 
+    <!-- ===== ui/taskcard: delegation chain (v1.201) ===== -->
+    <string name="delegation_chain_title">委派链路</string>
+    <string name="delegation_status_running">执行中…</string>
+    <string name="delegation_status_completed">已完成</string>
+    <string name="delegation_status_failed">失败</string>
+    <string name="delegation_status_timeout">超时</string>
+    <string name="delegation_status_cancelled">已取消</string>
+    <string name="delegation_status_paused">等待确认</string>
+    <string name="delegation_node_count">节点 %1$d</string>
+    <string name="delegation_task_label">任务</string>
+    <string name="delegation_target_label">目标</string>
+    <string name="delegation_duration_label">耗时</string>
+    <string name="delegation_error_label">错误</string>
+    <string name="delegation_result_label">结果</string>
+    <string name="delegation_no_chain">暂无委派链路</string>
+
     <!-- ===== ui/artifact ===== -->
     <string name="artifact_untitled">未命名</string>
     <string name="artifact_close">关闭</string>
@@ -353,4 +365,29 @@
     <string name="model_profile_back">返回</string>
     <string name="model_profile_empty_title">暂无模型</string>
     <string name="model_profile_empty_subtitle">请先在设置中添加 AI 提供商</string>
+
+    <!-- ===== v1.201: 人机协作 / 委派暂停 ===== -->
+    <string name="delegation_pause_section_title">人机协作</string>
+    <string name="delegation_pause_before_team">团队执行前暂停</string>
+    <string name="delegation_pause_before_member">每个成员执行前暂停</string>
+    <string name="delegation_pause_intermediate">中间结果确认</string>
+    <string name="delegation_pause_high_risk">高风险任务确认</string>
+    <string name="delegation_pause_timeout">暂停等待超时</string>
+    <string name="delegation_pause_sec">秒</string>
+    <string name="delegation_confirm_title">任务确认</string>
+    <string name="delegation_confirm_task">任务</string>
+    <string name="delegation_confirm_target">目标</string>
+    <string name="delegation_confirm_reason">原因</string>
+    <string name="delegation_confirm_intermediate">中间结果</string>
+    <string name="delegation_confirm_modify_hint">输入修改后的指令</string>
+    <string name="delegation_option_approve">批准继续</string>
+    <string name="delegation_option_reject">拒绝</string>
+    <string name="delegation_option_cancel">取消委派</string>
+    <string name="delegation_option_modify">修改后继续</string>
+
+    <!-- ===== v1.201: LLM 综合评审(LLM_REVIEW 聚合策略) ===== -->
+    <string name="multi_agent_llm_review_enabled">启用 LLM 综合评审</string>
+    <string name="multi_agent_llm_review_model">评审模型</string>
+    <string name="multi_agent_strategy_llm_review">LLM 综合评审</string>
+    <string name="multi_agent_llm_review_desc">使用独立 LLM 调用综合评审多 Agent 结果,质量更高但耗时与 token 消耗增加</string>
 </resources>

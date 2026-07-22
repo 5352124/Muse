@@ -27,6 +27,8 @@ sealed class ProviderSpecificConfig {
      *   Azure 等中转可能需改 /openai/deployments/{id}/chat/completions
      * @param useResponseApi 是否走新版 Responses API(/v1/responses);
      *   false=走 Chat Completions(默认,兼容性最好)
+     * @param responsesPath Responses API 端点路径(默认 /responses);
+     *   v1.0.7 新增。Codex OAuth 等需改 /codex/responses
      * @param includeHistoryReasoning 历史消息是否包含推理内容;
      *   true=把上轮 reasoning 作为 assistant 消息 content 一部分回传(默认 true)
      * @param embeddingsPath Embeddings 端点路径(默认 /embeddings)
@@ -37,9 +39,33 @@ sealed class ProviderSpecificConfig {
     data class OpenAI(
         val chatCompletionsPath: String = "/chat/completions",
         val useResponseApi: Boolean = false,
+        /**
+         * v1.0.7: Responses API 端点路径。
+         *
+         * - 默认 "/responses":OpenAI 官方 / xAI Grok OAuth / 其他 OpenAI 兼容
+         * - "/codex/responses":OpenAI Codex OAuth(走 chatgpt.com/backend-api)
+         * - 其他自定义路径:由用户配置
+         *
+         * 仅当 [useResponseApi]=true 时生效。
+         */
+        val responsesPath: String = "/responses",
         val includeHistoryReasoning: Boolean = true,
         val embeddingsPath: String = "/embeddings",
         val imagesPath: String = "/images/generations",
+        /**
+         * v1.136: 默认绘图模型 ID。
+         *
+         * 当调用方未显式传入 model 时,ImageService 会优先使用本字段,
+         * 其次回退到 ImageModelCatalog 的默认模型(如 dall-e-3)。
+         * 这对自定义/中转 OpenAI 兼容供应商友好,避免请求体缺少 model 导致 404。
+         */
+        val imageModel: String = "",
+        /**
+         * v1.136: 视频生成端点路径(默认 /videos/generations)。
+         *
+         * 通用 OpenAI 兼容视频生成 Provider 使用;Kling 等专用 Provider 不走此字段。
+         */
+        val videoGenerationsPath: String = "/videos/generations",
         /**
          * 模型 ID 前缀剥离。
          * 部分中转/聚合平台在本地模型列表中使用 provider 前缀(如 opencode-go/glm-5.2),
@@ -47,6 +73,18 @@ sealed class ProviderSpecificConfig {
          * 从 model.id 中移除该前缀。留空则不剥离。
          */
         val stripModelPrefix: String = "",
+        /**
+         * v1.0.6: 是否为 Coding Plan 供应商(对齐 openhanako 的 *-coding 系列预设)。
+         *
+         * Coding Plan 供应商特点:
+         *  - baseUrl 走专属 coding 端点(如 https://api.kimi.com/coding/v1)
+         *  - apiKey 通常带专属前缀(如 sk-sp- / sk-coding-)
+         *  - 模型列表聚焦编程(如 qwen3-coder-plus / kimi-for-coding)
+         *  - 部分需要运行时补全 headers/reasoning(openhanako 的 RUNTIME_ENRICHED_PROVIDERS)
+         *
+         * 当前仅作为标记字段,具体行为差异由 ProviderCompat / ProviderPayloadNormalizer 消费。
+         */
+        val codingPlan: Boolean = false,
     ) : ProviderSpecificConfig()
 
     /**
@@ -165,6 +203,7 @@ sealed class ProviderSpecificConfig {
             ProviderType.OPENAI -> OpenAI()
             ProviderType.ANTHROPIC -> Anthropic()
             ProviderType.GEMINI -> Gemini()
+            ProviderType.OPENAI_RESPONSES -> OpenAI(useResponseApi = true)
         }
     }
 }

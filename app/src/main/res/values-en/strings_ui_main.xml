@@ -220,6 +220,37 @@
     <string name="settings_screen_stats_cd">Statistics, view usage stats and heatmap, tap to enter</string>
     <string name="settings_screen_stats">Statistics</string>
     <string name="settings_screen_stats_desc">View usage stats and heatmap</string>
+    <string name="settings_screen_reports">My Reports</string>
+    <string name="settings_screen_reports_desc">Weekly / Monthly recap</string>
+    <string name="reports_title">My Reports</string>
+    <string name="reports_generating">Generating report…</string>
+    <string name="reports_empty">No report data yet</string>
+    <string name="reports_weekly_title">This Week</string>
+    <string name="reports_monthly_title">This Month</string>
+    <string name="reports_chats">Chats</string>
+    <string name="reports_messages">Messages</string>
+    <string name="reports_words">Words (est.)</string>
+    <string name="reports_new_memories">New Memories</string>
+    <string name="reports_emotion_title">Mood Trend</string>
+    <string name="reports_emotion_desc">Parsed from recent AI messages\' mood tags</string>
+    <string name="reports_emotion_avg">Avg</string>
+    <string name="reports_emotion_high">High</string>
+    <string name="reports_emotion_low">Low</string>
+    <string name="reports_emotion_positive">Positive</string>
+    <string name="reports_emotion_neutral">Neutral</string>
+    <string name="reports_emotion_negative">Negative</string>
+    <string name="quota_title">Daily Quota</string>
+    <string name="quota_plan_free">Free</string>
+    <string name="quota_plan_pro">Pro</string>
+    <string name="quota_chats">Chats</string>
+    <string name="quota_images">Image Gen</string>
+    <string name="quota_searches">Web Search</string>
+    <!-- v1.0.4: Notification listener -->
+    <string name="settings_screen_notification_listener">Notification Listener</string>
+    <string name="settings_screen_notification_listener_desc">Authorize AI to read other apps\' notifications</string>
+    <!-- v1.0.4: AI tools -->
+    <string name="settings_screen_tools">AI Tools</string>
+    <string name="settings_screen_tools_desc">View tools and permissions AI can invoke</string>
     <string name="settings_screen_about_group_cd">About group</string>
     <string name="settings_screen_about">About</string>
     <string name="settings_screen_tutorial_cd">Tutorial, onboarding guide, tap to enter</string>
@@ -246,7 +277,6 @@
 
     <!-- v1.97 gap8: Tools group (standalone translate page entry) -->
     <string name="settings_screen_tools_group_cd">Tools group</string>
-    <string name="settings_screen_tools">Tools</string>
     <string name="settings_screen_translate_cd">AI Translate, standalone translation tool, tap to enter</string>
     <string name="settings_screen_translate">AI Translate</string>
     <string name="settings_screen_translate_desc">Multi-language translation, paste/copy supported</string>
@@ -260,6 +290,13 @@
     <string name="settings_vision_enabled_subtitle">Automatically send images to vision model for analysis</string>
     <string name="settings_vision_model_section">Vision Model</string>
     <string name="settings_vision_no_models">No vision-capable models found. Please add a vision model in provider settings.</string>
+    <string name="vision_analysis_starting">Analyzing image with vision model</string>
+    <string name="vision_analysis_done">Analyzed %1$d image(s) with vision model</string>
+    <string name="vision_analysis_failed">Image analysis failed: %1$s</string>
+    <string name="vision_assist_label">Vision Assist</string>
+    <string name="vision_assist_analyzing">Vision Assist · Analyzing %1$d/%2$d</string>
+    <string name="vision_assist_done">Vision Assist · Done</string>
+    <string name="vision_assist_failed">Vision Assist · Failed</string>
 
     <!-- ===== Search screen SearchScreen ===== -->
     <string name="search_back_cd">Back</string>
@@ -438,10 +475,20 @@
     <string name="audit_log_clear">Clear Log</string>
     <string name="audit_log_empty">No log records</string>
     <string name="audit_log_clear_confirm">Confirm clearing all audit logs?</string>
+    <string name="audit_log_category_all">All</string>
     <string name="audit_log_category_api">API Call</string>
     <string name="audit_log_category_user">User Action</string>
     <string name="audit_log_category_auth">Authentication</string>
     <string name="audit_log_category_system">System</string>
+    <string name="audit_log_search_hint">Search action / target / detail</string>
+    <string name="audit_log_clear_search">Clear search</string>
+    <string name="audit_log_no_match">No matching logs</string>
+    <string name="audit_log_result_count">Showing %1$d of %2$d</string>
+    <string name="audit_log_export">Export JSON</string>
+    <string name="audit_log_export_empty">No logs to export</string>
+    <string name="audit_log_export_subject">muse audit logs — %1$d entries</string>
+    <string name="audit_log_export_chooser">Share audit logs</string>
+    <string name="audit_log_export_failed">Export failed: cannot get file URI</string>
 
     <!-- ===== P2-8: Video Generation (SettingsScreen entry + VideoGenerationPage) ===== -->
     <string name="settings_screen_video_gen_cd">Video Generation, Kling API, click to open</string>
