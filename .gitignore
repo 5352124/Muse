@@ -26,3 +26,11 @@ SECURITY.md
 Muse_Product_Enhancement_Plan.md
 _skill_existing.txt
 report_*.txt
+
+# 临时文件
+compile_log2.txt
+tmp_head.kt
+tmp_*.kt
+
+# 软著申请材料
+软件著作权申请资料/

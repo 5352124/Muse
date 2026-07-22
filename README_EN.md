@@ -29,6 +29,7 @@
   <a href="#what-is-muse">What is Muse</a> ·
   <a href="#screenshots">Screenshots</a> ·
   <a href="#features">Features</a> ·
+  <a href="软件功能.md">Feature Guide</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#license">License</a>
 </p>
