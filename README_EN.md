@@ -29,8 +29,8 @@
   <a href="#what-is-muse">What is Muse</a> ·
   <a href="#screenshots">Screenshots</a> ·
   <a href="#features">Features</a> ·
-  <a href="软件功能.md">Feature Guide</a> ·
   <a href="#quick-start">Quick Start</a> ·
+  <a href="#docs--contributing">Docs & Contributing</a> ·
   <a href="#license">License</a>
 </p>
 
@@ -52,15 +52,15 @@ Everything works offline by default. No account required. No data leaves your de
 
 | Conversation | Memory System | Theme Picker |
 |:-----------:|:-------------:|:------------:|
-| ![Conversation](screenshots/%E5%AF%B9%E8%AF%9D.jpg) | ![Memory](screenshots/%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F.jpg) | ![Theme](screenshots/%E4%B8%BB%E9%A2%98%E7%B3%BB%E7%BB%9F.jpg) |
+| ![Conversation](screenshots/对话.jpg) | ![Memory](screenshots/记忆系统.jpg) | ![Theme](screenshots/主题系统.jpg) |
 
 | Knowledge Base | Stickers | Settings |
 |:--------------:|:--------:|:--------:|
-| ![Knowledge](screenshots/%E7%9F%A5%E8%AF%86%E5%BA%93.jpg) | ![Stickers](screenshots/%E8%A1%A8%E6%83%85%E5%8C%85.jpg) | ![Settings](screenshots/%E8%AE%BE%E7%BD%AE.jpg) |
+| ![Knowledge](screenshots/知识库.jpg) | ![Stickers](screenshots/表情包.jpg) | ![Settings](screenshots/设置.jpg) |
 
 | Assistant Resources | Data Import |
 |:------------------:|:-----------:|
-| ![Resources](screenshots/%E5%8A%A9%E6%89%8B%E8%B5%84%E6%BA%90.jpg) | ![Import](screenshots/%E6%95%B0%E6%8D%AE%E5%AF%BC%E5%85%A5.jpg) |
+| ![Resources](screenshots/助手资源.jpg) | ![Import](screenshots/数据导入.jpg) |
 
 ---
 
@@ -68,11 +68,17 @@ Everything works offline by default. No account required. No data leaves your de
 
 ### Memory System
 
-Muse has a 4-tier memory architecture, progressing from short-term conversation to long-term deep processing.
+Muse has a 4-tier memory architecture, progressing from short-term conversation to long-term deep processing. Each tier has a clear responsibility:
 
 ```
 Conversation --> Fact Extraction --> Rolling Summary --> Compile & Aggregate --> Deep Processing
+  Short-term      Key info            Compression         Dedup & merge         Deep understanding
 ```
+
+- **Tier 1 Conversation**: the raw message stream, retains full context for the current session
+- **Tier 2 Fact Extraction**: pulls key facts (names, preferences, agreements) from conversations, tagged with importance and source
+- **Tier 3 Rolling Summary**: compresses long conversations into rolling summaries to prevent unbounded context growth
+- **Tier 4 Deep Processing**: aggregates and deduplicates into long-term memory, organized by topic and time, retrievable across all future sessions
 
 - **Critical facts never decay**: medical info, financial data, core identity -- facts with importance >= 2 are protected and never fade over time
 - **Routine info expires naturally**: ordinary preferences and chit-chat decay automatically as usage frequency drops
@@ -81,15 +87,36 @@ Conversation --> Fact Extraction --> Rolling Summary --> Compile & Aggregate -->
 
 ### Multi-Provider Models
 
-20+ built-in providers across three categories:
+40+ built-in providers across three categories:
 
 | Category | Providers |
 |----------|-----------|
-| International | OpenAI, Anthropic, Gemini, Groq, Together, Mistral, OpenRouter, DeepInfra, Fireworks |
-| Chinese providers | DeepSeek, Qwen, GLM (Zhipu), Moonshot, Doubao, Baichuan, Lingyi, StepFun |
-| Proxy | OpenCode, API2D, AIHubMix, DeepBricks + custom templates |
+| International | OpenAI, Anthropic, Gemini, xAI Grok, Groq, Together, Mistral, OpenRouter, DeepInfra, Fireworks, Perplexity, GitHub Copilot |
+| Chinese providers | DeepSeek, Qwen, GLM (Zhipu), Moonshot, Doubao, Baichuan, Lingyi, StepFun, MiniMax, Xiaomi MiMo |
+| Local & others | Ollama (local), OpenCode, API2D, AIHubMix, DeepBricks, Agnes AI + custom templates |
 
 Model IDs are fetched dynamically from each provider's `/models` endpoint -- no hardcoded lists, no app updates needed when new models launch.
+
+### Vision Assist -- Let Text-Only Models See Images
+
+When you send an image to a model that does not support multimodal input, Muse does not discard the image or error out. Instead, it automatically kicks off vision assist:
+
+1. Uses your configured vision model (e.g. GPT-4o, Gemini) to analyze the image and produce a structured text description
+2. The description covers eight dimensions: overall summary, visible text (OCR), objects and layout, charts and data, user-request restatement, request answer, visual evidence, and uncertainty
+3. If the vision model supports grounding, it also returns coordinate-tagged key-element boxes (visual primitives)
+4. Injects the description into your message wrapped in a `<vision-context>` tag, and clears the original image -- preventing a failed request from sending an image to a text-only model
+5. The text-only model reads "what the image says," not pixels
+
+Engineering details:
+
+- Concurrent multi-image analysis with real-time progress (e.g. "analyzing 2/4")
+- 60-second per-image timeout + automatic 3-retry on network errors
+- Image pre-compression (2000x2000, JPEG 80%) -- oversized images are no longer dropped
+- Automatic fallback to streaming when a provider does not support non-streaming requests
+- Descriptions are cached by "image + request + prompt version" -- resending the same image returns instantly
+- On analysis failure, a fallback hint is injected and the image is cleared -- the original image is never sent to a text-only model
+
+This means even if your primary model is a text-only reasoning model, it can still "understand" the screenshots, tables, and photos you send.
 
 ### Mood System -- The Four Dimensions of Thought
 
@@ -102,6 +129,16 @@ Before each reply, Muse generates a `mood` block -- its "inner monologue." These
 
 These four dimensions progress from intuition to action: feel first (Vibe), then diverge (Sparks), then reflect (Reflections), finally crystallize into intent (Will). Every reply becomes more than text generation -- it is a complete thought process made visible.
 
+### Three-Layer Persona Architecture
+
+Every assistant's persona is composed of three independently configurable layers:
+
+- **Identity layer**: who you are -- role positioning, capability boundaries
+- **Relationship layer**: the relationship with the user -- form of address, closeness, interaction style
+- **Style layer**: how you speak -- tone, rhythm, vocabulary preferences
+
+The three layers combine to make personas both clear to adjust and consistent. Supports `{{user_name}}` / `{{char}}` template variables for dynamic substitution in prompts.
+
 ### Multi-Agent Collaboration
 
 Create multiple assistants with different personalities and specialties, delegating tasks anytime during a conversation:
@@ -109,6 +146,7 @@ Create multiple assistants with different personalities and specialties, delegat
 - Type `@assistant-name` in the input bar to delegate
 - Task cards visualize the execution status of each delegation step
 - Team mode supports multi-assistant round-robin collaboration
+- Group chat: multiple assistants share one session, replying in sequence or free rotation
 
 ### Skill System + MCP Protocol
 
@@ -123,10 +161,12 @@ Create multiple assistants with different personalities and specialties, delegat
 - **Web search**: Jina AI Reader (Markdown summaries), Bing (Jsoup structured extraction), SearXNG/Tavily/custom endpoints
 - **Proactive messaging**: sends when you have been out of touch; continuously adjustable send interval, time-window control, Agent-session only
 - **Text-to-speech**: system TTS / cloud TTS (OpenAI/MiniMax/Edge); per-assistant rate/pitch/language; routing to speaker/earpiece/Bluetooth
+- **Translation**: built-in translator with multi-language support and history retention
+- **Slash commands**: type `/` in the input bar for quick actions -- `/new` new chat, `/compact` compress context, `/reset` reset, `/pin` pin, `/archive` archive
 
 ### Theme System
 
-6 complete themes, each with light and dark variants:
+12 complete themes, each with light and dark variants:
 
 | Theme | Light | Dark |
 |:------|:-----:|:----:|
@@ -136,6 +176,12 @@ Create multiple assistants with different personalities and specialties, delegat
 | Spring | Yes | Yes |
 | Autumn | Yes | Yes |
 | AMOLED | Yes | Yes |
+| Sumi (Ink) | Yes | Yes |
+| Washi (Paper) | Yes | Yes |
+| Aizome (Indigo) | Yes | Yes |
+| Twilight Purple | Yes | Yes |
+| Amber Gold | Yes | Yes |
+| Dusk Rose | Yes | Yes |
 
 Plus 8 colorblind-friendly palettes for custom themes. Every theme fully defines all Material 3 color roles.
 
@@ -154,6 +200,7 @@ Plus 8 colorblind-friendly palettes for custom themes. Every theme fully defines
 - App PIN lock (exponential backoff: 5 failures -> 30s lockout); Deep Links blocked during lockout
 - Sensitive config encrypted via Android Keystore (AES-256-GCM)
 - Cloud backup encrypted with user-defined password (PBKDF2 + AES-256-GCM)
+- URL highlight with confirmation: tapping a link shows a confirmation dialog before opening; long-press opens directly -- prevents misclicks and phishing
 - WebView sanitizes LLM output -- strips iframe, form, javascript: pseudo-protocols
 - All conversations/memories/knowledge base stored in local Room database -- no telemetry, no analytics, no data collection
 - Network features off by default, opt-in only
@@ -190,10 +237,40 @@ APK output: `app/build/outputs/apk/release/app-{abi}-release.apk`
 
 ### First Run
 
-1. Open the app -- onboarding introduces core features
-2. Set your name and your assistant's name
-3. Add an AI provider API key (use a built-in template for quick setup)
-4. Start chatting -- from now on, Muse remembers everything
+Onboarding walks you through initial setup in six steps:
+
+1. **Welcome** -- discover Muse's core capabilities
+2. **Language & Appearance** -- choose interface language and theme
+3. **Your Name** -- set your name and your assistant's name
+4. **Configure Provider** -- pick a built-in provider and enter your API key (supports connection test)
+5. **Select Model** -- choose a default model from the fetched model list
+6. **Done** -- start chatting -- from now on, Muse remembers everything
+
+---
+
+## Docs & Contributing
+
+### User Documentation
+
+The app ships with a full in-app tutorial (Settings -> Tutorial). A standalone feature guide is also available:
+
+- [Feature Guide](软件功能.md) -- a complete manual organized around "what can you do with it"
+
+### Developer Documentation
+
+The [docs/](docs) directory contains full developer docs:
+
+- [Project Structure](docs/03-project-structure.md) · [Core Flows](docs/04-core-flows.md) · [UI & Navigation](docs/05-ui-navigation.md)
+- [Data Layer](docs/06-data-layer.md) · [Koin Modules](docs/07-koin-modules.md) · [Design Conventions](docs/08-design-conventions.md)
+- [Tool System](docs/10-tools-overview.md) · [Image Generation](docs/11-image-generation.md) · [Version History](docs/12-version-history.md)
+- [Architecture Overview](docs/14-architecture.md) · [Development Standards](docs/15-development-standards.md) · [Changelog](docs/CHANGELOG.md)
+
+### Contributing
+
+Contributions are welcome:
+
+- [Contributing Guide](CONTRIBUTING.md) -- bug reports, feature suggestions, pull request workflow
+- [Security Policy](SECURITY.md) -- vulnerability reporting and built-in security mechanisms
 
 ---
 
