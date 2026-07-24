@@ -41,15 +41,7 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # 3. 配置 Android SDK(避免 runner 镜像 SDK 版本不匹配)
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: |
-            platforms;android-35
-            build-tools;35.0.0
-
-      # 4. 缓存 Gradle 依赖与 wrapper(命中后构建时间可缩短 50%+)
+      # 3. 缓存 Gradle 依赖与 wrapper(命中后构建时间可缩短 50%+)
       - name: Cache Gradle
         uses: actions/cache@v4
         with:

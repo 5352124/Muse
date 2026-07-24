@@ -8,11 +8,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -122,7 +126,13 @@ fun ModelDiffSheet(
     }
 
     MuseBottomSheet(onDismissRequest = onDismiss) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                // v1.0.16: 兜底处理 Dialog 内 navigationBarsPadding 偶发失效,
+                // 确保底部按钮不被系统导航栏/手势条遮挡
+                .navigationBarsPadding(),
+        ) {
             // 标题区
             Text(
                 text = stringResource(R.string.model_diff_title),
@@ -159,10 +169,11 @@ fun ModelDiffSheet(
             Spacer(Modifier.size(MusePaddings.contentGap))
 
             // 主体列表区(LazyColumn 限高,避免内容过多撑爆 Sheet)
+            // v1.0.16: 高度从 420dp 降到 340dp,给底部按钮 + 导航栏留出足够空间
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 420.dp),
+                    .heightIn(max = 340.dp),
                 contentPadding = PaddingValues(vertical = MusePaddings.contentGap),
                 verticalArrangement = Arrangement.spacedBy(MusePaddings.contentGap),
             ) {
@@ -254,6 +265,9 @@ fun ModelDiffSheet(
                     onDismiss()
                 },
             )
+            // v1.0.16: 底部额外 spacer 等于系统导航栏高度,防止 Dialog 内 insets 失效
+            // 导致按钮被三键导航栏/手势小白条遮挡
+            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
         }
     }
 }

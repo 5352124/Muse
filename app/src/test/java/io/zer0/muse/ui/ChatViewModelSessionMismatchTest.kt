@@ -38,6 +38,7 @@ import io.zer0.muse.vision.VisionProgress
 import io.zer0.muse.web.WebSearchService
 import io.zer0.ai.video.VideoGenerationService
 import io.zer0.memory.ticker.MemoryTicker
+import io.zer0.muse.network.NetworkMonitor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -112,6 +113,7 @@ class ChatViewModelSessionMismatchTest {
     private val visionBridge: VisionBridge = mockk(relaxed = true)
     private val auditLogger: AuditLogger = mockk(relaxed = true)
     private val sessionPermissionStore: SessionPermissionStore = mockk(relaxed = true)
+    private val networkMonitor: NetworkMonitor = mockk(relaxed = true)
     private lateinit var appContext: Context
 
     private lateinit var viewModel: ChatViewModel
@@ -179,6 +181,7 @@ class ChatViewModelSessionMismatchTest {
         visionBridge = visionBridge,
         auditLogger = auditLogger,
         sessionPermissionStore = sessionPermissionStore,
+        networkMonitor = networkMonitor,
     )
 
     /**

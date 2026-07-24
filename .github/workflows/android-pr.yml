@@ -35,14 +35,8 @@ jobs:
           distribution: 'temurin'
           cache: gradle  # actions/setup-java 内置 gradle 缓存
 
-      # 3. 配置 Android SDK(避免 runner 镜像 SDK 版本不匹配)
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: |
-            platforms;android-35
-            build-tools;35.0.0
-
+      # 3. 缓存 Gradle 依赖(actions/setup-java 已配置 cache: gradle)
+      
       # 4. 授予 gradlew 执行权限
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
