@@ -199,8 +199,9 @@
     <!-- ===== 设置页 SettingsScreen ===== -->
     <string name="settings_screen_title">设置</string>
     <string name="settings_screen_back_cd">返回</string>
-    <string name="settings_screen_appearance_group_cd">外观与个性化分组</string>
+    <string name="settings_screen_appearance_group_cd">通用分组</string>
     <string name="settings_screen_appearance">外观与个性化</string>
+    <string name="settings_screen_general">通用</string>
     <string name="settings_screen_user_profile_cd">个人资料，称呼/画像，点击进入</string>
     <string name="settings_screen_user_profile">个人资料</string>
     <string name="settings_screen_user_profile_desc">称呼 / 助手名字 / 用户画像</string>
@@ -213,8 +214,9 @@
     <string name="settings_screen_media_cd">媒体，语音/TTS/音频输出，点击进入</string>
     <string name="settings_screen_media">媒体</string>
     <string name="settings_screen_media_desc">语音 / TTS / 音频输出</string>
-    <string name="settings_screen_memory_data_group_cd">记忆与数据分组</string>
+    <string name="settings_screen_memory_data_group_cd">记忆与知识库分组</string>
     <string name="settings_screen_memory_data">记忆与数据</string>
+    <string name="settings_screen_memory_knowledge">记忆与知识库</string>
     <string name="settings_screen_memory_notification_cd">记忆与通知，记忆参数/经验库/通知策略，点击进入</string>
     <string name="settings_screen_memory_notification">记忆与通知</string>
     <string name="settings_screen_memory_notification_desc">记忆参数 / 经验库 / 通知策略</string>
@@ -237,10 +239,10 @@
     <string name="settings_screen_model_service">模型与服务</string>
     <string name="settings_screen_provider_cd">供应商，管理AI服务提供商，点击进入</string>
     <string name="settings_screen_provider">供应商</string>
-    <string name="settings_screen_provider_desc">管理 AI 服务提供商</string>
+    <string name="settings_screen_provider_desc">管理模型供应商、API Key 与联网搜索等</string>
     <string name="settings_screen_assistant_cd">助手，助手管理世界书，点击进入</string>
     <string name="settings_screen_assistant">助手</string>
-    <string name="settings_screen_assistant_desc">助手管理世界书</string>
+    <string name="settings_screen_assistant_desc">管理助手、模型、角色设定与世界书</string>
     <string name="settings_screen_agent_cd">Agent，助手选择/协作/主动消息，点击进入</string>
     <string name="settings_screen_agent_desc">助手选择 / 协作 / 主动消息</string>
     <string name="settings_screen_advanced_group_cd">高级分组</string>
@@ -310,12 +312,13 @@
     <string name="settings_search_no_results">个匹配项</string>
     <string name="settings_screen_assistant_agent">助手与 Agent</string>
     <string name="settings_screen_data_backup_group">数据与备份</string>
+    <string name="settings_screen_data_management_group">数据管理</string>
 
     <!-- v1.97 gap8: 工具分组(独立翻译页入口) -->
     <string name="settings_screen_tools_group_cd">工具分组</string>
     <string name="settings_screen_translate_cd">AI 翻译，独立翻译工具，点击进入</string>
     <string name="settings_screen_translate">AI 翻译</string>
-    <string name="settings_screen_translate_desc">多语言互译,支持粘贴/复制</string>
+    <string name="settings_screen_translate_desc">多语言互译，支持源语言选择/交换/朗读</string>
 
     <!-- v1.25: 视觉辅助(让纯文本模型通过视觉模型"看到"图片) -->
     <string name="settings_screen_vision">视觉辅助</string>
@@ -516,7 +519,7 @@
     <!-- ===== P2-8: 视频生成(SettingsScreen 入口 + VideoGenerationPage) ===== -->
     <string name="settings_screen_video_gen_cd">视频生成,可灵 API,点击进入</string>
     <string name="settings_screen_video_gen">视频生成</string>
-    <string name="settings_screen_video_gen_desc">可灵 API 文/图生视频</string>
+    <string name="settings_screen_video_gen_desc">文/图生视频模型与 API 配置</string>
 
     <!-- ===== v1.133: 从 SettingsModelPage 拆出的 5 个独立二级页入口 ===== -->
     <string name="settings_screen_web_search">联网搜索</string>
@@ -566,6 +569,7 @@
 
     <!-- ===== P2-7: 工作区(WorkspaceScreen + 工具描述) ===== -->
     <string name="workspace_title">工作区</string>
+    <string name="workspace_desc">本地文件管理与临时存储</string>
     <string name="workspace_empty">工作区为空</string>
     <string name="workspace_new_file">新建文件</string>
     <string name="workspace_new_folder">新建文件夹</string>

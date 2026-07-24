@@ -253,12 +253,61 @@ class SkillExecutor(
         )
     }
 
+    /**
+     * SSRF 防护:校验 URL 是否指向公网地址。
+     *
+     * 拒绝以下地址:
+     *  - 主机名为 localhost
+     *  - 回环地址 127.0.0.0/8、::1
+     *  - 私网 10.0.0.0/8、172.16.0.0/12、192.168.0.0/16、IPv6 fc00::/7
+     *  - 链路本地 169.254.0.0/16
+     *  - 未指定地址、组播地址
+     *
+     * 同时用 [java.net.InetAddress.getAllByName] 解析 DNS 后二次校验 IP,
+     * 防止 DNS rebinding 攻击(域名解析得到的实际 IP 仍指向内网)。
+     *
+     * @return true 表示安全(可继续请求);false 表示指向内网,调用方应拒绝
+     */
+    private fun validatePublicUrl(url: String): Boolean {
+        val uri = try {
+            java.net.URI(url)
+        } catch (e: Exception) {
+            return false
+        }
+        val host = uri.host?.lowercase() ?: return false
+        if (host == "localhost") return false
+        // 解析 DNS 后二次校验 IP(防 DNS rebinding):只要任一解析结果指向内网就拒绝
+        val addresses = try {
+            java.net.InetAddress.getAllByName(host)
+        } catch (e: Exception) {
+            return false
+        }
+        return addresses.all { addr ->
+            // IPv4 私网/回环/链路本地等由 InetAddress 内置方法覆盖
+            if (addr.isLoopbackAddress || addr.isAnyLocalAddress ||
+                addr.isLinkLocalAddress || addr.isSiteLocalAddress ||
+                addr.isMulticastAddress
+            ) {
+                return@all false
+            }
+            // IPv6 私网 fc00::/7(InetAddress.isSiteLocalAddress 对 IPv6 返回 false,需手动判断)
+            if (addr is java.net.Inet6Address) {
+                val bytes = addr.address
+                // fc00::/7 的前 7 位是 1111110,即首字节范围 0xfc..0xfd
+                if ((bytes[0].toInt() and 0xFE) == 0xFC) return@all false
+            }
+            true
+        }
+    }
+
     /** HTTP GET 请求。失败时(404/超时/连接失败)降级到搜索摘要;401/403 等业务错误不降级。 */
     private suspend fun execHttpGet(args: Map<String, String>): String {
         val url = args["url"] ?: return context.getString(R.string.skill_missing_param_url)
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
             return context.getString(R.string.skill_url_invalid_scheme)
         }
+        // SSRF 防护:拒绝指向内网/回环地址的请求
+        if (!validatePublicUrl(url)) return "URL 指向内网地址,已拒绝"
         // timeout: 默认 30 秒;max_size: 默认 1MB,限制响应体大小
         val timeoutSec = args["timeout"]?.toLongOrNull()?.coerceIn(1L, 300L) ?: 30L
         val maxSize = args["max_size"]?.toIntOrNull()?.coerceAtLeast(1) ?: 1_048_576
@@ -297,6 +346,8 @@ class SkillExecutor(
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
             return context.getString(R.string.skill_url_invalid_scheme)
         }
+        // SSRF 防护:拒绝指向内网/回环地址的请求
+        if (!validatePublicUrl(url)) return "URL 指向内网地址,已拒绝"
         val body = args["body"] ?: ""
         // v1.52: 默认 Content-Type 带 charset=utf-8,避免中文 body 乱码
         val rawContentType = args["content_type"] ?: "application/json"
@@ -390,6 +441,8 @@ class SkillExecutor(
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
             return context.getString(R.string.skill_url_invalid_scheme)
         }
+        // SSRF 防护:拒绝指向内网/回环地址的请求
+        if (!validatePublicUrl(url)) return "URL 指向内网地址,已拒绝"
         // max_length: 字符数上限,默认 50000;truncate: 默认 true,超出截断
         val maxLength = args["max_length"]?.toIntOrNull()?.coerceAtLeast(1) ?: 50_000
         val truncate = args["truncate"]?.toBoolean() ?: true
@@ -989,6 +1042,7 @@ class SkillExecutor(
      *  - 失败时返回错误信息字符串(主 LLM 能看到错误并决定是否重试)
      *  - 不递归(子助手不能再调 delegate_agent,避免无限嵌套)
      */
+    @Deprecated("使用 delegateAgent 替代", ReplaceWith("delegateAgent"))
     private suspend fun execDelegateAgent(args: Map<String, String>): String {
         // v1.104: 递归深度兜底(当前 completeText 不执行工具不会递归,此为防御性)
         val depth = (delegateDepth.get() ?: 0) + 1

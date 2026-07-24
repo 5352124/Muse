@@ -298,7 +298,7 @@ private class Parser(private val tokens: List<Token>) {
         val ifBody = parseNodes(stopOn = { it == "elif" || it == "else" || it == "endif" })
         branches.add(ifCond to ifBody)
 
-        // elif / else / endif
+        // elif / else / endif 分支关键字处理
         while (i < tokens.size && tokens[i].type == TokenType.TAG) {
             val content = tokens[i].content
             val kw = content.split(WHITESPACE_REGEX).first()
@@ -370,7 +370,7 @@ private class Parser(private val tokens: List<Token>) {
  * 表达式解析器。
  *
  * 优先级(从低到高):
- *   or  <  and  <  not  <  is(test)  <  compare(==/!=/>/</>=/<=)  <  filter(|)  <  primary
+ *   or  <  and  <  not  <  is(test)  <  compare(==/!=/>/</>=/<=)  <  filter(|)  <  primary(由低到高)
  *
  * 例:`a == b or c is empty and not d`
  *   → or(and(is(c, empty, _), not(d)), ==(a, b))
@@ -615,7 +615,7 @@ private class Evaluator(root: Map<String, Any?>) {
                 is Node.Set -> {
                     val value = evalExpr(n.value)
                     if (scopeStack.isNotEmpty()) {
-                        // Modify the innermost scope in-place to avoid breaking for-loop references
+                        // 原地修改最内层作用域,避免破坏 for 循环引用
                         val inner = scopeStack.removeLast()
                         val mutable = if (inner is MutableMap) inner else inner.toMutableMap()
                         mutable[n.name] = value
@@ -705,7 +705,7 @@ private class Evaluator(root: Map<String, Any?>) {
     private fun evalBinary(op: String, l: Any?, r: Any?): Any? = when (op) {
         "and" -> truthy(l) && truthy(r)
         "or" -> truthy(l) || truthy(r)
-        // Phase 12 fix: Number ????? toDouble() ??,?? Int vs Long ? equals ?? false
+        // Phase 12 修复:Number 统一用 toDouble() 比较,否则 Int vs Long 用 equals 会返回 false
         "==" -> if (l is Number && r is Number) l.toDouble() == r.toDouble() else l == r
         "!=" -> if (l is Number && r is Number) l.toDouble() != r.toDouble() else l != r
         ">", "<", ">=", "<=" -> compareNums(op, l, r)

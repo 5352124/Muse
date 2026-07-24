@@ -125,7 +125,7 @@ fun MuseSnackbarHost(modifier: Modifier = Modifier) {
             ) {
                 Surface(
                     modifier = Modifier
-                        .offset { IntOffset(0, yOffset * 4) } // dp to px approximation
+                        .offset { IntOffset(0, yOffset * 4) } // dp 转 px 的近似值
                         .scale(scaleFactor),
                     shape = RoundedCornerShape(MuseCornerRadius.BUTTON.dp),
                     color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.92f * alphaFactor),
@@ -143,7 +143,7 @@ fun MuseSnackbarHost(modifier: Modifier = Modifier) {
                 }
             }
 
-            // Auto-dismiss
+            // 自动消失
             LaunchedEffect(data.id) {
                 delay(data.durationMillis)
                 MuseSnackbar.dismiss(data.id)

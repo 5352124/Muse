@@ -1,8 +1,10 @@
 package io.zer0.muse.ui.chat
 
+import android.content.Context
 import io.zer0.ai.core.UIMessage
 import io.zer0.common.Logger
 import io.zer0.common.resultOf
+import io.zer0.muse.R
 import io.zer0.muse.data.assistant.AssistantEntity
 import io.zer0.muse.data.assistant.AssistantRepository
 import io.zer0.muse.data.lorebook.LorebookEntity
@@ -39,6 +41,7 @@ class ChatMiscCoordinator(
     private val promptInjectionRepository: PromptInjectionRepository,
     private val quickMessageRepository: QuickMessageRepository,
     private val assistantRepository: AssistantRepository,
+    private val appContext: Context,
 ) {
 
     private val tag = "ChatVM"
@@ -49,7 +52,7 @@ class ChatMiscCoordinator(
     fun createFolder(name: String, reportError: (String) -> Unit) {
         accessor.coroutineScope.launch {
             resultOf { folderRepository.createFolder(name) }
-                .onError { msg, t -> reportError("新建文件夹失败: ${t?.message}") }
+                .onError { msg, t -> reportError(appContext.getString(R.string.err_chat_misc_create_folder_failed, t?.message ?: "")) }
         }
     }
 
@@ -57,7 +60,7 @@ class ChatMiscCoordinator(
     fun renameFolder(id: String, name: String, reportError: (String) -> Unit) {
         accessor.coroutineScope.launch {
             resultOf { folderRepository.renameFolder(id, name) }
-                .onError { msg, t -> reportError("重命名文件夹失败: ${t?.message}") }
+                .onError { msg, t -> reportError(appContext.getString(R.string.err_chat_misc_rename_folder_failed, t?.message ?: "")) }
         }
     }
 
@@ -69,7 +72,7 @@ class ChatMiscCoordinator(
                     folderRepository.moveSessionToFolder(s.id, null)
                 }
                 folderRepository.deleteFolder(id)
-            }.onError { msg, t -> reportError("删除文件夹失败: ${t?.message}") }
+            }.onError { msg, t -> reportError(appContext.getString(R.string.err_chat_misc_delete_folder_failed, t?.message ?: "")) }
         }
     }
 
@@ -86,7 +89,7 @@ class ChatMiscCoordinator(
             resultOf { folderRepository.moveSessionToFolder(sessionId, folderId) }
                 .onError { msg, t ->
                     Logger.e(tag, "moveSessionToFolder failed", t)
-                    reportError("移动会话失败: ${t?.message ?: "未知错误"}")
+                    reportError(appContext.getString(R.string.err_chat_misc_move_session_failed, t?.message ?: appContext.getString(R.string.err_chat_unknown)))
                 }
         }
     }
@@ -96,7 +99,7 @@ class ChatMiscCoordinator(
         accessor.coroutineScope.launch {
             val session = accessor.snapshot.sessions.find { it.id == sessionId } ?: return@launch
             resultOf { sessionRepository.setSessionPinned(sessionId, !session.pinned) }
-                .onError { msg, t -> reportError("切换置顶失败: ${t?.message}") }
+                .onError { msg, t -> reportError(appContext.getString(R.string.err_chat_misc_toggle_pin_failed, t?.message ?: "")) }
         }
     }
 
@@ -133,6 +136,77 @@ class ChatMiscCoordinator(
                 searchQuery = "",
                 searchResults = emptyList(),
                 isSearching = false,
+                // v2.x: 同步清空消息内容搜索结果(切回会话 Tab 时也清空,避免残留)
+                messageResults = emptyList(),
+                isSearchingMessages = false,
+            )
+        }
+    }
+
+    // ── v2.x: 消息内容搜索(Tab=1) ──────────────────────────────────────
+
+    /** v2.x: 切换搜索页 Tab(0=会话, 1=消息内容)。 */
+    fun switchSearchTab(tab: Int) {
+        accessor.update { it.copy(searchTab = tab) }
+    }
+
+    /**
+     * v2.x: 执行消息内容搜索(FTS4 + snippet,失败回退 LIKE)。
+     *
+     * 与 [search] 区别:走 [SessionRepository.searchMessageContentFlow](直接返回 snippet 片段),
+     * 结果存入 [io.zer0.muse.ui.ChatUiState.messageResults],供 SearchScreen Tab=1 展示。
+     * 空查询清空结果。
+     */
+    fun searchMessageContent() {
+        val query = accessor.snapshot.searchQuery.trim()
+        if (query.isEmpty()) {
+            accessor.update { it.copy(messageResults = emptyList(), isSearchingMessages = false) }
+            return
+        }
+        accessor.update { it.copy(isSearchingMessages = true) }
+        accessor.coroutineScope.launch {
+            val results = sessionRepository.searchMessageContentFlow(query).first()
+            accessor.update {
+                it.copy(
+                    messageResults = results,
+                    isSearchingMessages = false,
+                )
+            }
+        }
+    }
+
+    /**
+     * v2.x: 设置目标消息(从搜索结果点击跳转用)。
+     *
+     * ChatScreen 进入会话后会读取 [io.zer0.muse.ui.ChatUiState.targetMessageId]
+     * 滚动到该消息,并依据 [io.zer0.muse.ui.ChatUiState.highlightedMessageId]
+     * 短暂高亮。滚动定位完成后由 [consumeTargetMessage] 清空 targetMessageId;
+     * 高亮持续约 2.5s 后由 [clearHighlightedMessage] 清空。
+     *
+     * @param messageId 目标消息 id(null = 清空状态)
+     * @param query 搜索关键词(用于 MessageBubble 内文本高亮,null = 不高亮文本)
+     */
+    fun setTargetMessage(messageId: String?, query: String?) {
+        accessor.update {
+            it.copy(
+                targetMessageId = messageId,
+                searchHighlightQuery = query,
+                highlightedMessageId = messageId,
+            )
+        }
+    }
+
+    /** v2.x: 消费目标消息 id(滚动定位完成后调用,避免重复触发滚动)。 */
+    fun consumeTargetMessage() {
+        accessor.update { it.copy(targetMessageId = null) }
+    }
+
+    /** v2.x: 清空高亮消息 id(高亮窗口期结束后调用,停止高亮闪烁)。 */
+    fun clearHighlightedMessage() {
+        accessor.update {
+            it.copy(
+                highlightedMessageId = null,
+                searchHighlightQuery = null,
             )
         }
     }
@@ -171,7 +245,7 @@ class ChatMiscCoordinator(
                             if (tgt != null) st.favoriteMessages + tgt.copy(favorite = !newFav)
                             else st.favoriteMessages
                         }
-                        st.copy(messages = rolled, favoriteMessages = rolledFavs, errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = "收藏失败: ${t?.message}")))
+                        st.copy(messages = rolled, favoriteMessages = rolledFavs, errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = appContext.getString(R.string.err_chat_misc_favorite_failed, t?.message ?: ""))))
                     }
                 }
         }
@@ -199,7 +273,7 @@ class ChatMiscCoordinator(
                         }
                         st.copy(
                             favoriteMessages = rolled,
-                            errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = "设置分组失败: ${t?.message}")),
+                            errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = appContext.getString(R.string.err_chat_misc_set_tag_failed, t?.message ?: ""))),
                         )
                     }
                 }
@@ -230,7 +304,7 @@ class ChatMiscCoordinator(
                 accessor.update { st ->
                     val idx = st.messages.indexOfFirst { it.createdAt >= target.createdAt }.coerceAtLeast(0)
                     val rolled = st.messages.toMutableList().apply { add(idx, target) }
-                    st.copy(messages = rolled, errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = "删除失败: ${t?.message}")))
+                    st.copy(messages = rolled, errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = appContext.getString(R.string.err_chat_misc_delete_msg_failed, t?.message ?: ""))))
                 }
             }
         }

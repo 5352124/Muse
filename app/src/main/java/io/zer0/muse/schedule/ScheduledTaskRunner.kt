@@ -58,7 +58,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * @param chatService 非流式调用 LLM 执行 task.prompt
  * @param sessionRepository 把用户 prompt 和 AI 回复写入会话
  * @param assistantRepository 按 task.assistantId 取助手配置(systemPrompt / temperature / maxTokens)
- * @param context Application Context
+ * @param context 应用 Context
  * @param appScope App 全局协程作用域
  */
 class ScheduledTaskRunner(

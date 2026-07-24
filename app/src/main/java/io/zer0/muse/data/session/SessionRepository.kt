@@ -6,10 +6,14 @@ import io.zer0.ai.core.MessageRole
 import io.zer0.muse.tools.SessionPermissionStore
 import io.zer0.ai.core.RagCitation
 import io.zer0.ai.core.UIMessage
+import io.zer0.common.ErrorMessage
 import io.zer0.common.Logger
+import io.zer0.common.resultOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
@@ -27,6 +31,16 @@ import io.zer0.muse.R
  *
  * H-SESS1: 跨表操作(messages + messages_fts + sessions)统一用 [database.withTransaction]
  * 包裹,保证崩溃后数据一致;[database] 由 Koin 注入(见 AppKoinModule)。
+ *
+ * ── i18n 改造示范(v1.90 收口,已完成 5 处)──────────────────────────────
+ * 本类作为 i18n 架构骨架的示范改造点,展示如何把硬编码日志 / catch 消息替换为
+ * [ErrorMessage] 子类。示范改造点 1..5 已全部落地(见各 `// i18n 示范改造点 N` 标注),
+ * 后续其余待迁移点可按本模式逐步推进:
+ *   1. catch / resultOf.onError 中:用 `Logger.w(TAG, ErrorMessage.X.toLogString(), t)`
+ *      替换裸中英文消息([toLogString] 输出 [code] + 英文兜底,可日志可埋点)
+ *   2. 上抛给 UI 的错误:返回 `io.zer0.common.Result.Error` 包裹 [ErrorMessage]
+ *   3. UI 层用 [io.zer0.muse.ui.toLocalizedString] 翻译为当前 locale 字符串
+ * ──────────────────────────────────────────────────────────────────────
  */
 class SessionRepository(
     private val sessionDao: SessionDao,
@@ -214,11 +228,28 @@ class SessionRepository(
                 sessionDao.deleteById(id)
             }
             // v1.135-A: 清理该会话的视觉辅助缓存 sidecar,避免孤儿文件
-            runCatching { visionCache?.clearSession(id) }
-                .onFailure { Logger.w(TAG, "清理视觉缓存失败: $id", it) }
+            // i18n 示范改造点 1:原硬编码中文 "清理视觉缓存失败: $id" 改为
+            // ErrorMessage.StorageError.IO_ERROR + sessionId 作为日志 metadata。
+            // Locale 无关,toLogString() 输出 "[ERR:storage_io_error] Local storage read/write failed"
+            resultOf { visionCache?.clearSession(id) }
+                .onError { _, t ->
+                    Logger.w(
+                        TAG,
+                        "${ErrorMessage.StorageError.IO_ERROR.toLogString()} [sessionId=$id]",
+                        t,
+                    )
+                }
             // P3: 清理该会话的权限模式设置
-            runCatching { sessionPermissionStore?.clearMode(id) }
-                .onFailure { Logger.w(TAG, "清理会话权限模式失败: $id", it) }
+            // i18n 示范改造点 2:原硬编码中文 "清理会话权限模式失败: $id" 改为
+            // ErrorMessage.StorageError.IO_ERROR,与上条同 code 不同 metadata 区分场景。
+            resultOf { sessionPermissionStore?.clearMode(id) }
+                .onError { _, t ->
+                    Logger.w(
+                        TAG,
+                        "${ErrorMessage.StorageError.IO_ERROR.toLogString()} [sessionId=$id, scope=permission]",
+                        t,
+                    )
+                }
         }
     }
 
@@ -279,13 +310,21 @@ class SessionRepository(
                 messageDao.deleteById(messageId)
                 // v1.107 冗余: 递减 sessions.messageCount
                 if (entity != null) {
-                    runCatching { sessionDao.incrementMessageCount(entity.sessionId, -1) }
-                        .onFailure { Logger.w(TAG, "decrementMessageCount failed: ${it.message}") }
+                    resultOf { sessionDao.incrementMessageCount(entity.sessionId, -1) }
+                        .onError { _, t -> Logger.w(TAG, "decrementMessageCount failed: ${t?.message ?: ""}") }
                 }
             }
             // v1.134 P1-2: 清理该消息的图片文件,避免孤儿文件占用存储
-            runCatching { messageImageStore.deleteByMessageId(messageId) }
-                .onFailure { Logger.w(TAG, "deleteMessage images cleanup failed: ${it.message}") }
+            // i18n 示范改造点 3:原硬编码英文 "deleteMessage images cleanup failed: ${...}"
+            // 改为 ErrorMessage.StorageError.IO_ERROR.toLogString(),消除裸字符串。
+            resultOf { messageImageStore.deleteByMessageId(messageId) }
+                .onError { _, t ->
+                    Logger.w(
+                        TAG,
+                        "${ErrorMessage.StorageError.IO_ERROR.toLogString()} [messageId=$messageId, scope=images]",
+                        t,
+                    )
+                }
         }
     }
 
@@ -346,15 +385,49 @@ class SessionRepository(
         messageDao.upsert(entity)
         // Phase 10.3: 同步 FTS 索引(toNgram 预处理中文 2-gram)
         // v1.63: 加前置 deleteFts 防御,避免未来误用 appendMessage 更新已存在 id 时 FTS 重复
-        runCatching {
+        // i18n 示范改造点 4:原硬编码英文 "FTS insert failed: ..." 改为 ErrorMessage。
+        // 注:此处不上抛 ErrorMessage(FTS 是派生数据,失败可被 ensureFtsIndexConsistent 自愈),
+        // 仅用 ErrorMessage 标准化日志 code,便于跨模块统计 FTS 故障率。
+        resultOf {
             messageDao.deleteFts(entity.id)
             messageDao.insertFts(entity.id, MessageFtsManager.toNgram(entity.content))
-        }.onFailure { Logger.w(TAG, "FTS insert failed: ${it.message}") }
+        }.onError { _, t ->
+            Logger.w(
+                TAG,
+                "${ErrorMessage.StorageError.IO_ERROR.toLogString()} [messageId=${entity.id}, scope=fts_insert]",
+                t,
+            )
+        }
         updateSessionPreview(sessionId, message)
         // v1.107 冗余: 维护 sessions.messageCount(避免列表页 COUNT)
-        runCatching { sessionDao.incrementMessageCount(sessionId, 1) }
-            .onFailure { Logger.w(TAG, "incrementMessageCount failed: ${it.message}") }
+        resultOf { sessionDao.incrementMessageCount(sessionId, 1) }
+            .onError { _, t -> Logger.w(TAG, "incrementMessageCount failed: ${t?.message ?: ""}") }
         return entity.id
+    }
+
+    // ── v1.0.15: 消息发送 outbox(持久化发送队列)──────────────────────────
+    // 解决"用户刚点击发送就退出 App,进程被系统杀死导致消息丢失"的问题。
+    // outbox 记录在 enqueueSend 时同步写入,消费端启动 launchStream 后删除;
+    // App 启动时扫描残留记录重新投递。
+
+    /** 同步写入 outbox(供 enqueueSend 在主线程 runBlocking 调用,保证落盘)。 */
+    suspend fun insertOutbox(entity: MessageOutboxEntity) {
+        database.messageOutboxDao().upsert(entity)
+    }
+
+    /** 消费端成功启动 launchStream 后删除 outbox(消息已投递,不再需要恢复)。 */
+    suspend fun deleteOutbox(id: String) {
+        database.messageOutboxDao().deleteById(id)
+    }
+
+    /** App 启动时扫描所有未完成 outbox 记录(按创建时间升序)。 */
+    suspend fun getPendingOutbox(): List<MessageOutboxEntity> {
+        return database.messageOutboxDao().getAll()
+    }
+
+    /** 检查指定消息 id 是否已持久化到 messages 表(恢复时避免重复 appendMessage)。 */
+    suspend fun messageExists(sessionId: String, messageId: String): Boolean {
+        return messageDao.getById(sessionId, messageId) != null
     }
 
     /**
@@ -374,10 +447,10 @@ class SessionRepository(
                 // Phase 10.3: 同步 FTS(删后插,避免重复索引项)
                 // v1.97 (P1-2): skipFts=true 时跳过,避免流式周期性落盘反复重建 FTS
                 if (!skipFts) {
-                    runCatching {
+                    resultOf {
                         messageDao.deleteFts(entity.id)
                         messageDao.insertFts(entity.id, MessageFtsManager.toNgram(entity.content))
-                    }.onFailure { Logger.w(TAG, "FTS upsert sync failed: ${it.message}") }
+                    }.onError { _, t -> Logger.w(TAG, "FTS upsert sync failed: ${t?.message ?: ""}") }
                 }
                 if (message.role == MessageRole.ASSISTANT && message.content.isNotEmpty()) {
                     updateSessionPreview(sessionId, message)
@@ -397,10 +470,10 @@ class SessionRepository(
                 val updated = message.copy(content = content, reasoning = null)
                 messageDao.upsert(updated)
                 // Phase 10.3: 同步 FTS 索引(删后插,避免重复索引项)
-                runCatching {
+                resultOf {
                     messageDao.deleteFts(message.id)
                     messageDao.insertFts(message.id, MessageFtsManager.toNgram(content))
-                }.onFailure { Logger.w(TAG, "FTS update failed: ${it.message}") }
+                }.onError { _, t -> Logger.w(TAG, "FTS update failed: ${t?.message ?: ""}") }
                 // 更新会话预览为最新的消息内容
                 updateSessionPreview(sessionId, updated.toUIMessage())
             }
@@ -460,6 +533,8 @@ class SessionRepository(
      * - 片段仍取匹配位置前后 30 字(基于原文 content,不是 ngram)
      */
     suspend fun searchMessages(query: String): List<SearchResult> = withContext(Dispatchers.IO) {
+        // 注意:流式 upsertMessage(skipFts=true)周期性落盘后 FTS 可能滞后,
+        // 最终落盘(skipFts=false)或下次启动 ensureFtsIndexConsistent 会补齐。
         val trimmed = query.trim()
         if (trimmed.isBlank()) return@withContext emptyList()
 
@@ -468,11 +543,20 @@ class SessionRepository(
             // ngram 转换后为空(纯符号/纯空白),直接走 LIKE
             searchLikeAndJoin(trimmed)
         } else {
-            runCatching { messageDao.searchFts(matchQuery) }
-                .getOrElse {
-                    Logger.w(TAG, "FTS search failed, fallback to LIKE: ${it.message}")
+            // H-SESS1: FTS 查询异常时回退 LIKE;用 resultOf 正确重抛 CancellationException
+            // i18n 示范改造点 5:原硬编码英文 "FTS search failed, fallback to LIKE: ..."
+            // 改为 ErrorMessage.StorageError.IO_ERROR + raw message 作为补充 debug 信息。
+            // FTS 失败已有 LIKE 兜底,不上抛 ErrorMessage,仅标准化日志 code 便于监控告警聚合。
+            when (val r = resultOf { messageDao.searchFts(matchQuery) }) {
+                is io.zer0.common.Result.Success -> r.data
+                is io.zer0.common.Result.Error -> {
+                    Logger.w(
+                        TAG,
+                        "${ErrorMessage.StorageError.IO_ERROR.toLogString()} [scope=fts_search, fallback=LIKE, raw=${r.message}]",
+                    )
                     searchLikeAndJoin(trimmed)
                 }
+            }
         }
 
         joins.map { join ->
@@ -487,7 +571,12 @@ class SessionRepository(
         }
     }
 
-    /** LIKE 回退路径:查 messages 后补查 session 标题(FTS 不可用时的兜底)。 */
+    /**
+     * LIKE 回退路径:查 messages 后补查 session 标题(FTS 不可用时的兜底)。
+     *
+     * TODO: LIKE 回退路径 N+1 查询(每条 msg 单独查 session),性能优化时改为 IN 批查或 JOIN。
+     * FTS 正常时本路径几乎不触发,暂保留现状。
+     */
     private suspend fun searchLikeAndJoin(query: String): List<MessageSearchJoin> {
         // M-SESS2: 转义 \ % _ 后包成 %...%,配合 DAO 的 ESCAPE '\' 子句
         val pattern = buildLikePattern(query)
@@ -501,6 +590,72 @@ class SessionRepository(
                 role = msg.role,
                 createdAt = msg.createdAt,
                 sessionTitle = sessionTitle,
+            )
+        }
+    }
+
+    /**
+     * v2.x: 消息内容搜索 Flow 版本(供 SearchViewModel 监听)。
+     *
+     * 与 [searchMessages] 区别:
+     *  - 返回 [Flow](便于 ViewModel 用 collectAsStateWithLifecycle 监听)
+     *  - 走 [MessageDao.searchMessageContent](FTS4 snippet 直接生成片段),而非 [searchFts] + buildSnippet
+     *  - FTS4 snippet 作用于 content_ngram,片段为 ngram 串,效果有限(详见 DAO 注释 TODO);
+     *    FTS 异常或 ngram 转换为空时回退 [searchMessageContentLike] + 原文 buildSnippet
+     *
+     * 调用方:SearchViewModel 的 searchMessageContent() 一次性 collect 后存入 StateFlow。
+     *
+     * TODO: FTS4 snippet 作用于 content_ngram,片段为 ngram 串,效果不理想。
+     *       后续迁移到 FTS5 + 外部内容表后,本方法可直接返回 SQL snippet 结果。
+     *
+     * @param query 用户输入的搜索关键词(未转义)
+     * @return [SearchResult] 的 Flow(单次 emit,空查询返回空列表)
+     */
+    fun searchMessageContentFlow(query: String): Flow<List<SearchResult>> = flow {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) {
+            emit(emptyList())
+            return@flow
+        }
+        val matchQuery = MessageFtsManager.toMatchQuery(trimmed)
+        val results: List<SearchResult> = if (matchQuery.isBlank()) {
+            // ngram 转换后为空(纯符号/纯空白),直接走 LIKE 兜底
+            searchMessageContentLikeInternal(trimmed)
+        } else {
+            // H-SESS1: FTS 查询异常时回退 LIKE;用 resultOf 正确重抛 CancellationException
+            // i18n 示范改造点 5(同类延伸):与 searchMessages 一致,FTS 失败兜底日志
+            // 改为 ErrorMessage.StorageError.IO_ERROR,保持 code 一致便于监控聚合。
+            when (val r = resultOf { messageDao.searchMessageContent(matchQuery, 50) }) {
+                is io.zer0.common.Result.Success -> r.data
+                is io.zer0.common.Result.Error -> {
+                    Logger.w(
+                        TAG,
+                        "${ErrorMessage.StorageError.IO_ERROR.toLogString()} [scope=fts_search_content, fallback=LIKE, raw=${r.message}]",
+                    )
+                    searchMessageContentLikeInternal(trimmed)
+                }
+            }
+        }
+        emit(results)
+    }.flowOn(Dispatchers.IO)
+
+    /**
+     * v2.x: LIKE 兜底路径(消息内容搜索专用)。
+     *
+     * 调 [MessageDao.searchMessageContentLike](JOIN sessions 一次查出,避免 N+1),
+     * 再用 [buildSnippet] 基于原文 content 构建 [SearchResult.contentSnippet]。
+     */
+    private suspend fun searchMessageContentLikeInternal(query: String): List<SearchResult> {
+        val pattern = buildLikePattern(query)
+        val joins = messageDao.searchMessageContentLike(pattern, 50)
+        return joins.map { join ->
+            SearchResult(
+                messageId = join.messageId,
+                sessionId = join.sessionId,
+                sessionTitle = join.sessionTitle,
+                contentSnippet = buildSnippet(join.content, query),
+                role = join.role,
+                createdAt = join.createdAt,
             )
         }
     }
@@ -523,8 +678,8 @@ class SessionRepository(
      * 万级消息 rebuild 约数百毫秒,不阻塞 UI。
      */
     suspend fun ensureFtsIndexConsistent() = withContext(Dispatchers.IO) {
-        val msgCount = runCatching { messageDao.countMessages() }.getOrDefault(-1)
-        val ftsCount = runCatching { messageDao.countFts() }.getOrDefault(-1)
+        val msgCount = resultOf { messageDao.countMessages() }.getOrNull() ?: -1
+        val ftsCount = resultOf { messageDao.countFts() }.getOrNull() ?: -1
         if (msgCount < 0 || ftsCount < 0) {
             Logger.w(TAG, "FTS count check failed: msg=$msgCount fts=$ftsCount")
             return@withContext
@@ -542,7 +697,7 @@ class SessionRepository(
      *
      * v1.114: 将 clearFts + 逐条 insert 包裹在 `database.withTransaction` 中,避免重建期间
      * FTS 查询返回不一致结果(清空后、插入完成前查询会返回空或不完整数据)。每条 insert 仍用
-     * runCatching 容错,单条失败不影响其他条目,事务正常提交。
+     * resultOf 容错,单条失败不影响其他条目,事务正常提交。
      * 调用方应在 IO 线程。
      */
     suspend fun rebuildFtsIndex() = withContext(Dispatchers.IO) {
@@ -552,11 +707,11 @@ class SessionRepository(
             val rows = messageDao.getAllForFtsRebuild()
             var ok = 0
             rows.forEach { row ->
-                runCatching {
+                resultOf {
                     messageDao.insertFts(row.id, MessageFtsManager.toNgram(row.content))
                     ok++
-                }.onFailure {
-                    Logger.w(TAG, "FTS rebuild insert failed for ${row.id}: ${it.message}")
+                }.onError { _, t ->
+                    Logger.w(TAG, "FTS rebuild insert failed for ${row.id}: ${t?.message ?: ""}")
                 }
             }
             Logger.i(TAG, "FTS rebuild done: $ok/${rows.size} messages indexed")
@@ -565,6 +720,8 @@ class SessionRepository(
 
     /** 构建搜索片段:取匹配位置前后 [SNIPPET_RADIUS] 字。 */
     private fun buildSnippet(content: String, query: String): String {
+        // TODO: ngram 匹配与 snippet 高亮语义不一致(FTS 用 2-gram 匹配,这里用原 query indexOf),
+        // 后续改用 FTS4 snippet() 函数在 SQL 层生成高亮片段,保证匹配/高亮语义一致。
         val idx = content.indexOf(query, ignoreCase = true)
         if (idx < 0) return content.take(SNIPPET_FALLBACK_LENGTH)
         val start = (idx - SNIPPET_RADIUS).coerceAtLeast(0)

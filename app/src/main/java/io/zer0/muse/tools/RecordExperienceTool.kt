@@ -7,9 +7,9 @@ import java.util.UUID
 
 
 /**
- * record_experience tool (openhanako experience.ts port).
+ * record_experience 工具(openhanako experience.ts 移植)。
  *
- * Records a lesson learned to the experience library.
+ * 将学到的经验记录到经验库中。
  */
 object RecordExperienceTool {
 
@@ -38,7 +38,7 @@ object RecordExperienceTool {
             return "Error: category and content cannot be empty."
         }
         return runBlocking {
-            // Dedup check
+            // 去重检查
             val existing = repo.getAll()
             if (existing.any { it.content == content && it.category.equals(category, ignoreCase = true) }) {
                 return@runBlocking "Duplicate: this experience is already recorded."

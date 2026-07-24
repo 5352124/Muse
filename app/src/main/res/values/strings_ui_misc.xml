@@ -77,6 +77,9 @@
     <string name="speech_stop_reading_cd">停止朗读</string>
     <string name="speech_playback_speed_cd">播放速度 %1$sx</string>
     <string name="speech_seek_forward_5s_cd">快进 5 秒</string>
+    <string name="speech_seek_backward_5s_cd">后退 5 秒</string>
+    <string name="speech_previous_chunk_cd">上一段</string>
+    <string name="speech_next_chunk_cd">下一段</string>
     <string name="speech_pause_cd">暂停</string>
     <string name="speech_resume_cd">继续</string>
 

@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 41,
-    "identityHash": "f651a76c905849cc13cb98940c543ec3",
+    "identityHash": "8edc5eb8f4e5304fe2739e5520e366c8",
     "entities": [
       {
         "tableName": "sessions",
@@ -108,7 +108,7 @@
       },
       {
         "tableName": "messages",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `role` TEXT NOT NULL, `content` TEXT NOT NULL, `reasoning` TEXT, `modelId` TEXT, `createdAt` INTEGER NOT NULL, `imageUrlsJson` TEXT NOT NULL, `favorite` INTEGER NOT NULL DEFAULT 0, `favoriteTag` TEXT DEFAULT NULL, `citationUrlsJson` TEXT NOT NULL DEFAULT '[]', `ragCitationsJson` TEXT NOT NULL DEFAULT '[]', `imageBase64Json` TEXT NOT NULL DEFAULT '[]', `artifactIdsJson` TEXT NOT NULL DEFAULT '[]', `mood` TEXT DEFAULT NULL, `reflection` TEXT DEFAULT NULL, `contentLength` INTEGER NOT NULL DEFAULT 0, `deletedAt` INTEGER DEFAULT NULL, `reaction` TEXT DEFAULT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`sessionId`) REFERENCES `sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `role` TEXT NOT NULL, `content` TEXT NOT NULL, `reasoning` TEXT, `modelId` TEXT, `createdAt` INTEGER NOT NULL, `imageUrlsJson` TEXT NOT NULL DEFAULT '[]', `favorite` INTEGER NOT NULL DEFAULT 0, `favoriteTag` TEXT DEFAULT NULL, `citationUrlsJson` TEXT NOT NULL DEFAULT '[]', `ragCitationsJson` TEXT NOT NULL DEFAULT '[]', `imageBase64Json` TEXT NOT NULL DEFAULT '[]', `artifactIdsJson` TEXT NOT NULL DEFAULT '[]', `mood` TEXT DEFAULT NULL, `reflection` TEXT DEFAULT NULL, `contentLength` INTEGER NOT NULL DEFAULT 0, `deletedAt` INTEGER DEFAULT NULL, `reaction` TEXT DEFAULT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`sessionId`) REFERENCES `sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "fields": [
           {
             "fieldPath": "id",
@@ -154,7 +154,8 @@
             "fieldPath": "imageUrlsJson",
             "columnName": "imageUrlsJson",
             "affinity": "TEXT",
-            "notNull": true
+            "notNull": true,
+            "defaultValue": "'[]'"
           },
           {
             "fieldPath": "favorite",
@@ -2166,7 +2167,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'f651a76c905849cc13cb98940c543ec3')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8edc5eb8f4e5304fe2739e5520e366c8')"
     ]
   }
 }

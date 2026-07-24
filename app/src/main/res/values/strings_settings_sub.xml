@@ -113,6 +113,12 @@
     <string name="settings_sub_user_profile_subtitle">年龄 / 城市 / MBTI 等(用于 AI 个性化)</string>
     <string name="settings_sub_data_backup">数据与备份</string>
     <string name="settings_about_version_full">版本 %1$s (%2$d)</string>
+    <string name="settings_about_app_info">应用信息</string>
+    <string name="settings_about_feedback_section">反馈</string>
+    <string name="settings_about_update_section">更新</string>
+    <string name="settings_about_legal_section">法律信息</string>
+    <string name="settings_about_repo_section">开源仓库</string>
+    <string name="settings_about_account_section">账户</string>
     <string name="settings_about_feedback_cd">反馈,点击进入</string>
     <string name="settings_about_feedback">反馈</string>
     <string name="settings_about_update_check_failed">检查更新失败: %1$s</string>
@@ -417,6 +423,8 @@
     <string name="settings_media_tts_engine_xai">xAI TTS</string>
     <string name="settings_media_tts_api_key">API Key</string>
     <string name="settings_media_tts_voice">音色 / Voice ID</string>
+    <string name="settings_media_tts_voice_selector">TTS 声音</string>
+    <string name="settings_media_tts_voice_default">默认</string>
     <string name="settings_media_tts_voice_placeholder">留空使用默认音色</string>
     <string name="settings_media_tts_model">模型</string>
     <string name="settings_media_tts_model_placeholder">留空使用默认模型</string>

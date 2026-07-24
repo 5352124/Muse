@@ -8,7 +8,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.SettingsEthernet
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
+import io.zer0.muse.ui.common.IosChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -87,10 +87,10 @@ fun ProxySettingsPage(
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     proxyTypes.forEach { (value, label) ->
-                        FilterChip(
+                        IosChip(
                             selected = type == value,
                             onClick = { type = value },
-                            label = { Text(label) },
+                            label = label,
                         )
                     }
                 }

@@ -20,6 +20,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -42,7 +44,7 @@ import kotlinx.serialization.json.Json
  * @param sessionRepository 把生成的消息追加进当前会话
  * @param assistantRepository 取当前助手(人设 + 名字)
  * @param notificationManager 弹"主动消息"通知
- * @param context Application Context
+ * @param context 应用 Context
  * @param appScope App 全局协程作用域
  */
 class ProactiveMessageRunner(
@@ -58,6 +60,15 @@ class ProactiveMessageRunner(
     /** v0.44: 解析 LLM 决策 JSON(忽略未知字段,兼容模型多返回字段的情况)。 */
     private val decisionJson = Json { ignoreUnknownKeys = true }
     private var job: Job? = null
+
+    // 问题6.1: appScope 60s 轮询与 WorkManager 15 分钟兜底可能并发触发 checkAndTrigger,
+    // 用 Mutex 保证同一时刻只有一个 checkAndTrigger 在执行,避免重复发主动消息。
+    private val triggerMutex = Mutex()
+
+    // 问题6.2: 当日已发送主动消息计数(持久化到 SharedPreferences),MAX_DAILY_MESSAGES 校验依赖此值。
+    private val prefs = context.getSharedPreferences("proactive_msg", android.content.Context.MODE_PRIVATE)
+    private var todaySentCount = 0
+    private var todayDate = "" // yyyy-MM-dd,用于跨日重置计数
 
     fun start() {
         job?.cancel()
@@ -89,9 +100,12 @@ class ProactiveMessageRunner(
         checkAndTrigger(suppressIfColdStart = true)
     }
 
-    private suspend fun checkAndTrigger(suppressIfColdStart: Boolean = false) {
+    private suspend fun checkAndTrigger(suppressIfColdStart: Boolean = false) = triggerMutex.withLock {
+        // 问题6.2: 进入临界区先刷新当日计数(跨日重置 + 从 SP 读取持久化值)
+        refreshDailyCount()
+
         val config = settings.proactiveMessageConfigFlow.first()
-        if (!config.enabled) return
+        if (!config.enabled) return@withLock
 
         // v1.95: 时间窗口检查 — 不在允许时段跳过发送(避免夜间打扰)
         val calendar = java.util.Calendar.getInstance()
@@ -105,14 +119,14 @@ class ProactiveMessageRunner(
         }
         if (!inWindow) {
             Logger.i(TAG, "当前 $currentHour:00 不在允许时段 ${config.allowedHourStart}:00-${config.allowedHourEnd}:00,跳过")
-            return
+            return@withLock
         }
 
         val now = System.currentTimeMillis()
         // v1.27: 实际间隔 = intervalHours ± randomOffsetHours(下限 1 小时,避免过于频繁)
         val effectiveIntervalMs = computeEffectiveIntervalMs(config)
         val elapsed = now - config.lastTriggeredAt
-        if (elapsed < effectiveIntervalMs) return
+        if (elapsed < effectiveIntervalMs) return@withLock
 
         // v1.134 P2-2: 冷启动防打扰 — Worker 路径检测到长时间未触发(> 2× interval)
         // 时,不立即发送,仅更新 lastTriggeredAt 到当前时间,等下个 interval 再发。
@@ -120,7 +134,7 @@ class ProactiveMessageRunner(
         if (suppressIfColdStart && config.lastTriggeredAt > 0 && elapsed > effectiveIntervalMs * 2) {
             Logger.i(TAG, "冷启动检测:距上次触发 ${elapsed / 3600000}h,推迟到下个 interval 再发(避免打扰)")
             settings.saveProactiveMessageConfig(config.copy(lastTriggeredAt = now))
-            return
+            return@withLock
         }
 
         // 获取指定 Agent 助手(v1.27):优先用 config.agentId,否则 default,再否则第一个
@@ -128,7 +142,7 @@ class ProactiveMessageRunner(
         val assistant = assistants.firstOrNull { it.id == config.agentId.takeIf { id -> id.isNotBlank() } }
             ?: assistants.firstOrNull { it.id == "default" }
             ?: assistants.firstOrNull()
-            ?: return
+            ?: return@withLock
 
         // 取会话作为"当前会话"
         val sessions = sessionRepository.observeSessions().first()
@@ -139,7 +153,7 @@ class ProactiveMessageRunner(
             sessionRepository.getLatestAgentSession() ?: sessions.firstOrNull()
         } else {
             sessions.firstOrNull()
-        } ?: return
+        } ?: return@withLock
 
         // v0.44: 取最近 10 条消息,过滤出最近 5 条 user/assistant 消息作为上下文
         val allMessages = resultOf {
@@ -154,14 +168,15 @@ class ProactiveMessageRunner(
         val scoreCtx = ScoreContext(
             hoursSinceLastMessage = (elapsed / 3_600_000f).coerceAtLeast(0f),
             accountAgeDays = 7, // 简化:暂用默认值,后续可从账户首次启动时间计算
-            todaySentCount = 0, // 简化:暂不持久化每日计数
+            // 问题6.2: 从持久化字段读取当日已发送计数,MAX_DAILY_MESSAGES 校验才能生效
+            todaySentCount = this.todaySentCount,
             hasNewMemories = recentMessages.isNotEmpty(),
             hasNewTopics = recentMessages.isNotEmpty(),
         )
         if (!scoreEngine.shouldSend(scoreCtx)) {
             Logger.i(TAG, "ScoreEngine 预筛选未通过,跳过 LLM 调用")
             settings.saveProactiveMessageConfig(config.copy(lastTriggeredAt = now))
-            return
+            return@withLock
         }
 
         // 构造让 LLM 决定是否发主动消息的 prompt 并调用 LLM
@@ -171,20 +186,19 @@ class ProactiveMessageRunner(
                 chatService.completeText(
                     messages = promptMessages,
                     temperature = 0.8f,
-                    // 决策 JSON(shouldSend+content+reason)需完整返回,content 上限 80 字;
-                    // 部分模型对中文 token 化较稀疏(~2 tokens/字),150 可能截断 JSON 致
-                    // parseDecision 失败(默认 shouldSend=false,主动消息功能静默失效)。
-                    // 已偏离约束 150,待对齐。
+                    // 问题6.3: 偏离设计约束150,部分模型最小token限制要求>=300,兼容性权衡
+                    // (决策 JSON 含 shouldSend+content+reason,中文 token 化稀疏,150 易截断致
+                    // parseDecision 失败,主动消息功能静默失效)。
                     maxTokens = DECISION_MAX_TOKENS,
                 )
             }
         }.onError { msg, t ->
             Logger.w(TAG, "主动消息 LLM 调用失败: ${t?.message ?: msg}")
-            return
+            return@withLock
         }.getOrNull()
         if (completion == null) {
             Logger.w(TAG, "主动消息 LLM 调用超时(${LLM_TIMEOUT_MS / 1000}s),跳过")
-            return
+            return@withLock
         }
 
         // 解析 LLM 返回的 JSON 决策
@@ -203,6 +217,8 @@ class ProactiveMessageRunner(
             )
             // 更新 lastTriggeredAt(先更新再通知,即使通知失败也不影响下次间隔)
             settings.saveProactiveMessageConfig(config.copy(lastTriggeredAt = now))
+            // 问题6.2: 成功发送后递增当日计数并持久化,MAX_DAILY_MESSAGES 校验下次生效
+            incrementDailyCount()
             // 弹通知(像微信来消息一样,通知栏用助手头像)
             notificationManager.notifyProactiveMessage(assistant, proactiveContent)
             Logger.i(TAG, "Proactive message sent to session ${targetSession.id}, reason=${decision.reason}")
@@ -211,6 +227,36 @@ class ProactiveMessageRunner(
             settings.saveProactiveMessageConfig(config.copy(lastTriggeredAt = now))
             Logger.i(TAG, "Proactive message skipped (shouldSend=false), reason=${decision.reason}")
         }
+    }
+
+    /**
+     * 问题6.2: 刷新当日已发送主动消息计数。
+     *
+     * - 取当前日期(yyyy-MM-dd),与 [todayDate] 不同则跨日,重置计数为 0
+     * - 从 SharedPreferences 读取当日持久化计数(key="proactive_count_$todayDate")
+     * - 调用时机:checkAndTrigger 入口(refreshDailyCount 在 Mutex 临界区内,无并发问题)
+     */
+    private fun refreshDailyCount() {
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            .format(java.util.Date())
+        if (today != todayDate) {
+            // 跨日:重置内存计数,日期更新为新的一天
+            todayDate = today
+            todaySentCount = prefs.getInt("proactive_count_$today", 0)
+            Logger.i(TAG, "跨日重置主动消息计数: todayDate=$today, todaySentCount=$todaySentCount")
+        } else if (todaySentCount == 0) {
+            // 同日但内存计数为 0(可能进程重启后未读取过),从 SP 读取
+            todaySentCount = prefs.getInt("proactive_count_$today", 0)
+        }
+    }
+
+    /**
+     * 问题6.2: 递增当日已发送计数并持久化到 SharedPreferences。
+     */
+    private fun incrementDailyCount() {
+        todaySentCount++
+        prefs.edit().putInt("proactive_count_$todayDate", todaySentCount).apply()
+        Logger.i(TAG, "主动消息计数+1: todayDate=$todayDate, todaySentCount=$todaySentCount")
     }
 
     /**
@@ -297,7 +343,10 @@ class ProactiveMessageRunner(
         private const val POLL_INTERVAL_MS = 60_000L // 每分钟检查一次
         /** LLM 决策调用超时(毫秒)。 */
         private const val LLM_TIMEOUT_MS = 60_000L
-        /** 决策 JSON 生成的最大 token 数。 */
+        /**
+         * 决策 JSON 生成的最大 token 数。
+         * 问题6.3: 偏离设计约束150,部分模型最小token限制要求>=300,兼容性权衡。
+         */
         private const val DECISION_MAX_TOKENS = 300
 
         /**

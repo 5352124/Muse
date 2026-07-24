@@ -130,7 +130,7 @@ interface MessageDao {
      * @return 匹配的消息 + 会话标题,按 createdAt 降序,限 50 条
      */
     @Query("""
-        SELECT 
+        SELECT
             m.id as messageId,
             m.sessionId as sessionId,
             m.content as content,
@@ -145,6 +145,67 @@ interface MessageDao {
         LIMIT 50
     """)
     suspend fun searchFts(matchQuery: String): List<MessageSearchJoin>
+
+    /**
+     * v2.x: 全文搜索消息内容(FTS4 MATCH + snippet() 生成高亮片段)。
+     *
+     * 与 [searchFts] 区别:
+     *  - 直接返回 [SearchResult](含 contentSnippet),无需 Repository 层二次构建片段
+     *  - 用 FTS4 snippet() 函数在 content_ngram 列上生成高亮片段(以 [ ] 包裹匹配 token)
+     *
+     * TODO: 项目当前使用 FTS4(非 FTS5),且 content_ngram 是 ngram 化文本(2-gram 滑窗),
+     *       snippet() 作用于该列时返回的片段是 ngram 串(如 "你好 好世 世界"),不是原文片段,
+     *       展示效果不理想。后续应迁移到 FTS5 + 外部内容表(messages),让 snippet 直接作用于原文。
+     *       当前路径在 ngram 转换为空或 FTS 异常时,由 [searchMessageContentLike] 兜底
+     *       (LIKE + Repository 层 buildSnippet 构建原文片段)。
+     *
+     * @param matchQuery FTS4 MATCH 表达式(已用 [MessageFtsManager.toMatchQuery] 转换)
+     * @param limit 最大返回条数(默认 50)
+     * @return 匹配的 [SearchResult] 列表,按 createdAt 降序
+     */
+    @Query("""
+        SELECT
+            m.id as messageId,
+            m.sessionId as sessionId,
+            m.role as role,
+            m.createdAt as createdAt,
+            s.title as sessionTitle,
+            snippet(messages_fts, '[', ']', '…', 1, 10) as contentSnippet
+        FROM messages_fts
+        JOIN messages m ON messages_fts.message_id = m.id
+        JOIN sessions s ON m.sessionId = s.id
+        WHERE content_ngram MATCH :matchQuery
+        ORDER BY m.createdAt DESC
+        LIMIT :limit
+    """)
+    suspend fun searchMessageContent(matchQuery: String, limit: Int = 50): List<SearchResult>
+
+    /**
+     * v2.x: LIKE 兜底搜索(FTS4 不可用 / ngram 转换为空时使用)。
+     *
+     * 返回 [MessageSearchJoin](含 content 原文),由 Repository 层用 buildSnippet
+     * 构建 [SearchResult.contentSnippet](基于原文,片段语义正确)。
+     *
+     * TODO: LIKE 路径性能低于 FTS,仅作兜底;FTS5 + 原文 snippet 落地后可移除。
+     *
+     * @param pattern 已转义的 LIKE 模式串(如 %keyword%),配合 ESCAPE '\'
+     * @param limit 最大返回条数(默认 50)
+     */
+    @Query("""
+        SELECT
+            m.id as messageId,
+            m.sessionId as sessionId,
+            m.content as content,
+            m.role as role,
+            m.createdAt as createdAt,
+            s.title as sessionTitle
+        FROM messages m
+        JOIN sessions s ON m.sessionId = s.id
+        WHERE m.content LIKE :pattern ESCAPE '\'
+        ORDER BY m.createdAt DESC
+        LIMIT :limit
+    """)
+    suspend fun searchMessageContentLike(pattern: String, limit: Int = 50): List<MessageSearchJoin>
 
     /** 消息总数流(统计面板用)。 */
     @Query("SELECT COUNT(*) FROM messages")

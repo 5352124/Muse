@@ -195,8 +195,8 @@ class VertexAiAuthToken(
      *  此处检测到 PKCS#1 header 时用标准 RSA PrivateKeyInfo 包装层包裹后再解析。
      *  包装层结构(ASN.1 DER):
      *    SEQUENCE {
-     *      INTEGER 0                          -- version
-     *      SEQUENCE { OID rsaEncryption, NULL } -- algorithm identifier
+     *      INTEGER 0                          -- 版本
+     *      SEQUENCE { OID rsaEncryption, NULL } -- 算法标识符
      *      OCTET STRING <原 PKCS#1 字节>        -- privateKey
      *    }
      *  其中前缀 22 字节是固定的(RSA + PKCS#8 头),最后 1 字节是 OCTET STRING 长度标签。
@@ -227,7 +227,7 @@ class VertexAiAuthToken(
         // RSA Encryption OID + NULL params 的 AlgorithmIdentifier,前面带 SEQUENCE 与 version
         // 完整 26 字节前缀:
         //   30 82 xx xx                 SEQUENCE (总长,后填)
-        //   02 01 00                    INTEGER 0 (version)
+        //   02 01 00                    INTEGER 0 (版本)
         //   30 0d 06 09 2a 86 48 86 f7 0d 01 01 01 00  SEQUENCE { rsaEncryption, NULL }
         //   04 82 xx xx                 OCTET STRING (包裹 PKCS#1)
         val prefix = byteArrayOf(

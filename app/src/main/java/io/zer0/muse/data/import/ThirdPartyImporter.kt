@@ -35,10 +35,11 @@ import java.util.zip.ZipInputStream
 /**
  * v1.61-A: 第三方数据导入结果。
  */
-// TODO i18n: 待提取 — errors: List<String> 是用户可见错误消息(传递给 UI 展示),资源已定义
-// 在 strings_data.xml(import_error_* / import_default_*)。将 List<String> 改为 List<Int>
-// (资源 ID)需同步改 ImportResult 结构 + UI 调用方 + 含参消息的 String.format,改动跨文件
-// 且含动态参数(e.message / skippedMessages),风险较大,暂跳过。
+// i18n 已评估(结构重构暂缓)— errors: List<String> 的填充已全部改用
+// context.getString(R.string.import_error_* / import_default_*),用户可见消息已本地化。
+// 进一步将 List<String> 改为 List<Int>(资源 ID)需同步改 ImportResult 结构 + UI 调用方
+// + 含参消息的 String.format,改动跨文件且含动态参数(e.message / skippedMessages),
+// 风险较大,暂缓。i18n 目标已达成,仅结构偏好延后。
 data class ImportResult(
     val providersImported: Int = 0,
     val assistantsImported: Int = 0,

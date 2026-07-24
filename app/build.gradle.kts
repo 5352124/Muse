@@ -17,8 +17,8 @@ android {
         applicationId = "io.zer0.muse"
         minSdk = 26
         targetSdk = 35
-        versionCode = 109
-        versionName = "1.0.9"
+        versionCode = 115
+        versionName = "1.0.15"
     }
 
     signingConfigs {
@@ -60,6 +60,15 @@ android {
         }
     }
 
+    testOptions {
+        unitTests {
+            // 未 mock 的 android.* 方法返回默认值,避免 Logger/Log 调用在 JVM 单元测试中崩溃
+            isReturnDefaultValues = true
+            // 让 Robolectric 测试可以读取合并后的 Android 资源,避免 Resources$NotFoundException
+            isIncludeAndroidResources = true
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -90,6 +99,8 @@ android {
         warning.add("MissingPermission")
         // Suppress unused resource warnings (many resources from auto-generated code)
         warning.add("UnusedResources")
+        // i18n: 未翻译的字符串视为 error,拦截漏翻
+        error.add("MissingTranslation")
     }
 
     packaging {
@@ -123,6 +134,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.activity.compose)
     // v1.7: 系统 SplashScreen API(androidx.core:core-splashscreen)
     implementation("androidx.core:core-splashscreen:1.0.1")

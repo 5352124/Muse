@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import io.zer0.muse.ui.common.WindowWidthClass
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -48,7 +50,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
+import io.zer0.muse.ui.common.IosChip
+import io.zer0.muse.ui.common.rememberWindowWidthClass
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -58,6 +61,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import io.zer0.muse.ui.common.IosTopBar
+import io.zer0.muse.ui.common.LoadingState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -109,8 +113,10 @@ fun MemoryScreen(
     // v8: 作用域筛选状态(从 ViewModel 直接 collect,与 state 同级更新)
     val selectedScope by viewModel.selectedScope.collectAsStateWithLifecycle()
     val availableScopes by viewModel.availableScopes.collectAsStateWithLifecycle()
-    // Phase 2 2D: Export dialog state (declared before Scaffold for topBar access)
+    // Phase 2 2D: Export dialog state (declared before Scaffold for topbar access)
     var showExportDialog by rememberSaveable { mutableStateOf(false) }
+    // P2-1: 大屏(Expanded)下内容区居中限宽 720dp
+    val widthClass = rememberWindowWidthClass()
 
     Scaffold(
         topBar = {
@@ -129,11 +135,23 @@ fun MemoryScreen(
             )
         },
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
+        // P2-1: Box 包裹,Expanded 模式下居中限宽
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (widthClass == WindowWidthClass.Expanded) {
+                            Modifier.widthIn(max = 720.dp)
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .padding(padding),
+            ) {
             // v1.78 (#1): 搜索防抖 — 本地 state + 300ms delay,避免每次按键都查库
             var searchQuery by rememberSaveable { mutableStateOf("") }
             LaunchedEffect(searchQuery) {
@@ -161,7 +179,7 @@ fun MemoryScreen(
                 singleLine = true,
             )
 
-            // Phase 2 2A: View mode state (list vs timeline)
+            // Phase 2 2A: 视图模式状态(列表 vs 时间轴)
             var showTimelineView by rememberSaveable { mutableStateOf(false) }
 
             // v1.0.4: 把"列表/时间轴切换 + 作用域筛选"从 Column 顶部固定改为
@@ -172,19 +190,19 @@ fun MemoryScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                        .padding(MusePaddings.cardInnerTight),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    FilterChip(
+                    IosChip(
                         selected = !showTimelineView,
                         onClick = { showTimelineView = false },
-                        label = { Text("列表") },
+                        label = stringResource(R.string.memory_stats_view_list),
                     )
-                    FilterChip(
+                    IosChip(
                         selected = showTimelineView,
                         onClick = { showTimelineView = true },
-                        label = { Text("时间轴") },
+                        label = stringResource(R.string.memory_stats_view_timeline),
                     )
                 }
                 // v8: 作用域筛选器(FlowRow + FilterChip,可换行)
@@ -202,13 +220,10 @@ fun MemoryScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(32.dp),
+                        .padding(MusePaddings.emptyStateGap),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(28.dp),
-                        strokeWidth = 2.dp,
-                    )
+                    LoadingState()
                 }
                 return@Column
             }
@@ -497,15 +512,15 @@ fun MemoryScreen(
                     )
                 }
 
-                // Phase 2 2D: Export dialog
+                // Phase 2 2D: 导出弹窗
                 if (showExportDialog) {
                     val context = LocalContext.current
                     MuseDialog(
                         onDismissRequest = { showExportDialog = false },
-                        title = "导出记忆",
+                        title = stringResource(R.string.memory_stats_export_title),
                         content = {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("选择导出格式：")
+                                Text(stringResource(R.string.memory_stats_export_format_hint))
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     OutlinedButton(
                                         onClick = {
@@ -533,6 +548,7 @@ fun MemoryScreen(
                     )
                 }
             }
+        }
         }
     }
 }
@@ -610,7 +626,7 @@ private fun FilterChipRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(MusePaddings.cardInnerTight),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         val importanceOptions = listOf<Pair<Int?, String>>(
@@ -620,10 +636,10 @@ private fun FilterChipRow(
             2 to stringResource(R.string.memory_filter_critical),
         )
         importanceOptions.forEach { (value, label) ->
-            FilterChip(
+            IosChip(
                 selected = importanceFilter == value,
                 onClick = { onImportanceChange(value) },
-                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                label = label,
             )
         }
     }
@@ -631,7 +647,7 @@ private fun FilterChipRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(MusePaddings.cardInnerTight),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         val timeOptions = listOf<Pair<String?, String>>(
@@ -641,10 +657,10 @@ private fun FilterChipRow(
             "month" to stringResource(R.string.memory_filter_month),
         )
         timeOptions.forEach { (value, label) ->
-            FilterChip(
+            IosChip(
                 selected = timeFilter == value,
                 onClick = { onTimeChange(value) },
-                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                label = label,
             )
         }
     }
@@ -652,7 +668,7 @@ private fun FilterChipRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(MusePaddings.cardInnerTight),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         val typeOptions = listOf<Pair<String?, String>>(
@@ -662,10 +678,10 @@ private fun FilterChipRow(
             "Compile" to stringResource(R.string.memory_filter_compile),
         )
         typeOptions.forEach { (value, label) ->
-            FilterChip(
+            IosChip(
                 selected = typeFilter == value,
                 onClick = { onTypeChange(value) },
-                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                label = label,
             )
         }
     }
@@ -701,17 +717,16 @@ private fun ScopeFilterChipRow(
     FlowRow(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(MusePaddings.cardInnerTight),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         options.forEach { option ->
             val isSelected = selectedScope == option.id
-            FilterChip(
+            IosChip(
                 selected = isSelected,
                 onClick = { onSelect(option.id) },
-                label = { Text(option.displayName, style = MaterialTheme.typography.labelSmall) },
-                shape = MuseShapes.large,
+                label = option.displayName,
             )
         }
     }
@@ -760,7 +775,7 @@ private fun SearchResultsList(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(32.dp),
+                .padding(MusePaddings.emptyStateGap),
             contentAlignment = Alignment.Center,
         ) {
             CircularProgressIndicator(
@@ -774,7 +789,7 @@ private fun SearchResultsList(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(32.dp),
+                .padding(MusePaddings.emptyStateGap),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -954,7 +969,7 @@ private fun LazyListScope.fourLayerMemoryListItems(
     if (deepExpanded) {
         item {
             io.zer0.muse.ui.common.SettingsGroup {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(MusePaddings.screen)) {
                     val noneText = stringResource(R.string.memory_screen_none)
                     Text(
                         text = stringResource(R.string.memory_screen_deep_desc),
@@ -997,7 +1012,7 @@ private fun SectionHeader(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(MusePaddings.cardInner),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -1037,7 +1052,7 @@ private fun MemoryRow(
     onEdit: ((MemoryItem) -> Unit)? = null,
     onSetImportance: ((MemoryItem) -> Unit)? = null,
 ) {
-    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+    Column(modifier = Modifier.padding(MusePaddings.cardInner)) {
         Row(
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1234,7 +1249,7 @@ private fun ErrorTraceBox(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(MusePaddings.cardInnerSpaced),
     ) {
         // 标题 + 复制按钮
         Row(
@@ -1271,7 +1286,7 @@ private fun ErrorTraceBox(
                 text = trace,
                 modifier = Modifier
                     .verticalScroll(scrollState)
-                    .padding(12.dp),
+                    .padding(MusePaddings.itemGap),
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontFamily = MuseMonoFontFamily,
                 ),
@@ -1302,13 +1317,14 @@ private fun EmptyHint(text: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 24.dp),
+            .padding(vertical = MusePaddings.largeGap),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.outline,
+            // v1.0.26: 统一空状态文本色为 onSurfaceVariant alpha 0.7,对齐 EmptyState 副标题色
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
         )
     }
 }
@@ -1432,7 +1448,7 @@ private fun ImportanceOptionRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
+            .padding(vertical = MusePaddings.contentGap),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -1487,7 +1503,7 @@ private fun MemoryDashboardCard(state: MemoryUiState) {
     var statsExpanded by rememberSaveable { mutableStateOf(true) }
 
     io.zer0.muse.ui.common.SettingsGroup {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(MusePaddings.screen)) {
             Text(
                 text = stringResource(R.string.memory_screen_overview),
                 style = MaterialTheme.typography.titleMedium,
@@ -1531,7 +1547,7 @@ private fun MemoryDashboardCard(state: MemoryUiState) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { statsExpanded = !statsExpanded }
-                    .padding(vertical = 4.dp),
+                    .padding(vertical = MusePaddings.tightGap),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -1542,7 +1558,7 @@ private fun MemoryDashboardCard(state: MemoryUiState) {
                     modifier = Modifier.size(18.dp),
                 )
                 Text(
-                    text = "记忆统计",
+                    text = stringResource(R.string.memory_stats_section_title),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -1562,15 +1578,15 @@ private fun MemoryDashboardCard(state: MemoryUiState) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
-                    StatChip(label = "总计", value = state.totalFactCount.toString())
-                    StatChip(label = "本周", value = state.weekNewCount.toString())
-                    StatChip(label = "本月", value = state.monthNewCount.toString())
+                    StatChip(label = stringResource(R.string.memory_stats_total), value = state.totalFactCount.toString())
+                    StatChip(label = stringResource(R.string.memory_filter_week), value = state.weekNewCount.toString())
+                    StatChip(label = stringResource(R.string.memory_filter_month), value = state.monthNewCount.toString())
                 }
                 Spacer(Modifier.size(12.dp))
                 // 重要度分布饼图
                 if (state.importanceDistribution.isNotEmpty()) {
                     Text(
-                        text = "重要度分布",
+                        text = stringResource(R.string.memory_stats_importance_distribution),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline,
                     )
@@ -1581,20 +1597,20 @@ private fun MemoryDashboardCard(state: MemoryUiState) {
                 if (state.topSessions.isNotEmpty()) {
                     Spacer(Modifier.size(8.dp))
                     Text(
-                        text = "最活跃会话",
+                        text = stringResource(R.string.memory_stats_top_sessions),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline,
                     )
                     Spacer(Modifier.size(4.dp))
                     state.topSessions.take(3).forEach { (sid, count) ->
-                        DashboardMetricRow(label = sid.take(12), value = "$count 条")
+                        DashboardMetricRow(label = sid.take(12), value = stringResource(R.string.memory_stats_session_count, count))
                     }
                 }
                 // 增长趋势折线图
                 if (state.dailyTrend.size >= 2) {
                     Spacer(Modifier.size(8.dp))
                     Text(
-                        text = "近 30 天趋势",
+                        text = stringResource(R.string.memory_stats_trend_30_days),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline,
                     )
@@ -1610,7 +1626,7 @@ private fun MemoryDashboardCard(state: MemoryUiState) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { healthExpanded = !healthExpanded }
-                        .padding(vertical = 4.dp),
+                        .padding(vertical = MusePaddings.tightGap),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -1658,7 +1674,7 @@ private fun StatChip(label: String, value: String) {
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                modifier = Modifier.padding(MusePaddings.cardInnerTight),
             )
         }
         Spacer(Modifier.size(2.dp))
@@ -1676,10 +1692,13 @@ private fun StatChip(label: String, value: String) {
 @Composable
 private fun ImportancePieChart(distribution: Map<Int, Int>) {
     val total = distribution.values.sum().coerceAtLeast(1)
+    val normalColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val importantColor = MaterialTheme.colorScheme.tertiary
+    val criticalColor = MaterialTheme.colorScheme.error
     val segments = listOf(
-        0 to Color(0xFF9E9E9E),  // 普通-灰色
-        1 to Color(0xFFFF9800),  // 重要-橙色
-        2 to Color(0xFFF44336),  // 关键-红色
+        0 to normalColor,    // 普通-灰色
+        1 to importantColor,  // 重要-橙色
+        2 to criticalColor,   // 关键-红色
     ).map { (key, color) ->
         val count = distribution[key] ?: 0
         Triple(key, color, count.toFloat() / total)
@@ -1708,9 +1727,9 @@ private fun ImportancePieChart(distribution: Map<Int, Int>) {
         Column {
             segments.forEach { (key, color, ratio) ->
                 val label = when (key) {
-                    2 -> "关键"
-                    1 -> "重要"
-                    else -> "普通"
+                    2 -> stringResource(R.string.memory_importance_critical)
+                    1 -> stringResource(R.string.memory_importance_important)
+                    else -> stringResource(R.string.memory_importance_normal)
                 }
                 val percent = (ratio * 100).toInt()
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1732,6 +1751,8 @@ private fun ImportancePieChart(distribution: Map<Int, Int>) {
 @Composable
 private fun TrendLineChart(dailyData: List<Pair<String, Int>>) {
     val maxVal = dailyData.maxOfOrNull { it.second }?.coerceAtLeast(1) ?: 1
+    val lineColor = MaterialTheme.colorScheme.primary
+    val baselineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     Box(modifier = Modifier.fillMaxWidth().height(100.dp)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val stepX = size.width / (dailyData.size - 1).coerceAtLeast(1)
@@ -1745,7 +1766,7 @@ private fun TrendLineChart(dailyData: List<Pair<String, Int>>) {
             if (points.size >= 2) {
                 for (i in 0 until points.size - 1) {
                     drawLine(
-                        color = Color(0xFF4CAF50),
+                        color = lineColor,
                         start = points[i],
                         end = points[i + 1],
                         strokeWidth = 2.dp.toPx(),
@@ -1753,12 +1774,12 @@ private fun TrendLineChart(dailyData: List<Pair<String, Int>>) {
                 }
                 // 画圆点
                 points.forEach { point ->
-                    drawCircle(color = Color(0xFF4CAF50), radius = 2.dp.toPx(), center = point)
+                    drawCircle(color = lineColor, radius = 2.dp.toPx(), center = point)
                 }
             }
             // 基线
             drawLine(
-                color = Color.LightGray.copy(alpha = 0.5f),
+                color = baselineColor,
                 start = Offset(0f, size.height - 1.dp.toPx()),
                 end = Offset(size.width, size.height - 1.dp.toPx()),
                 strokeWidth = 1.dp.toPx(),
@@ -1779,7 +1800,7 @@ private fun DashboardMetricRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = MusePaddings.tightGap),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -1805,7 +1826,7 @@ private fun HealthStepRow(
     stepKey: String,
     health: io.zer0.memory.ticker.MemoryTicker.StepHealth,
 ) {
-    Column(modifier = Modifier.padding(vertical = 6.dp)) {
+    Column(modifier = Modifier.padding(vertical = MusePaddings.labelVerticalGap)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -1860,12 +1881,12 @@ private fun MemorySummaryCard(markdown: String) {
     val hasSummary = markdown.isNotBlank()
 
     io.zer0.muse.ui.common.SettingsGroup {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(MusePaddings.screen)) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { expanded = !expanded }
-                    .padding(vertical = 2.dp),
+                    .padding(vertical = MusePaddings.tinyGap),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -1931,12 +1952,12 @@ private fun ExperienceLibraryCard(
     var expanded by rememberSaveable { mutableStateOf(false) }
 
     io.zer0.muse.ui.common.SettingsGroup {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(MusePaddings.screen)) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { expanded = !expanded }
-                    .padding(vertical = 2.dp),
+                    .padding(vertical = MusePaddings.tinyGap),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {

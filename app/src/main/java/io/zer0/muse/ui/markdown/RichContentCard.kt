@@ -26,8 +26,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import io.zer0.muse.R
+import io.zer0.muse.ui.common.LifecycleAwareWebViewContainer
 import io.zer0.muse.ui.theme.MuseIconSizes
 import io.zer0.muse.ui.theme.MuseShapes
 import kotlinx.serialization.builtins.serializer
@@ -40,12 +40,11 @@ import kotlinx.serialization.encodeToString
  * - ```svg ... ``` → SVG 卡片(WebView 渲染)
  * - ```html ... ``` → HTML 卡片(WebView 渲染)
  * - ```chart {...} ``` → 图表卡片(本期简化为 JSON 展示,后续可接 Vico)
- * - ```mermaid ... ``` → Mermaid 图表卡片(v1.57: WebView + mermaid.js CDN 渲染流程图/时序图等)
+ * - ```mermaid ... ``` → Mermaid 图表卡片(v1.57: WebView + mermaid.js 渲染流程图/时序图等;v1.97 改为本地 assets 加载)
  *
- * H-MD5 / M7 安全风险说明: Chart.js / mermaid.js 从 jsDelivr CDN 加载,未加 SRI(integrity)。
- * Android WebView 对 integrity 属性支持不稳定,当前依赖 HTTPS + CDN 信誉作为缓解措施。
- * 已知限制: CDN 资源无 SRI 校验,若 jsDelivr 被劫持有 XSS 风险。后续可打包到 assets 离线加载。
- * H1 修复: 对 LLM 输出的 HTML/SVG 做基本正则清洗,并拦截 WebView 导航,防止 meta refresh/iframe/事件属性等威胁。
+ * 安全说明: v1.97 起 Chart.js/mermaid.js/KaTeX 均从本地 assets/vendor/ 加载(base URL 为
+ * file:///android_asset/),不再依赖任何远程 CDN,无 SRI/劫持风险。RichContentWebViewClient
+ * 拦截所有顶层导航。H1 修复: 对 LLM 输出的 HTML/SVG 做基本正则清洗,防止 meta refresh/iframe/事件属性等威胁。
  *
  * @param onHtmlPreview HTML/SVG 全屏预览回调,参数为完整 HTML 源码
  *         (SVG 会先包装为完整 HTML 再回调)。仅 svg/html 语言触发,其余语言忽略。
@@ -161,18 +160,19 @@ private fun sanitizeHtml(input: String): String {
 }
 
 /**
- * H1/M6/M7 修复: 富内容 WebView 统一导航拦截 — 只放行 cdn.jsdelivr.net CDN,
- * 其余一律拒绝(返回 true),防止 LLM 输出的 <a>/meta refresh 跳转到恶意页面或伪协议。
+ * 富内容 WebView 统一导航拦截 — 全部拒绝。
  *
- * 注意: CDN 脚本/样式(Chart.js/mermaid.js)作为子资源加载,不受 shouldOverrideUrlLoading 影响,
- * 仍可正常加载;此回调只拦截顶层导航。
+ * v1.0.10: 修复白名单逻辑漏洞。旧版放行 cdn.jsdelivr.net,但 Chart.js/mermaid.js/KaTeX
+ * 已改为从本地 assets/vendor/ 加载(见 buildHtml),不再需要任何远程域名白名单。
+ * 旧的白名单反而成为安全口子:LLM 若输出指向 jsdelivr 的恶意页面会被放行。
+ *
+ * 现策略:顶层导航一律拦截(return true),杜绝 LLM 输出的 <a>/meta refresh
+ * 跳转到任何外部页面或伪协议。本地资源(file:///android_asset/)作为子资源加载,
+ * 不受 shouldOverrideUrlLoading 影响。
  */
 internal class RichContentWebViewClient : WebViewClient() {
     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-        val url = request?.url ?: return true
-        val host = url.host?.lowercase() ?: return true
-        // 只允许 KaTeX/Chart.js/mermaid.js 所在的 CDN 域名,其余拒绝
-        return host != "cdn.jsdelivr.net"
+        return true
     }
 }
 
@@ -188,26 +188,15 @@ private fun SvgCard(svg: String) {
         $safeSvg
         </body></html>
     """.trimIndent()
-    // L9 已知限制: WebView 无 onPause/pauseTimers 生命周期处理,后台时仍占资源;后续可接 LocalLifecycleOwner 优化。
-    // v0.53: 用 onRelease 释放 WebView,避免泄漏(企业级容错)
-    AndroidView(
-        factory = { ctx ->
-            WebView(ctx).apply {
-                // H1 修复: 安全设置 — 禁用 JS、禁用文件/内容访问、需用户手势播放媒体
-                settings.javaScriptEnabled = false
-                settings.allowFileAccess = false
-                settings.allowContentAccess = false
-                settings.mediaPlaybackRequiresUserGesture = true
-                setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                webViewClient = RichContentWebViewClient()
-                // L8 修复: factory 仅配置 settings,加载统一交给 update 块,避免首帧双次 loadData
-            }
-        },
-        // H-MD4 修复: 增加 update 块,svg 内容变化时重新加载(原先无 update,WebView 不刷新)
-        update = { webView ->
-            webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
-        },
-        onRelease = { it.destroy() },
+    // v1.88 修复: 改用 LifecycleAwareWebViewContainer,自动处理 ON_PAUSE/ON_RESUME/ON_DESTROY,
+    // 解决 Activity 后台时 WebView 残留资源占用问题(原 L9 已知限制已消除)。
+    // 原 v0.53 的 onRelease 释放逻辑由容器统一兜底。
+    LifecycleAwareWebViewContainer(
+        htmlContent = html,
+        baseUrl = null,
+        // H1 修复: SVG 不需要 JS,保持禁用
+        javaScriptEnabled = false,
+        webViewClient = RichContentWebViewClient(),
         // M-MD9 修复: height 改为 heightIn(min=...),允许内容超出时自适应
         // M5 修复: 加 contentDescription 供无障碍朗读
         modifier = Modifier
@@ -233,25 +222,15 @@ private fun HtmlCard(html: String) {
         </style></head>
         <body>$safeHtml</body></html>
     """.trimIndent()
-    // L9 已知限制: WebView 无 onPause/pauseTimers 生命周期处理;后续可接 LocalLifecycleOwner 优化。
-    // v0.53: 用 onRelease 释放 WebView,避免泄漏(企业级容错)
-    AndroidView(
-        factory = { ctx ->
-            WebView(ctx).apply {
-                // H1 修复: 安全设置 — 禁用 JS、禁用文件/内容访问、需用户手势播放媒体
-                settings.javaScriptEnabled = false
-                settings.allowFileAccess = false
-                settings.allowContentAccess = false
-                settings.mediaPlaybackRequiresUserGesture = true
-                setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                webViewClient = RichContentWebViewClient()
-            }
-        },
-        // H-MD4 修复: 增加 update 块,html 内容变化时重新加载
-        update = { webView ->
-            webView.loadDataWithBaseURL(null, wrappedHtml, "text/html", "UTF-8", null)
-        },
-        onRelease = { it.destroy() },
+    // v1.88 修复: 改用 LifecycleAwareWebViewContainer,自动处理 ON_PAUSE/ON_RESUME/ON_DESTROY,
+    // 解决 Activity 后台时 WebView 残留资源占用问题(原 L9 已知限制已消除)。
+    // 原 v0.53 的 onRelease 释放逻辑由容器统一兜底。
+    LifecycleAwareWebViewContainer(
+        htmlContent = wrappedHtml,
+        baseUrl = null,
+        // H1 修复: HTML 卡片禁用 JS,保持禁用
+        javaScriptEnabled = false,
+        webViewClient = RichContentWebViewClient(),
         // M-MD9 修复: height 改为 heightIn(min=...)
         // M5 修复: 加 contentDescription
         modifier = Modifier
@@ -294,24 +273,15 @@ private fun ChartCard(json: String) {
         </script>
         </body></html>
     """.trimIndent()
-    // L9 已知限制: WebView 无 onPause/pauseTimers 生命周期处理;后续可接 LocalLifecycleOwner 优化。
-    AndroidView(
-        factory = { ctx ->
-            WebView(ctx).apply {
-                settings.javaScriptEnabled = true
-                // M6 修复: 防御纵深 — 禁用文件/内容访问,需用户手势播放媒体
-                settings.allowFileAccess = false
-                settings.allowContentAccess = false
-                settings.mediaPlaybackRequiresUserGesture = true
-                setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                webViewClient = RichContentWebViewClient()
-            }
-        },
-        // H-MD4 修复: 增加 update 块,json 内容变化时重新加载
-        update = { webView ->
-            webView.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "UTF-8", null)
-        },
-        onRelease = { it.destroy() },
+    // v1.88 修复: 改用 LifecycleAwareWebViewContainer,自动处理 ON_PAUSE/ON_RESUME/ON_DESTROY,
+    // 解决 Activity 后台时 Chart.js 动画继续运行耗电的问题(原 L9 已知限制已消除)。
+    // 原 v0.53 的 onRelease 释放逻辑由容器统一兜底。
+    LifecycleAwareWebViewContainer(
+        htmlContent = html,
+        baseUrl = "file:///android_asset/",
+        // Chart.js 需要 JS
+        javaScriptEnabled = true,
+        webViewClient = RichContentWebViewClient(),
         // M-MD9 修复: height 改为 heightIn(min=...)
         // M5 修复: 加 contentDescription
         modifier = Modifier
@@ -359,25 +329,15 @@ private fun MermaidCard(mermaid: String) {
         </script>
         </body></html>
     """.trimIndent()
-    // L9 已知限制: WebView 无 onPause/pauseTimers 生命周期处理;后续可接 LocalLifecycleOwner 优化。
-    AndroidView(
-        factory = { ctx ->
-            WebView(ctx).apply {
-                // Mermaid 必须 JS
-                settings.javaScriptEnabled = true
-                // M6 修复: 防御纵深 — 禁用文件/内容访问,需用户手势播放媒体
-                settings.allowFileAccess = false
-                settings.allowContentAccess = false
-                settings.mediaPlaybackRequiresUserGesture = true
-                setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                webViewClient = RichContentWebViewClient()
-            }
-        },
-        // H-MD4 修复: 增加 update 块,mermaid 内容变化时重新加载
-        update = { webView ->
-            webView.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "UTF-8", null)
-        },
-        onRelease = { it.destroy() },
+    // v1.88 修复: 改用 LifecycleAwareWebViewContainer,自动处理 ON_PAUSE/ON_RESUME/ON_DESTROY,
+    // 解决 Activity 后台时 mermaid.js 渲染相关 JS 定时器继续运行耗电的问题(原 L9 已知限制已消除)。
+    // 原 v0.53 的 onRelease 释放逻辑由容器统一兜底。
+    LifecycleAwareWebViewContainer(
+        htmlContent = html,
+        baseUrl = "file:///android_asset/",
+        // Mermaid 必须 JS
+        javaScriptEnabled = true,
+        webViewClient = RichContentWebViewClient(),
         // M-MD9 修复: height 改为 heightIn(min=...)
         // M5 修复: 加 contentDescription
         modifier = Modifier

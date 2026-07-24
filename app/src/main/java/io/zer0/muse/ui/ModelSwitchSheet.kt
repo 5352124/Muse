@@ -125,7 +125,7 @@ internal fun ModelSwitchSheet(
                         text = stringResource(R.string.model_switch_no_provider),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.padding(vertical = 24.dp),
+                        modifier = Modifier.padding(vertical = MusePaddings.largeGap),
                     )
                     return@Column
                 }
@@ -135,12 +135,12 @@ internal fun ModelSwitchSheet(
                     text = stringResource(R.string.model_switch_provider_label),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.padding(vertical = 4.dp),
+                    modifier = Modifier.padding(vertical = MusePaddings.tightGap),
                 )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp),
+                            .padding(vertical = MusePaddings.tightGap),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     providers.forEach { provider ->
@@ -154,7 +154,7 @@ internal fun ModelSwitchSheet(
                         ) {
                             Row(
                                 modifier = Modifier
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    .padding(MusePaddings.bubbleInner),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
@@ -177,7 +177,7 @@ internal fun ModelSwitchSheet(
                 }
 
                 HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 12.dp),
+                    modifier = Modifier.padding(vertical = MusePaddings.itemGap),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                 )
 
@@ -187,7 +187,7 @@ internal fun ModelSwitchSheet(
                         text = stringResource(R.string.model_switch_no_provider_selected),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.padding(vertical = 16.dp),
+                        modifier = Modifier.padding(vertical = MusePaddings.screen),
                     )
                     return@Column
                 }
@@ -196,7 +196,7 @@ internal fun ModelSwitchSheet(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp),
+                            .padding(vertical = MusePaddings.tightGap),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -240,7 +240,7 @@ internal fun ModelSwitchSheet(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 24.dp),
+                            .padding(vertical = MusePaddings.largeGap),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
@@ -386,7 +386,7 @@ internal fun ModelSwitchSheet(
                         color = MaterialTheme.colorScheme.outline,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 24.dp),
+                            .padding(vertical = MusePaddings.largeGap),
                     )
                 } else {
                     groups.forEach { (groupName, ids) ->

@@ -33,6 +33,7 @@ import io.zer0.muse.ui.common.SettingsGroup
 import io.zer0.muse.ui.common.SettingsGroupDivider
 import io.zer0.muse.ui.common.SettingsItemRow
 import io.zer0.muse.ui.common.SwitchRow
+import io.zer0.muse.ui.theme.MusePaddings
 import kotlinx.coroutines.launch
 
 /**
@@ -110,7 +111,7 @@ internal fun AsrSection(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(MusePaddings.cardInner),
             ) {
                 if (asrConfig.apiKey.isBlank()) {
                     InlineError(stringResource(R.string.asr_missing_api_key_error))
@@ -145,7 +146,7 @@ internal fun AsrSection(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(MusePaddings.cardInner),
             ) {
                 OutlinedTextField(
                     value = asrModel,
@@ -183,7 +184,7 @@ internal fun AsrSection(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(MusePaddings.cardInner),
             ) {
                 OutlinedTextField(
                     value = asrLang,
@@ -237,7 +238,7 @@ internal fun AsrSection(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(MusePaddings.cardInner),
                 ) {
                     OutlinedTextField(
                         value = fileUrl,
@@ -263,7 +264,7 @@ internal fun AsrSection(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(MusePaddings.cardInner),
                 ) {
                     OutlinedTextField(
                         value = pollInterval,
@@ -290,7 +291,7 @@ internal fun AsrSection(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(MusePaddings.cardInner),
                 ) {
                     OutlinedTextField(
                         value = pollTimeout,

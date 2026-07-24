@@ -1,6 +1,8 @@
 package io.zer0.muse.ui.common
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,8 +21,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -77,6 +81,17 @@ fun IosDropdown(
     // stringResource 需在 @Composable 直接调用位置提取,不能在 semantics{} 内使用。
     val dropdownCd = stringResource(R.string.common_dropdown_cd, label, selectedDisplay)
 
+    // L-DD5: 用 TextField 自己的 InteractionSource 监听按压,避免父 Box clickable 被子
+    // OutlinedTextField 的焦点/输入处理拦截,导致点击下拉框无反应。
+    val interactionSource = remember { MutableInteractionSource() }
+    LaunchedEffect(interactionSource) {
+        interactionSource.interactions.collect { interaction ->
+            if (interaction is PressInteraction.Press) {
+                expanded = true
+            }
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -101,6 +116,7 @@ fun IosDropdown(
             modifier = Modifier.fillMaxWidth(),
             shape = MuseShapes.medium,
             singleLine = true,
+            interactionSource = interactionSource,
         )
 
         if (expanded) {

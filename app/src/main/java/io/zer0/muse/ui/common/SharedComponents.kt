@@ -27,13 +27,11 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
+import io.zer0.muse.ui.common.IosChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import io.zer0.muse.R
 import io.zer0.muse.ui.theme.MuseAnimation
 import io.zer0.muse.ui.theme.MuseCornerRadius
+import io.zer0.muse.ui.theme.MuseIconSizes
 import io.zer0.muse.ui.theme.MusePaddings
 import io.zer0.muse.ui.theme.MuseShapes
 import androidx.compose.ui.graphics.luminance
@@ -254,6 +253,7 @@ fun SettingsGroupDivider() {
  * @param title 主标题
  * @param subtitle 副标题(null 则不显示,灰色小字)
  * @param onClick 点击回调(null 则不可点击)
+ * @param enabled 是否启用点击(默认 true;false 时视觉不变但点击无效)
  * @param trailing 右侧 trailing 内容(默认空,可放箭头 / 数值 / 开关等)
  */
 @Composable
@@ -262,6 +262,7 @@ fun SettingsItemRow(
     title: String,
     subtitle: String? = null,
     onClick: (() -> Unit)? = null,
+    enabled: Boolean = true,
     trailing: @Composable (() -> Unit)? = null,
 ) {
     val rowInteractionSource = remember { MutableInteractionSource() }
@@ -280,7 +281,7 @@ fun SettingsItemRow(
             .fillMaxWidth()
             .background(rowBgColor)
             .then(
-                if (onClick != null) Modifier.clickable(
+                if (onClick != null && enabled) Modifier.clickable(
                     interactionSource = rowInteractionSource,
                     indication = null,
                     onClick = onClick,
@@ -294,7 +295,7 @@ fun SettingsItemRow(
             // 36dp 图标槽(圆角 8dp 背景色块)
             Surface(
                 modifier = Modifier.size(36.dp),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                shape = MuseShapes.small,
                 color = colorScheme.primaryContainer.copy(alpha = 0.15f),
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -373,7 +374,7 @@ fun SettingsSwitchRow(
         if (icon != null) {
             Surface(
                 modifier = Modifier.size(36.dp),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                shape = MuseShapes.small,
                 color = colorScheme.primaryContainer.copy(alpha = 0.15f),
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -407,6 +408,62 @@ fun SettingsSwitchRow(
                 stateDescription = if (checked) enabledText else disabledText
             },
         )
+    }
+}
+
+/**
+ * 带分段控件的设置项行 — 左侧图标 + 标题 + 副标题,下方嵌入 [SegmentedControl]。
+ *
+ * 用于聊天风格、语气、主题模式等需要在分组卡片内做单选的场景,
+ * 统一分段控件与卡片其他行的视觉间距。
+ *
+ * @param icon 左侧图标
+ * @param title 主标题
+ * @param subtitle 副标题
+ * @param options 选项文本列表
+ * @param selectedIndex 当前选中索引
+ * @param onSelectedChange 选中变更回调
+ */
+@Composable
+fun SettingsSegmentedRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    options: List<String>,
+    selectedIndex: Int,
+    onSelectedChange: (Int) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(MusePaddings.cardInner),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(MusePaddings.itemGap),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.size(MuseIconSizes.iconMedium),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+            SegmentedControl(
+                options = options,
+                selectedIndex = selectedIndex,
+                onSelectedChange = onSelectedChange,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+        }
     }
 }
 
@@ -524,8 +581,8 @@ fun CollapsibleSection(
             // 内容区(带过渡动画)
             AnimatedVisibility(
                 visible = expanded,
-                enter = expandVertically(tween(250)) + fadeIn(tween(200)),
-                exit = shrinkVertically(tween(250)) + fadeOut(tween(200)),
+                enter = expandVertically(tween(250)) + fadeIn(tween(MuseAnimation.TACTILE_MS)),
+                exit = shrinkVertically(tween(250)) + fadeOut(tween(MuseAnimation.TACTILE_MS)),
             ) {
                 Column {
                     if (subtitle != null) {
@@ -545,8 +602,8 @@ fun CollapsibleSection(
  * 多选 chip 行 — 高级感关联资源选择器。
  *
  * 设计:
- *  - 已选行:AssistChip + Close 图标(点击移除)
- *  - 候选行:FilterChip(已选变 primary,未选变 surfaceVariant)
+ *  - 已选行:IosChip(selected=false)+ Close 图标(点击移除)
+ *  - 候选行:IosChip(已选变 primary,未选变 surfaceVariant)
  *  - 两行用 8dp 间距分隔
  *  - 候选为空时显示"暂无可选项"灰色提示
  *
@@ -583,7 +640,7 @@ fun <T> MultiSelectChipRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(MusePaddings.cardInner),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         // 标签
@@ -651,14 +708,10 @@ private fun <T> ChipFlowRow(
             val label = itemLabel(item)
             val selected = isSelected(item)
             if (selected && showRemoveIcon) {
-                AssistChip(
+                IosChip(
+                    selected = false,
                     onClick = { onClick(item) },
-                    label = { Text(label, style = MaterialTheme.typography.labelMedium) },
-                    shape = MuseShapes.large,
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    ),
+                    label = label,
                     trailingIcon = {
                         Icon(
                             imageVector = Icons.Outlined.Close,
@@ -668,15 +721,14 @@ private fun <T> ChipFlowRow(
                     },
                 )
             } else {
-                FilterChip(
+                IosChip(
                     selected = selected,
                     onClick = { onClick(item) },
-                    label = { Text(label, style = MaterialTheme.typography.labelMedium) },
-                    shape = MuseShapes.large,
+                    label = label,
                     leadingIcon = if (selected) {
                         {
                             Icon(
-                                imageVector = Icons.Outlined.Check,
+                                imageVector = Icons.Filled.Check,
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp),
                             )
@@ -706,7 +758,7 @@ fun StatusDot(
     val alpha by animateFloatAsState(
         targetValue = if (pulse) 0.3f else 1f,
         animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            animation = tween(800),
+            animation = tween(MuseAnimation.LOOP_SLOW_MS),
             repeatMode = androidx.compose.animation.core.RepeatMode.Reverse,
         ),
         label = "status_dot_pulse",

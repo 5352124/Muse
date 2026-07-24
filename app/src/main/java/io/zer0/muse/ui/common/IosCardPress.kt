@@ -1,7 +1,9 @@
 package io.zer0.muse.ui.common
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -24,6 +26,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.zer0.muse.ui.theme.MuseAnimation
 import io.zer0.muse.ui.theme.MuseCornerRadius
+import io.zer0.muse.ui.theme.MuseHaptics
 
 /**
  * iOS 风格卡片按压效果 — Kelivo 触觉交互核心组件。
@@ -31,6 +34,8 @@ import io.zer0.muse.ui.theme.MuseCornerRadius
  * 按下时:
  *  - 背景颜色渐变 (200ms easeOutCubic): 白方向偏移 55% / 黑方向偏移 55%
  *  - 可选缩放 (0.98): 轻微缩小营造"陷入"感
+ *    v1.0.23: 缩放曲线从 tween 改为 spring(MediumBouncy + StiffnessMediumLow),
+ *    按下与回弹自带轻微过冲,呈现 MANUS 风格弹性反馈
  *  - 可选触觉反馈: 轻击
  *
  * 无涟漪效果 (indication = null), 替代标准 `clickable {}` 的 Surface。
@@ -91,9 +96,16 @@ fun IosCardPress(
         label = "card_press_color",
     )
 
+    // v1.0.23: 按压缩放改为 spring 弹簧曲线,增强 MANUS 风格弹性反馈。
+    // 原 tween 线性曲线过渡生硬,spring 中等阻尼 + 中低刚度让卡片按下与回弹
+    // 自带轻微过冲,模拟指尖按压软质的物理感,与 MANUS 暖调质感呼应。
+    // 颜色渐变保留 tween(触觉色彩变化不需要弹性,线性更稳)。
     val animatedScale by animateFloatAsState(
         targetValue = if (isPressed && enableScale) 0.98f else 1f,
-        animationSpec = tween(durationMillis = MuseAnimation.TACTILE_MS, easing = MuseAnimation.EaseOutCubic),
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
         label = "card_press_scale",
     )
 
@@ -106,7 +118,7 @@ fun IosCardPress(
                 role = Role.Button,
                 onClick = {
                     if (enableHaptic) {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        MuseHaptics.light(haptic)
                     }
                     onClick()
                 },

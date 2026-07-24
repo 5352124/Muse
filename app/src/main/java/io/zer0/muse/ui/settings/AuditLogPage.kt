@@ -31,8 +31,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
+import io.zer0.muse.ui.common.IosChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -407,24 +406,12 @@ private fun FilterHeader(
             verticalArrangement = Arrangement.spacedBy(MusePaddings.tightGap),
         ) {
             categories.forEach { (cat, labelRes) ->
-                FilterChip(
+                IosChip(
                     selected = selectedCategory == cat,
                     onClick = {
                         onCategorySelected(if (selectedCategory == cat) null else cat)
                     },
-                    label = {
-                        Text(
-                            text = stringResource(labelRes),
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    },
-                    shape = MuseShapes.large,
-                    colors = FilterChipDefaults.filterChipColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    ),
+                    label = stringResource(labelRes),
                 )
             }
         }

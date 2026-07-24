@@ -49,11 +49,14 @@ class ConfigImporter(
      * @param imported 成功导入的 Provider 数量
      * @param skipped 跳过的 Provider 数量(id 冲突或字段缺失)
      * @param providers 导入的 Provider 名称列表(用于 UI 提示)
+     * @param skippedProviders 问题7.5: 被跳过的 Provider 名称列表(id 冲突场景),
+     *   供 UI 弹提示"以下 Provider 已存在,已跳过:xxx"
      */
     data class Result(
         val imported: Int,
         val skipped: Int,
         val providers: List<String>,
+        val skippedProviders: List<String> = emptyList(),
     )
 
     /**
@@ -107,6 +110,8 @@ class ConfigImporter(
         var imported = 0
         var skipped = 0
         val names = mutableListOf<String>()
+        // 问题7.5: 记录因 id 冲突被跳过的 Provider 名称,供 UI 提示
+        val skippedNames = mutableListOf<String>()
         // 取一次已存在的 provider id 集合,用于去重(id 冲突时跳过,不覆盖)
         val existingIds = settings.providersFlow.first().map { it.id }.toSet()
         for (raw in rawProviders) {
@@ -114,14 +119,19 @@ class ConfigImporter(
             if (cfg.id in existingIds) {
                 // id 冲突 → 跳过(不覆盖)
                 skipped++
-                Logger.i("ConfigImporter", "Skip duplicate provider: ${cfg.id}")
+                skippedNames += cfg.displayName
+                Logger.i("ConfigImporter", "Skip duplicate provider: ${cfg.id} (${cfg.displayName})")
                 continue
             }
+            // 问题7.4: apiKey 明文风险已由 SettingsRepository 内部消除 —
+            // addProvider → encodeProviders 已对每个 ProviderConfig.apiKey 调用
+            // SecureKeyStore.encrypt(Android Keystore AES-256-GCM),持久化层为密文。
+            // 此处无需额外加密,直接传入明文 apiKey 即可。
             settings.addProvider(cfg)
             imported++
             names += cfg.displayName
         }
-        Result(imported, skipped, names)
+        Result(imported, skipped, names, skippedNames)
     }
 
     /**

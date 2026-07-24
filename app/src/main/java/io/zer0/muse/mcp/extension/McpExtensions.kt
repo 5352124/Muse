@@ -6,9 +6,9 @@ import kotlinx.serialization.Serializable
 /**
  * Phase 5 5E: MCP 扩展 — 额外的 MCP 服务器集成。
  *
- * P0: Spotify/Apple Music ("play a song")
- * P0: System photo gallery ("find travel photos")
- * P1: Notion/Obsidian (AI read/write notes)
+ * P0:Spotify/Apple Music("播放一首歌")
+ * P0:系统相册("查找旅行照片")
+ * P1:Notion/Obsidian(AI 读写笔记)
  *
  * 当前为接口定义 + 存根实现,具体集成需各平台 API 就绪后补充。
  */

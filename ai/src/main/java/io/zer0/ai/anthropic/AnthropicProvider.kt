@@ -308,7 +308,12 @@ class AnthropicProvider(
                     // 避免消费者(UI loading)无限等待
                     if (!finished.get()) {
                         Logger.w("AnthropicProvider", "streamChat onClosed before finished")
-                        trySend(ChatStreamEvent.Error(ErrorCode.STREAM_INTERRUPTED.toMessage("anthropic")))
+                        // v1.0.15: 已收到部分内容时降级为 StreamInterrupted,UI 保留已收内容并提示网络中断
+                        if (anyDeltaSent.get()) {
+                            trySend(ChatStreamEvent.StreamInterrupted(ErrorCode.STREAM_INTERRUPTED.toMessage("anthropic")))
+                        } else {
+                            trySend(ChatStreamEvent.Error(ErrorCode.STREAM_INTERRUPTED.toMessage("anthropic")))
+                        }
                     }
                     close()
                 }
@@ -381,7 +386,12 @@ class AnthropicProvider(
                     } ?: (t?.message ?: ErrorCode.NETWORK_ERROR.toMessage())
                     Logger.e("AnthropicProvider", "streamChat onFailure: $msg", t)
                     finished.set(true)
-                    trySend(ChatStreamEvent.Error(msg, t))
+                    // v1.0.15: 已收到部分内容时发 StreamInterrupted,让 UI 保留已收内容并提示网络中断(可自动重连)
+                    if (anyDeltaSent.get()) {
+                        trySend(ChatStreamEvent.StreamInterrupted(msg, t))
+                    } else {
+                        trySend(ChatStreamEvent.Error(msg, t))
+                    }
                     close()
                 }
             }
@@ -398,7 +408,9 @@ class AnthropicProvider(
         }
     }.flowOn(Dispatchers.IO)
 
-    override suspend fun completeText(request: ChatRequest): ChatCompletion = withContext(Dispatchers.IO) {
+    override suspend fun completeText(request: ChatRequest): ChatCompletion = completeTextImpl(request, 0)
+
+    private suspend fun completeTextImpl(request: ChatRequest, keySwitchDepth: Int = 0): ChatCompletion = withContext(Dispatchers.IO) {
         // v1.0.5: Provider 出口兜底 — 先对 UIMessage 列表做通用清理(对齐 openhanako normalizeProviderPayload)
         val normalizedMessages = ProviderPayloadNormalizer.normalizeMessages(
             request.messages, request.model,
@@ -439,9 +451,9 @@ class AnthropicProvider(
                 if (!resp.isSuccessful) {
                     val code = resp.code
                     // v1.0.1: 429 切换 key 重试;401/403 标记 key 失败
-                    if (code == 429 && switchToNextKey()) {
-                        Logger.i("AnthropicProvider", "completeText 429 限流,已切换到下一个 key,重试")
-                        return@withContext completeText(request)
+                    if (code == 429 && keySwitchDepth < MAX_KEY_SWITCHES && switchToNextKey()) {
+                        Logger.i("AnthropicProvider", "completeText 429 限流,已切换到下一个 key,重试 ($keySwitchDepth/$MAX_KEY_SWITCHES)")
+                        return@withContext completeTextImpl(request, keySwitchDepth + 1)
                     }
                     if (code == 401 || code == 403) {
                         markKeyFailed(hardBlock = true)
@@ -881,5 +893,7 @@ class AnthropicProvider(
         const val BETA_INTERLEAVED_THINKING = "interleaved-thinking-2025-05-14"
         const val BETA_EXTENDED_CACHE_TTL = "extended-cache-ttl-2025-04-11"
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        // completeText 429 切换 key 最大次数,防止无限递归
+        const val MAX_KEY_SWITCHES = 3
     }
 }

@@ -4,13 +4,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.CloudOff
@@ -22,7 +19,7 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
+import io.zer0.muse.ui.common.IosSlider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,11 +36,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.zer0.ai.core.ProviderConfig
 import io.zer0.muse.R
 import io.zer0.muse.data.SettingsRepository
+import io.zer0.muse.ui.common.ChevronRight
 import io.zer0.muse.rag.RagConfig
 import io.zer0.muse.ui.common.SectionLabel
 import io.zer0.muse.ui.common.SettingsGroup
 import io.zer0.muse.ui.common.SettingsGroupDivider
+import io.zer0.muse.ui.common.SettingsItemRow
 import io.zer0.muse.ui.common.SettingsSwitchRow
+import io.zer0.muse.ui.theme.MusePaddings
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -145,7 +145,7 @@ fun RagSettingsPage(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                                .padding(MusePaddings.cardInner),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
@@ -186,7 +186,7 @@ fun RagSettingsPage(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    .padding(MusePaddings.cardInnerSpaced),
                             ) {
                                 Text(
                                     text = stringResource(R.string.settings_rag_deselect_hint),
@@ -206,7 +206,7 @@ fun RagSettingsPage(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            .padding(MusePaddings.cardInner),
                     ) {
                         Text(
                             text = stringResource(R.string.settings_rag_model_name_hint),
@@ -428,37 +428,13 @@ fun RagSettingsPage(
         item { SectionLabel(stringResource(R.string.settings_rag_manage_kbs)) }
         item {
             SettingsGroup {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onManageKbs)
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                SettingsItemRow(
+                    icon = Icons.Outlined.Folder,
+                    title = stringResource(R.string.settings_rag_manage_kbs),
+                    subtitle = stringResource(R.string.settings_rag_manage_kbs_subtitle),
+                    onClick = onManageKbs,
                 ) {
-                    Icon(
-                        Icons.Outlined.Folder,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp),
-                    )
-                    Spacer(Modifier.size(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            stringResource(R.string.settings_rag_manage_kbs),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                        Text(
-                            stringResource(R.string.settings_rag_manage_kbs_subtitle),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Icon(
-                        Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp),
-                    )
+                    ChevronRight()
                 }
             }
         }
@@ -469,7 +445,7 @@ fun RagSettingsPage(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(MusePaddings.cardInner),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
@@ -501,37 +477,22 @@ private fun EmbeddingSourceOption(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .selectable(selected = selected, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-            )
-            if (subtitle.isNotBlank()) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+    SettingsItemRow(
+        icon = icon,
+        title = title,
+        subtitle = subtitle.takeIf { it.isNotBlank() },
+        onClick = onClick,
+        trailing = {
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
                 )
             }
-        }
-        if (selected) {
-            Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-        }
-    }
+        },
+    )
 }
 
 @Composable
@@ -550,7 +511,7 @@ private fun SliderRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(MusePaddings.cardInner),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -579,12 +540,13 @@ private fun SliderRow(
                 modifier = Modifier.padding(start = 8.dp),
             )
         }
-        Slider(
+        IosSlider(
             value = value,
             onValueChange = onValueChange,
             onValueChangeFinished = onValueChangeFinished,
             valueRange = valueRange,
             steps = steps,
+            showValueLabel = false,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp),

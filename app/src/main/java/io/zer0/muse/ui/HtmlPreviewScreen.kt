@@ -26,11 +26,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import io.zer0.muse.R
 import io.zer0.muse.ui.common.IosTopBar
 import io.zer0.muse.ui.common.IosTactileButton
+import io.zer0.muse.ui.common.LifecycleAwareWebView
+import io.zer0.muse.ui.common.LifecycleAwareWebViewFactory
 import io.zer0.muse.ui.common.MuseToast
 
 /**
@@ -63,25 +63,17 @@ fun HtmlPreviewScreen(
     val webViewRef = remember { arrayOfNulls<WebView>(1) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // 生命周期对齐:onPause/onResume 通知 WebView,后台时停止 JS 执行
+    // v1.88 修复: WebView 自身已实现生命周期感知(LifecycleAwareWebView),
+    // ON_PAUSE/ON_RESUME/ON_DESTROY 由 WebView 内部自动处理(含 pauseTimers/resumeTimers)。
+    // 此处仅保留离开组合时的兜底销毁与 DOM storage 清理逻辑。
     DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            val webView = webViewRef[0]
-            when (event) {
-                Lifecycle.Event.ON_PAUSE -> webView?.onPause()
-                Lifecycle.Event.ON_RESUME -> webView?.onResume()
-                Lifecycle.Event.ON_DESTROY -> {
-                    webView?.destroy()
-                    webViewRef[0] = null
-                }
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            // 兜底释放:离开组合时销毁 WebView
+            // 兜底释放:离开组合时销毁 WebView(宿主未销毁的场景,如导航返回)
             webViewRef[0]?.also {
+                // 注销生命周期观察者,避免后续 ON_DESTROY 重复 destroy 已销毁实例
+                if (it is LifecycleAwareWebView) {
+                    lifecycleOwner.lifecycle.removeObserver(it)
+                }
                 it.destroy()
                 webViewRef[0] = null
             }
@@ -121,7 +113,9 @@ fun HtmlPreviewScreen(
             ) {
                 AndroidView(
                     factory = { ctx ->
-                        WebView(ctx).apply {
+                        // v1.88 修复: 改用 LifecycleAwareWebViewFactory.create,
+                        // 自动绑定到 lifecycleOwner,后台时暂停 JS 定时器/动画。
+                        LifecycleAwareWebViewFactory.create(ctx, lifecycleOwner).apply {
                             // 启用 JavaScript(HTML demo / 交互式模板需要)
                             settings.javaScriptEnabled = true
                             // 启用 DOM storage(localStorage / sessionStorage)

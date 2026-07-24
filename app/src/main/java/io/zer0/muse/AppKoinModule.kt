@@ -51,7 +51,7 @@ import java.util.concurrent.TimeUnit
  *
  * 注册顺序约定:
  *  1. appModule: SettingsRepository / ProviderConfigStore / MemoryLlmClient / AppScope /
- *                MuseDb / SessionRepository / OkHttpClient / DocumentParser / ToolRegistry / BackupService
+ *                MuseDb / SessionRepository / OkHttpClient / DocumentParser / ToolRegistry / BackupService 等基础组件
  *  2. aiModule: ChatService + ImageService(依赖 ProviderConfigStore + OkHttpClient)
  *  3. memoryModule: Room + 核心服务 + MemoryTicker(依赖 MemoryLlmClient + AppScope)
  *
@@ -141,7 +141,7 @@ val appModule = module {
     // v1.120: 开源许可数据加载器(�?assets/licenses/manifest.json 读取依赖清单)
     single { io.zer0.muse.license.LicenseRepository(androidContext()) }
 
-    // PresetProviders
+    // PresetProviders 预设供应商
     single { PresetProviders(androidContext()) }
 
     // P2-11: OAuth 凭证隔离 — 独立加密 SP(Keystore AES-256-GCM),
@@ -164,15 +164,18 @@ val appModule = module {
 
     // 主动消息调度�?陪伴助手定时主动给用户发消息 + 弹通知)
     // 依赖顺序:SettingsRepository / ChatService(ai 模块) / SessionRepository / AssistantRepository /
-    //         MuseNotificationManager / Context / AppScope
+    //         MuseNotificationManager / Context / AppScope 等运行时依赖
     single { io.zer0.muse.schedule.ProactiveMessageRunner(get(), get(), get(), get(), get(), get(), androidContext(), get()) }
 
     // v1.30: 群聊调度�?用户发消息后串行触发�?Agent 轮转发言)
     // v1.111: �?appScope/appContext/chatGenerationManager �?群聊轮转运行�?appScope,切页/后台不中�?
     single { io.zer0.muse.schedule.GroupChatScheduler(get(), get(), get(), get(), get(), androidContext(), get(), get(), get()) }
 
-    // v1.43: 应用级聊天生成管理器(切页/后台保持生成不中�?
+    // v1.43: 应用级聊天生成管理器(切页/后台保持生成不中断)
     single { io.zer0.muse.schedule.ChatGenerationManager(get()) }
+
+    // v1.0.15: 网络状态监听器(StreamInterrupted 自动重连 + UI 网络状态显示依赖)
+    single { io.zer0.muse.network.NetworkMonitor(androidContext()) }
 
     // v1.98: 云备份自动定时上传调度器(�?10 分钟检查是否到�?
     single { io.zer0.muse.schedule.CloudBackupScheduler(get(), get(), get()) }
@@ -211,16 +214,16 @@ val appModule = module {
     // Phase 5 5E: MCP 扩展注册表
     single { io.zer0.muse.mcp.extension.McpExtensionRegistry() }
 
-    // Phase 6 6E: Local analytics tracker
+    // Phase 6 6E: 本地分析追踪器
     single { io.zer0.muse.data.analytics.LocalAnalyticsTracker(androidContext()) }
 
-    // HanaAgent port: Session file manager
+    // HanaAgent 移植:会话文件管理器
     single { io.zer0.muse.data.session.SessionFileManager(androidContext()) }
-    // HanaAgent port: Workflow orchestrator
+    // HanaAgent 移植:工作流编排器
     single { io.zer0.muse.tools.WorkflowOrchestrator() }
-    // HanaAgent port: File-based experience store
+    // HanaAgent 移植:基于文件的体验存储
     single { io.zer0.muse.data.experience.ExperienceStore(androidContext()) }
-    // HanaAgent port: Tools registrar (registers pin/experience/search_memory/todo/card/notify/status tools)
+    // HanaAgent 移植:工具注册器(注册 pin/experience/search_memory/todo/card/notify/status 工具)
     single {
         io.zer0.muse.tools.HanaAgentToolsRegistrar(
             toolRegistry = get(),
@@ -338,6 +341,14 @@ val appModule = module {
                     }.getOrDefault("")
                     doc.title to (firstChunkContent.ifBlank { doc.content.take(500) })
                 }
+            },
+            // v1.0.12: HNSW 索引持久化文件路径 — 启用 RAG 向量索引落盘
+            // 文件位置:filesDir/rag/hnsw_index.bin;App 重启后 MuseApp.onCreate 异步加载,
+            // 避免每次启动都从 DB 全量重建索引。indexFile 默认 null(不持久化,仅内存),
+            // 此处显式注入启用持久化,向后兼容旧调用方(默认 null 路径不受影响)。
+            // rag/ 目录在注入时创建(mkdirs 幂等,已存在无副作用)。
+            indexFile = java.io.File(androidContext().filesDir, "rag/hnsw_index.bin").apply {
+                parentFile?.mkdirs()
             },
         )
     }
@@ -475,8 +486,8 @@ val appModule = module {
     }
 
     // Phase 8.2 / 8.4 / 8.5 / 8.6 / 8.7 / 8.8 / 9.1: ChatViewModel 注入 20 个依�?
-    // v0.30-a: �?systemPromptAssembler
-    // v1.43: �?chatGenerationManager / artifactRepository / appContext
+    // v0.30-a: 新增 systemPromptAssembler
+    // v1.43: 新增 chatGenerationManager / artifactRepository / appContext
     // (chat/settings/ticker/session/image/doc/tool/assistant/webSearch/lorebook/quickMsg/promptInj/ocr/tts/skillRepo/skillExec/folder/notification/assembler/generation/artifacts/context/audit/sessionPermission)
     // v1.92: 改为 single �?应用级单�?切页/切路由不销�?生成不中断�?
     // �?viewModel{} 绑定�?NavBackStackEntry,�?CHAT_DETAIL 返回�?onCleared �?
@@ -488,6 +499,7 @@ val appModule = module {
             get(), get(), get(), get(), get(), get(), get(), get(),
             get(), get(), get(),
             get(), get(), get(), get(), get(), get(), get(), get(), get(), get(),
+            get(),
         )
     }
 
@@ -520,10 +532,23 @@ val appModule = module {
         )
     }
 
-    // v1.97 gap8: 独立翻译�?ViewModel(注入 ChatService,复用通用文本补全能力)
+    // v1.97 gap8: 独立翻译 ViewModel(注入 ChatService + TtsManager,复用通用文本补全与朗读能力)
     viewModel {
         io.zer0.muse.ui.translate.TranslateViewModel(
             chatService = get(),
+            ttsManager = get(),
+            appContext = androidContext(),
+        )
+    }
+
+    // Multi-Agent 工作流可视化编排 ViewModel
+    // teamId 由调用方通过 parametersOf 传入,其余依赖从容器解析
+    viewModel { parameters ->
+        io.zer0.muse.ui.workflow.WorkflowEditorViewModel(
+            application = androidContext() as android.app.Application,
+            teamId = parameters.get(),
+            settingsRepository = get(),
+            assistantRepository = get(),
         )
     }
 
@@ -535,6 +560,7 @@ val appModule = module {
             get(),
             get(),
             get(),
+            androidContext(),
         )
     }
 }

@@ -41,7 +41,7 @@ data class OAuthConfig(
          * xAI 官方 OAuth 文档未稳定公开,这里用通用 OpenAI 兼容 device flow 模板:
          *  - authorizeUrl: `https://x.ai/oauth/authorize`(授权页)
          *  - tokenUrl:     `https://api.x.ai/v1/oauth/token`(换 token)
-         *  - deviceCodeUrl:`https://api.x.ai/v1/oauth/device_code`(Device Flow)
+         *  - deviceCodeUrl:`https://api.x.ai/v1/oauth/device_code`(设备流程)
          *  - clientId:     留空,用户需在 xAI 控制台申请后填入
          *  - scope:        `chat.read chat.write`(xAI 通用聊天权限)
          *

@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import io.zer0.common.Logger
 import io.zer0.muse.R
 import io.zer0.muse.notification.MuseNotificationManager
@@ -39,6 +40,8 @@ class ChatGenerationService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var observeJob: Job? = null
+    // v1.0.15: Wakelock 保活,防止 Doze 模式下 CPU 休眠导致网络挂起
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -57,7 +60,13 @@ class ChatGenerationService : Service() {
             stopSelf()
             return
         }
-        Logger.i("ChatGenService", "service created & foreground started")
+        // v1.0.15: 获取 PARTIAL_WAKE_LOCK,保证生成期间 CPU 不休眠、网络不被 Doze 挂起
+        wakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Muse:ChatGeneration")
+            .also { it.setReferenceCounted(false) }
+        runCatching { wakeLock?.acquire(10 * 60 * 1000L) } // 最长 10 分钟,防止泄漏
+            .onFailure { Logger.w("ChatGenService", "wakelock acquire 失败", it) }
+        Logger.i("ChatGenService", "service created & foreground started & wakelock acquired")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -110,6 +119,9 @@ class ChatGenerationService : Service() {
     private fun stopService() {
         observeJob?.cancel()
         observeJob = null
+        // v1.0.15: 释放 wakelock
+        runCatching { wakeLock?.takeIf { it.isHeld }?.release() }
+        wakeLock = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         Logger.i("ChatGenService", "service stopped")
@@ -139,6 +151,9 @@ class ChatGenerationService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         observeJob?.cancel()
+        // v1.0.15: 释放 wakelock(防御性:stopService 已释放,这里兜底)
+        runCatching { wakeLock?.takeIf { it.isHeld }?.release() }
+        wakeLock = null
         // M-009: 取消 serviceScope,避免服务销毁后仍有协程持有引用导致泄漏
         serviceScope.cancel()
     }

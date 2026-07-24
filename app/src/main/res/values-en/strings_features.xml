@@ -205,6 +205,7 @@
     <string name="quick_notes_new">New note</string>
     <string name="quick_notes_search">Search notes…</string>
     <string name="quick_notes_pin">Pin</string>
+    <string name="quick_notes_unpin">Unpin</string>
     <string name="quick_notes_edit">Edit</string>
     <string name="quick_notes_delete">Delete</string>
     <string name="quick_notes_delete_title">Delete note</string>
@@ -215,6 +216,19 @@
     <string name="quick_notes_save">Save</string>
     <string name="quick_notes_cancel">Cancel</string>
     <string name="quick_notes_error_required">Title is required</string>
+    <string name="quick_notes_input_hint">Jot down your thoughts…</string>
+    <string name="quick_notes_tag_hint">Use #tags to categorize</string>
+    <string name="quick_notes_history">History</string>
+    <string name="quick_notes_count">%1$d notes</string>
+    <string name="quick_notes_empty_title">No notes yet</string>
+    <string name="quick_notes_empty_subtitle">Your first thought will appear here</string>
+    <string name="quick_notes_empty_search_title">No matching notes</string>
+    <string name="quick_notes_empty_search_subtitle">Try a different keyword</string>
+    <string name="quick_notes_copy">Copy</string>
+    <string name="quick_notes_copied">Copied to clipboard</string>
+    <string name="quick_notes_send_to_chat">Send to new chat</string>
+    <string name="quick_notes_more">More</string>
+    <string name="quick_notes_clear_search">Clear search</string>
 
     <!-- ===== ui/knowledge ===== -->
     <string name="knowledge_title">Knowledge base</string>

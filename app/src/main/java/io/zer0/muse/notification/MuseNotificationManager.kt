@@ -44,6 +44,10 @@ class MuseNotificationManager(private val context: Context) {
     private val nm: NotificationManager =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
+    // 问题6.4: 主动消息通知 ID 自增序列,保证每条主动消息分配唯一 ID(不覆盖旧通知)。
+    // 与 NOTIF_ID_PROACTIVE_MESSAGE_BASE 做 OR 运算生成最终 ID,取低 12 位避免溢出范围。
+    private val proactiveNotifIdSeq = java.util.concurrent.atomic.AtomicInteger(0)
+
     /** 一次性创建全部渠道(幂等,Android 8.0+ 必需)。 */
     fun ensureChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -183,8 +187,14 @@ class MuseNotificationManager(private val context: Context) {
         // v0.44: 头像加载成功才设 largeIcon,否则用默认小图标
         if (avatar != null) builder.setLargeIcon(avatar)
         val notif = builder.build()
+        // 问题6.4: 每条主动消息分配唯一 ID(基于助手 id hash + 自增序列),
+        // 避免与 notifyReminder 的固定 ID 冲突,且不让新通知覆盖旧通知。
+        // 范围 [NOTIF_ID_PROACTIVE_MESSAGE_BASE, NOTIF_ID_PROACTIVE_MESSAGE_BASE + 0x0FFF],
+        // 与 NOTIF_ID_PROACTIVE_MESSAGE(1004)/NOTIF_ID_CHAT_COMPLETED(1001) 等固定 ID 错开。
+        val notifId = NOTIF_ID_PROACTIVE_MESSAGE_BASE or
+            (proactiveNotifIdSeq.getAndIncrement() and 0x0FFF)
         // M2-1: 改用 resultOf{}
-        resultOf { nm.notify(NOTIF_ID_PROACTIVE_MESSAGE, notif) }
+        resultOf { nm.notify(notifId, notif) }
             .onError { msg, _ -> Logger.w(TAG, "notifyProactiveMessage failed: $msg") }
     }
 
@@ -364,6 +374,9 @@ class MuseNotificationManager(private val context: Context) {
         private const val NOTIF_ID_LIVE_UPDATE = 1002
         private const val NOTIF_ID_WEB_SERVER = 1003
         private const val NOTIF_ID_PROACTIVE_MESSAGE = 1004
+        // 问题6.4: 主动消息唯一通知 ID 的基址,与上面固定 ID 错开。
+        // 最终 ID = BASE or (seq & 0x0FFF),范围 [0x10000000, 0x10000FFF],不会与固定 ID(1001~1004)冲突。
+        private const val NOTIF_ID_PROACTIVE_MESSAGE_BASE = 0x1000_0000
         private const val NOTIF_PREVIEW_MAX_LEN = 200
         // L2-1: 头像尺寸(像素),用于 Coil 加载与 Canvas 绘制
         private const val AVATAR_SIZE = 96

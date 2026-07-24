@@ -1,6 +1,7 @@
 package io.zer0.muse.ui.settings
 
 import io.zer0.muse.ui.common.MuseToast
+import io.zer0.muse.ui.theme.MusePaddings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -589,7 +590,7 @@ private fun CloudBackupConfigDialog(
                 }
             }
             // v1.120: 备份加密密码(通用,S3/WebDAV 均适用)
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = MusePaddings.contentGap))
             Text(
                 text = stringResource(R.string.settings_backup_encrypt_password),
                 style = MaterialTheme.typography.labelMedium,

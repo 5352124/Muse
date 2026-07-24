@@ -51,6 +51,7 @@ import io.zer0.muse.data.session.SessionDao
 import io.zer0.muse.ui.components.CardGroup
 import io.zer0.muse.ui.settings.SettingsSubPageScaffold
 import io.zer0.muse.ui.theme.MuseShapes
+import io.zer0.muse.ui.theme.MusePaddings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
@@ -191,7 +192,7 @@ fun ReportScreen(
                     text = stringResource(R.string.reports_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(20.dp),
+                    modifier = Modifier.padding(MusePaddings.messageGap),
                 )
             }
             return@SettingsSubPageScaffold
@@ -279,7 +280,7 @@ private fun ReportCardContainer(
         tonalElevation = 1.dp,
     ) {
         Column(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier.padding(MusePaddings.messageGap),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(
@@ -334,9 +335,9 @@ private fun ReportCardContainer(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(MuseShapes.medium)
                         .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
-                        .padding(12.dp),
+                        .padding(MusePaddings.itemGap),
                     verticalAlignment = Alignment.Top,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -358,9 +359,9 @@ private fun ReportCardContainer(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(MuseShapes.medium)
                         .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
-                        .padding(12.dp),
+                        .padding(MusePaddings.itemGap),
                     verticalAlignment = Alignment.Top,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -404,7 +405,7 @@ private fun EmotionCard(stats: io.zer0.muse.data.emotion.EmotionStats) {
         tonalElevation = 1.dp,
     ) {
         Column(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier.padding(MusePaddings.messageGap),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(
@@ -478,9 +479,9 @@ private fun EmotionCard(stats: io.zer0.muse.data.emotion.EmotionStats) {
 private fun EmotionMetric(label: String, value: String, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(MuseShapes.medium)
             .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f))
-            .padding(12.dp),
+            .padding(MusePaddings.itemGap),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {

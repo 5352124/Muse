@@ -40,11 +40,12 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import io.zer0.muse.R
 import io.zer0.muse.ui.common.IosTactileButton
 import io.zer0.muse.ui.common.IosTopBar
+import io.zer0.muse.ui.common.LifecycleAwareWebView
+import io.zer0.muse.ui.common.LifecycleAwareWebViewFactory
 import io.zer0.muse.ui.common.MuseToast
 import io.zer0.muse.ui.theme.MuseIconSizes
 import io.zer0.muse.ui.theme.MusePaddings
@@ -90,25 +91,17 @@ fun BrowserAutomationScreen(
     // WebView 引用缓存(DisposableEffect 中释放,避免泄漏)
     val webViewRef = remember { arrayOfNulls<WebView>(1) }
 
-    // 生命周期对齐:onPause/onResume 通知 WebView,后台时停止 JS 执行
+    // v1.88 修复: WebView 自身已实现生命周期感知(LifecycleAwareWebView),
+    // ON_PAUSE/ON_RESUME/ON_DESTROY 由 WebView 内部自动处理(含 pauseTimers/resumeTimers)。
+    // 此处仅保留离开组合时的兜底销毁与 DOM storage 清理逻辑。
     DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            val webView = webViewRef[0]
-            when (event) {
-                Lifecycle.Event.ON_PAUSE -> webView?.onPause()
-                Lifecycle.Event.ON_RESUME -> webView?.onResume()
-                Lifecycle.Event.ON_DESTROY -> {
-                    webView?.destroy()
-                    webViewRef[0] = null
-                }
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            // 兜底释放:离开组合时销毁展示用 WebView,并清理 DOM storage
+            // 兜底释放:离开组合时销毁展示用 WebView(宿主未销毁的场景,如导航返回)
             webViewRef[0]?.also {
+                // 注销生命周期观察者,避免后续 ON_DESTROY 重复 destroy 已销毁实例
+                if (it is LifecycleAwareWebView) {
+                    lifecycleOwner.lifecycle.removeObserver(it)
+                }
                 it.destroy()
                 webViewRef[0] = null
             }
@@ -153,7 +146,9 @@ fun BrowserAutomationScreen(
             ) {
                 AndroidView(
                     factory = { ctx ->
-                        createDisplayWebView(ctx).also { webViewRef[0] = it }
+                        // v1.88 修复: createDisplayWebView 内部使用 LifecycleAwareWebViewFactory.create,
+                        // 自动绑定到 lifecycleOwner,后台时暂停 JS 定时器/动画。
+                        createDisplayWebView(ctx, lifecycleOwner).also { webViewRef[0] = it }
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -311,22 +306,31 @@ private fun BottomActionBar(
 /**
  * 创建展示用 WebView 实例(供 AndroidView.factory 调用)。
  *
+ * v1.88 修复: 改用 [LifecycleAwareWebViewFactory.create] 创建 [LifecycleAwareWebView],
+ * 自动绑定到 [lifecycleOwner],后台时暂停 JS 定时器/动画。
+ *
  * 安全配置与 BrowserManager.ensureWebView() 一致:
  *  - 启用 JS / DOM storage(现代网页普遍依赖)
  *  - 禁用 file/content access(防止 file:// 跨域读取)
  *  - 允许网络加载(浏览器需要拉取远程页面)
  *  - 拦截外部导航(只放行 http/https/about/data 协议)
+ *
+ * @param context Android 上下文
+ * @param lifecycleOwner 宿主生命周期所有者,用于绑定 WebView 生命周期观察
  */
 @SuppressLint("SetJavaScriptEnabled")
-private fun createDisplayWebView(context: android.content.Context): WebView {
-    return WebView(context).apply {
+private fun createDisplayWebView(
+    context: android.content.Context,
+    lifecycleOwner: LifecycleOwner,
+): LifecycleAwareWebView {
+    return LifecycleAwareWebViewFactory.create(context, lifecycleOwner).apply {
         settings.javaScriptEnabled = true
         // 严格安全:禁用 file/content access
         settings.allowContentAccess = false
         settings.allowFileAccess = false
         settings.allowFileAccessFromFileURLs = false
         settings.allowUniversalAccessFromFileURLs = false
-        // DOM storage(localStorage / sessionStorage)
+        // DOM 存储(localStorage / sessionStorage)
         settings.domStorageEnabled = true
         // 允许网络加载
         settings.blockNetworkLoads = false

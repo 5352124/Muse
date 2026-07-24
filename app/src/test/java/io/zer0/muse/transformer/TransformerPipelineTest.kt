@@ -1,4 +1,4 @@
-﻿package io.zer0.muse.transformer
+package io.zer0.muse.transformer
 
 import io.zer0.ai.core.UIMessage
 import kotlinx.coroutines.test.runTest
@@ -24,7 +24,7 @@ class TransformerPipelineTest {
         ): List<UIMessage> = messages.map { it.copy(content = "$prefix${it.content}") }
     }
 
-    // A transformer that appends a suffix
+    // 在末尾拼接后缀的 Transformer
     private class AppendTransformer(private val suffix: String) : Transformer {
         override val name: String = "Append($suffix)"
         override suspend fun transform(
@@ -97,7 +97,7 @@ class TransformerPipelineTest {
         val result = pipeline.execute(listOf(msg), TransformContext())
 
         assertEquals(1, result.size)
-        // FailingTransformer is skipped, keeping PrependTransformer's output
+        // FailingTransformer 被跳过,保留 PrependTransformer 的输出
         assertEquals("OK-test", result[0].content)
     }
 

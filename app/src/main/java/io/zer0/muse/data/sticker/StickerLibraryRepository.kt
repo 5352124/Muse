@@ -364,7 +364,7 @@ class StickerLibraryRepository(private val appContext: Context) {
 /**
  * 表情包条目数据模型。
  *
- * @param id UUID
+ * @param id UUID(唯一标识符)
  * @param category 分类(从压缩包文件夹名获取,无文件夹则用"默认")
  * @param fileName 文件名
  * @param relativePath 相对路径,格式 "stickers/<category>/<fileName>"

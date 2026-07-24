@@ -42,6 +42,7 @@ import io.zer0.muse.ui.common.IosTactileButton
 import io.zer0.muse.ui.common.SectionLabel
 import io.zer0.muse.ui.theme.MuseCornerRadius
 import io.zer0.muse.ui.theme.MusePaddings
+import io.zer0.muse.ui.theme.MuseShapes
 import io.zer0.muse.ui.theme.MuseDateFormats
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -91,7 +92,7 @@ fun MilestoneScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .padding(32.dp),
+                    .padding(MusePaddings.emptyStateGap),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -239,7 +240,7 @@ private fun MilestoneCard(
             }
             Spacer(Modifier.height(4.dp))
             Surface(
-                shape = RoundedCornerShape(6.dp),
+                shape = MuseShapes.extraSmall,
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
             ) {
                 Text(

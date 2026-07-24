@@ -83,7 +83,7 @@ fun ToolApprovalCard(
                 maxLines = 6,
             )
 
-            // Always allow checkbox
+            // "始终允许"复选框
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(
                     checked = alwaysAllow,
@@ -96,7 +96,7 @@ fun ToolApprovalCard(
                 )
             }
 
-            // Action buttons
+            // 操作按钮
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -124,7 +124,7 @@ fun ToolApprovalCard(
                 }
             }
 
-            // Deny reason input
+            // 拒绝理由输入框
             if (showDenyReason) {
                 androidx.compose.material3.OutlinedTextField(
                     value = denyReason,

@@ -4,7 +4,7 @@ import android.content.Context
 import io.zer0.muse.notification.MuseNotificationManager
 
 /**
- * notify tool (openhanako notify-tool.ts port).
+ * notify 工具(openhanako notify-tool.ts 移植版)。
  *
  * Lets the AI proactively send notifications to the user.
  * Only used when the user explicitly asks for reminders/notifications,
@@ -38,7 +38,7 @@ object NotifyTool {
         }
         val priority = args["priority"]?.trim()?.lowercase() ?: "normal"
         return try {
-            // Use the existing notification channels
+            // 使用已有的通知渠道
             notificationManager.notifyChatCompleted(title, body)
             "Notification sent: '$title' (priority: $priority)."
         } catch (e: Exception) {

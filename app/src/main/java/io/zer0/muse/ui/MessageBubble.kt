@@ -88,6 +88,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -121,13 +122,17 @@ import io.zer0.muse.ui.chat.parseQuotedContent
 import io.zer0.muse.ui.common.AttachmentChip
 import io.zer0.muse.ui.common.ContextMenuItem
 import io.zer0.muse.ui.common.DesktopContextMenu
+import io.zer0.muse.ui.common.IosTactileButton
 import io.zer0.muse.ui.common.rememberDesktopShortcutsEnabled
 import io.zer0.muse.ui.markdown.MarkdownText
 import io.zer0.muse.ui.taskcard.AgentPlan
 import io.zer0.muse.ui.taskcard.PlanCard
 import io.zer0.muse.ui.theme.MuseDateFormats
+import io.zer0.muse.ui.theme.MuseHaptics
+import io.zer0.muse.ui.theme.MuseShadow
 import io.zer0.muse.ui.theme.MuseShapes
 import io.zer0.muse.ui.theme.pill
+import io.zer0.muse.ui.theme.semiLarge
 import io.zer0.muse.ui.theme.tiny
 import io.zer0.muse.ui.theme.assistantBubble  // Phase 1 1A: AI 气泡形状令牌
 import io.zer0.muse.ui.theme.userBubble  // v1.48 (h18): 气泡形状令牌
@@ -140,6 +145,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.zer0.muse.ui.common.FullScreenMediaViewer
 import io.zer0.muse.ui.common.IosSlider
 import io.zer0.muse.ui.chat.VideoAttachment
 import kotlinx.coroutines.Dispatchers
@@ -263,7 +269,7 @@ internal fun MessageBubble(
         // (点正文文字时 LinkableText 消费 tap 事件导致不弹菜单,行为不可预测)
         onClick = {},
         onLongClick = {
-            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            MuseHaptics.medium(hapticFeedback)
             if (desktopShortcutsEnabled) {
                 showDesktopContextMenu = true
             } else {
@@ -340,12 +346,12 @@ internal fun MessageBubble(
                     .widthIn(max = 360.dp)
                     .padding(bottom = 6.dp),
             ) {
-                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Column(modifier = Modifier.padding(MusePaddings.bubbleInner)) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onToggleMoodExpanded() }
-                            .padding(vertical = 2.dp),
+                            .padding(vertical = MusePaddings.tinyGap),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -392,12 +398,12 @@ internal fun MessageBubble(
                         .widthIn(max = 360.dp)
                         .padding(bottom = 6.dp),
                 ) {
-                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    Column(modifier = Modifier.padding(MusePaddings.bubbleInner)) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onToggleReasoningExpanded() }
-                                .padding(vertical = 2.dp),
+                                .padding(vertical = MusePaddings.tinyGap),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             // v1.118: 折叠时标题显示思考内容摘要,展开时显示"思考过程"标题
@@ -455,12 +461,12 @@ internal fun MessageBubble(
                         .widthIn(max = 360.dp)
                         .padding(bottom = 6.dp),
                 ) {
-                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    Column(modifier = Modifier.padding(MusePaddings.bubbleInner)) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onToggleReflectionExpanded() }
-                                .padding(vertical = 2.dp),
+                            .padding(vertical = MusePaddings.tinyGap),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -499,13 +505,14 @@ internal fun MessageBubble(
                 // v1.48 (h18): 用 BubbleShape 令牌统一气泡圆角(原裸值 20/20/20/6)
                 shape = MuseShapes.userBubble,
                 // M-UI1: 手势收口到气泡本身,避免整行高亮
-                modifier = bubbleClickModifier,
+                // MANUS 风格:加 low 级别微阴影增强浮起质感
+                modifier = bubbleClickModifier.shadow(MuseShadow.low.elevation, MuseShapes.userBubble),
             ) {
                 Column(
                     modifier = Modifier
                         // Phase 1 1A: 用户气泡最大宽度从固定 280dp 改为屏幕宽度 78%
                         .fillMaxWidth(0.78f)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(MusePaddings.bubbleInner),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     // 引用回复:用户消息顶部显示引用块
@@ -521,7 +528,7 @@ internal fun MessageBubble(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 3,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(8.dp),
+                                modifier = Modifier.padding(MusePaddings.contentGap),
                             )
                         }
                     }
@@ -595,13 +602,13 @@ internal fun MessageBubble(
                                 shape = MuseShapes.tiny,
                                 modifier = Modifier
                                     .align(Alignment.BottomEnd)
-                                    .padding(6.dp),
+                                    .padding(MusePaddings.labelVerticalGap),
                             ) {
                                 Text(
                                     text = formatVideoDuration(va.durationMs),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    modifier = Modifier.padding(MusePaddings.chipInner),
                                 )
                             }
                         }
@@ -648,7 +655,7 @@ internal fun MessageBubble(
                                 modifier = Modifier.padding(top = 2.dp),
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(MusePaddings.chipInnerLoose),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 ) {
@@ -703,7 +710,7 @@ internal fun MessageBubble(
                 modifier = Modifier.fillMaxWidth(0.85f).then(bubbleClickModifier),
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(MusePaddings.cardInner),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
             // Phase 5-G / Phase 8.6: 渲染生成的图片(URL 或 base64 data URI)
@@ -814,11 +821,6 @@ internal fun MessageBubble(
                     )
                     Text(
                         text = "已压缩",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.outline,
-    )
-                    Text(
-                        text = "已压缩",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline,
                     )
@@ -845,7 +847,7 @@ internal fun MessageBubble(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 3,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(8.dp),
+                                modifier = Modifier.padding(MusePaddings.contentGap),
                             )
                             val bgColor = MaterialTheme.colorScheme.surface
                             Box(
@@ -984,44 +986,39 @@ internal fun MessageBubble(
         // 分享按钮用系统 share sheet 分享单条消息内容
         if (!isUser && msg.content.isNotEmpty() && !isStreaming && !isTranslating) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(MusePaddings.tightGap),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // 复制
-                IconButton(
+                IosTactileButton(
+                    icon = Icons.Default.ContentCopy,
                     onClick = {
                         onCopyMessage(msg.content)
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        MuseHaptics.light(hapticFeedback)
                     },
-                    modifier = Modifier.size(MuseIconSizes.touchTarget),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ContentCopy,
-                        contentDescription = stringResource(R.string.action_copy),
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(MuseIconSizes.iconSmall),
-                    )
-                }
+                    contentDescription = stringResource(R.string.action_copy),
+                    tint = MaterialTheme.colorScheme.outline,
+                    size = MuseIconSizes.touchTarget,
+                    iconSize = MuseIconSizes.iconSmall,
+                )
                 // 翻译(弹语言子菜单)
-                IconButton(
+                IosTactileButton(
+                    icon = Icons.Outlined.Language,
                     onClick = {
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        MuseHaptics.light(hapticFeedback)
                         showActionMenu = true
                         showLanguageSubmenu = true
                     },
-                    modifier = Modifier.size(MuseIconSizes.touchTarget),
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Language,
-                        contentDescription = stringResource(R.string.action_translate),
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(MuseIconSizes.iconSmall),
-                    )
-                }
+                    contentDescription = stringResource(R.string.action_translate),
+                    tint = MaterialTheme.colorScheme.outline,
+                    size = MuseIconSizes.touchTarget,
+                    iconSize = MuseIconSizes.iconSmall,
+                )
                 // 分享(系统 share sheet 分享单条消息)
-                IconButton(
+                IosTactileButton(
+                    icon = Icons.Outlined.Share,
                     onClick = {
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        MuseHaptics.light(hapticFeedback)
                         scope.launch {
                             val sendIntent = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
@@ -1030,31 +1027,24 @@ internal fun MessageBubble(
                             context.startActivity(Intent.createChooser(sendIntent, null))
                         }
                     },
-                    modifier = Modifier.size(MuseIconSizes.touchTarget),
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Share,
-                        contentDescription = stringResource(R.string.action_share),
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(MuseIconSizes.iconSmall),
-                    )
-                }
+                    contentDescription = stringResource(R.string.action_share),
+                    tint = MaterialTheme.colorScheme.outline,
+                    size = MuseIconSizes.touchTarget,
+                    iconSize = MuseIconSizes.iconSmall,
+                )
                 // 重新生成(仅最后一条助手消息)
                 if (isLastAssistant) {
-                    IconButton(
+                    IosTactileButton(
+                        icon = Icons.Default.Refresh,
                         onClick = {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            MuseHaptics.light(hapticFeedback)
                             onRegenerate()
                         },
-                        modifier = Modifier.size(MuseIconSizes.touchTarget),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = stringResource(R.string.chat_regenerate_cd),
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(MuseIconSizes.iconSmall),
-                        )
-                    }
+                        contentDescription = stringResource(R.string.chat_regenerate_cd),
+                        tint = MaterialTheme.colorScheme.outline,
+                        size = MuseIconSizes.touchTarget,
+                        iconSize = MuseIconSizes.iconSmall,
+                    )
                 }
             }
         }
@@ -1146,7 +1136,7 @@ internal fun MessageBubble(
                                         contentDescription = if (msg.favorite) stringResource(R.string.chat_favorite_remove) else stringResource(R.string.chat_favorite_add),
                                         onClick = {
                                             showActionMenu = false
-                                            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            MuseHaptics.light(hapticFeedback)
                                             onToggleFavorite()
                                         },
                                     )
@@ -1158,7 +1148,7 @@ internal fun MessageBubble(
                                         contentDescription = stringResource(R.string.action_copy),
                                         onClick = {
                                             showActionMenu = false
-                                            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            MuseHaptics.light(hapticFeedback)
                                             onCopyMessage(msg.content)
                                         },
                                     )
@@ -1222,76 +1212,13 @@ internal fun MessageBubble(
                 mediaPreview = null
             }
         }
-        // v1.60-B: 全屏媒体查看器 — HorizontalPager 左右切换 + 双指/双击缩放
+        // v1.0.15: 全屏媒体查看器抽取为共享组件(原 v1.60-B 内联实现),供群聊复用
         mediaPreview?.let { (images, initialIndex) ->
-            if (images.isNotEmpty()) {
-                val pagerState = rememberPagerState(
-                    initialPage = initialIndex.coerceIn(0, images.lastIndex),
-                ) { images.size }
-                Dialog(
-                    onDismissRequest = { mediaPreview = null },
-                    properties = androidx.compose.ui.window.DialogProperties(
-                        usePlatformDefaultWidth = false,
-                        decorFitsSystemWindows = false,
-                        // 改 false:避免缩放手势误触关闭
-                        dismissOnClickOutside = false,
-                    ),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            // v1.48 (h20): 遮罩用 colorScheme.scrim
-                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.95f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        HorizontalPager(
-                            state = pagerState,
-                            modifier = Modifier.fillMaxSize(),
-                        ) { page ->
-                            ZoomableImage(
-                                model = images[page],
-                                contentDescription = stringResource(R.string.chat_image_page_cd, page + 1, images.size),
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
-                        // 顶部:关闭按钮 + 页码指示器
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 36.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            // 左侧占位(宽度匹配关闭按钮触摸目标),使页码居中、关闭按钮靠右
-                            Spacer(modifier = Modifier.width(MuseIconSizes.touchTarget))
-                            if (images.size > 1) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
-                                ) {
-                                    Text(
-                                        text = "${pagerState.currentPage + 1} / ${images.size}",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                    )
-                                }
-                            }
-                            IconButton(
-                                onClick = { mediaPreview = null },
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = stringResource(R.string.action_close),
-                                    // v1.48 (h20): 关闭按钮 tint 用 onSurface
-                                    tint = MaterialTheme.colorScheme.onSurface,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+            FullScreenMediaViewer(
+                images = images,
+                initialIndex = initialIndex,
+                onDismiss = { mediaPreview = null },
+            )
         }
         if (showDeleteConfirm) {
             MuseDialog(
@@ -1333,7 +1260,7 @@ internal fun MessageBubble(
                                 label = regenerateLabel,
                                 icon = Icons.Default.Refresh,
                                 onClick = {
-                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    MuseHaptics.light(hapticFeedback)
                                     onRegenerate()
                                 },
                             )
@@ -1376,7 +1303,7 @@ private fun GeneratedImageCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
+            .padding(vertical = MusePaddings.tightGap)
             .clip(MuseShapes.medium)
             .clickable(onClick = onPreview),
     ) {
@@ -1395,7 +1322,7 @@ private fun GeneratedImageCard(
             },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(8.dp)
+                .padding(MusePaddings.contentGap)
                 .size(MuseIconSizes.touchTarget)
                 .background(
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
@@ -1426,26 +1353,33 @@ private fun ActionMenuItem(
 ) {
     val iconTint = if (tint == androidx.compose.ui.graphics.Color.Unspecified) MaterialTheme.colorScheme.onSurface else tint
     val textTint = if (tint == androidx.compose.ui.graphics.Color.Unspecified) MaterialTheme.colorScheme.onSurface else tint
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 24.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    Surface(
+        onClick = onClick,
+        shape = MuseShapes.semiLarge,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = iconTint,
-            // M-MB3: 图标尺寸用 MuseIconSizes.iconMedium 令牌替代硬编码 22dp
-            modifier = Modifier.size(MuseIconSizes.iconMedium),
-        )
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyLarge,
-            color = textTint,
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = MusePaddings.iconPadding, vertical = MusePaddings.inputPadding),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(MusePaddings.iconPadding),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = iconTint,
+                // M-MB3: 图标尺寸用 MuseIconSizes.iconMedium 令牌替代硬编码 22dp
+                modifier = Modifier.size(MuseIconSizes.iconMedium),
+            )
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = textTint,
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
 
@@ -1456,7 +1390,7 @@ private fun ActionMenuItem(
 @Composable
 internal fun LoadingDots(text: String = stringResource(R.string.chat_loading_thinking)) {
     Column(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = Modifier.padding(MusePaddings.cardInner),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Row(
@@ -1610,77 +1544,6 @@ fun SmartImage(
 }
 
 /**
- * v1.60-B: 可缩放图片 — 支持双指缩放、双击缩放、缩放后拖拽平移。
- * 用于全屏媒体查看器内部。
- */
-@Composable
-private fun ZoomableImage(
-    model: Any?,
-    modifier: Modifier = Modifier,
-    contentDescription: String? = null,
-) {
-    // v1.79 (L-B24): scale/offset 改用 rememberSaveable,旋屏后保持缩放状态
-    var scale by rememberSaveable { mutableStateOf(1f) }
-    var offsetX by rememberSaveable { mutableStateOf(0f) }
-    var offsetY by rememberSaveable { mutableStateOf(0f) }
-    val scope = rememberCoroutineScope()
-    Box(
-        modifier = modifier
-            .clipToBounds()
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    val newScale = (scale * zoom).coerceIn(1f, 5f)
-                    // 缩放回 1 时重置偏移
-                    if (newScale > 1f) {
-                        scale = newScale
-                        offsetX += pan.x
-                        offsetY += pan.y
-                    } else {
-                        scale = 1f
-                        offsetX = 0f
-                        offsetY = 0f
-                    }
-                }
-            }
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onDoubleTap = {
-                        // v1.79 (L-B14): 双击缩放用 Animatable 做 300ms 动画过渡
-                        scope.launch {
-                            val targetScale = if (scale > 1f) 1f else 2.5f
-                            val animatable = Animatable(scale)
-                            animatable.animateTo(
-                                targetValue = targetScale,
-                                animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
-                            ) {
-                                scale = value
-                            }
-                            if (targetScale == 1f) {
-                                offsetX = 0f
-                                offsetY = 0f
-                            }
-                        }
-                    },
-                )
-            }
-            .graphicsLayer(
-                scaleX = scale,
-                scaleY = scale,
-                translationX = offsetX,
-                translationY = offsetY,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        SmartImage(
-            model = model,
-            contentDescription = contentDescription,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize(),
-        )
-    }
-}
-
-/**
  * 阶段 4: 流式光标 — 末尾 AI 流式消息文本后追加的闪烁竖线。
  *
  * 设计: 2.5dp 宽 / 18dp 高竖条,通过 [rememberInfiniteTransition] + [animateFloat]
@@ -1740,7 +1603,7 @@ private fun TtsAudioPlayer(
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(MusePaddings.bubbleInner),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1776,7 +1639,7 @@ private fun TtsAudioPlayer(
                         }
                         .clip(MuseShapes.tiny)
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(MusePaddings.chipInnerLoose),
                 )
             }
             Spacer(Modifier.height(4.dp))
@@ -1899,7 +1762,7 @@ internal fun ToolCallCard(
         shape = MuseShapes.medium,
         modifier = modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(MusePaddings.itemGap)) {
             // 头部:工具名 + 状态图标 + 展开箭头
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1947,7 +1810,7 @@ internal fun ToolCallCard(
                             text = arguments.ifBlank { "{}" },
                             style = MaterialTheme.typography.bodySmall,
                             fontFamily = MuseMonoFontFamily,
-                            modifier = Modifier.padding(8.dp),
+                            modifier = Modifier.padding(MusePaddings.contentGap),
                         )
                     }
                     Spacer(Modifier.height(8.dp))
@@ -1964,7 +1827,7 @@ internal fun ToolCallCard(
                                 text = result,
                                 style = MaterialTheme.typography.bodySmall,
                                 fontFamily = MuseMonoFontFamily,
-                                modifier = Modifier.padding(8.dp),
+                                modifier = Modifier.padding(MusePaddings.contentGap),
                                 maxLines = if (isTruncated) 15 else Int.MAX_VALUE,
                                 overflow = TextOverflow.Ellipsis,
                             )

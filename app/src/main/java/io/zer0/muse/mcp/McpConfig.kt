@@ -127,7 +127,7 @@ data class McpTokenInfo(
  * @param id 唯一 id(用于 Room 持久化 + ToolRegistry 工具名前缀)
  * @param name 显示名(用户可读,如 "GitHub MCP")
  * @param transportType 传输类型 SSE / STREAMABLE_HTTP
- * @param url endpoint URL:
+ * @param url 端点 URL:
  *   - SSE: SSE endpoint(如 https://server/sse),client 从此 URL 接收事件,
  *          POST endpoint 从 SSE 事件里的 endpoint 字段动态获取
  *   - STREAMABLE_HTTP: 单一 endpoint(如 https://server/mcp),所有请求 POST 到此 URL

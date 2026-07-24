@@ -40,6 +40,30 @@ object MuseAnimation {
     /** 极慢过渡 (400ms): 大面积布局重组 / 主题切换渐变。 */
     const val EXTRA_SLOW_MS = 400
 
+    // v1.0.16: 长动画档位(shimmer / pulse / loading 循环,超出 EXTRA_SLOW_MS 上限)
+    /** 循环动画-标准 (600ms): 错峰 shimmer / 打字点 / 麦克风脉冲。 */
+    const val LOOP_NORMAL_MS = 600
+
+    /** 循环动画-慢 (800ms): 状态点脉冲 / 录音波形 / 委托链脉冲。 */
+    const val LOOP_SLOW_MS = 800
+
+    /** 循环动画-极慢 (1200ms): shimmer 占位 / 通话脉冲。 */
+    const val LOOP_EXTRA_SLOW_MS = 1200
+
+    // v1.0.16: 导航过渡档位(280-300ms,介于 NORMAL 与 SLOW 之间)
+    /** 导航横向过渡 (280ms): NavGraph push/pop 水平滑动。 */
+    const val NAV_HORIZONTAL_MS = 280
+
+    /** 导航纵向进入 (300ms): NavGraph 垂直进入。 */
+    const val NAV_VERTICAL_ENTER_MS = 300
+
+    /** 导航纵向退出 (280ms): NavGraph 垂直退出。 */
+    const val NAV_VERTICAL_EXIT_MS = 280
+
+    // v1.0.16: 错峰入场递增步长
+    /** 错峰入场步长 (120ms): 列表项逐条入场的 delay 递增值。 */
+    const val STAGGER_STEP_MS = 120
+
     // ── 缓动曲线令牌 ──────────────────────────────────────────────────
     /**
      * iOS 标准缓动 (easeOutCubic): Kelivo 主力曲线,
@@ -110,7 +134,7 @@ object MuseShadow {
  * Muse 设计令牌 — 触觉反馈语义封装。
  *
  * 将 Compose [HapticFeedback] 的原始 API 包装为语义化方法,
- * 调用方无需关心底层 [HapticFeedbackType] 选型。
+ * 调用方无需关心底层 [HapticFeedbackType] 选型,也无需关心开关读取。
  *
  * 用法:
  * ```
@@ -121,29 +145,44 @@ object MuseShadow {
  * MuseHaptics.light(haptic)
  * // 发送消息
  * MuseHaptics.medium(haptic)
+ * // 删除 / 危险操作
+ * MuseHaptics.heavy(haptic)
  * ```
  *
- * 配合 [ChatPreferences.hapticFeedback] 开关:调用方在调用前检查开关,
- * 此对象本身不持有偏好状态,保持纯函数特性。
+ * 偏好开关接入(v1.0.14):
+ *  - [enabled] 字段由 [io.zer0.muse.MuseApp] 启动时订阅
+ *    [io.zer0.muse.data.SettingsRepository.chatPreferencesFlow] 同步,
+ *    用户在「设置 → 聊天行为 → 触感反馈」切换后,所有 [MuseHaptics] 调用立即生效。
+ *  - 调用方无需自行读取开关,直接调用语义方法即可。
+ *  - 线程安全:[enabled] 为 @Volatile,所有触觉调用都在 UI 线程,无并发风险。
  */
 object MuseHaptics {
-    /** 轻触: 列表项点击 / 卡片展开等日常交互。 */
+    /** 触觉总开关,默认 true(与 ChatPreferences.hapticFeedback 默认值一致)。 */
+    @Volatile
+    private var enabled: Boolean = true
+
+    /** 由 MuseApp 启动时调用,把用户偏好同步到总开关。 */
+    fun setEnabled(value: Boolean) {
+        enabled = value
+    }
+
+    /** 轻触: 列表项点击 / 卡片展开 / 滑块等日常交互。 */
     fun soft(haptic: HapticFeedback) {
-        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        if (enabled) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
     }
 
-    /** 轻击: 按钮点击 / 开关切换。 */
+    /** 轻击: 按钮点击 / 开关切换 / 菜单项选择。 */
     fun light(haptic: HapticFeedback) {
-        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        if (enabled) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
     }
 
-    /** 中等: 发送消息 / 确认操作。 */
+    /** 中等: 长按 / 发送消息 / 滑动触发删除/归档 / 确认操作。 */
     fun medium(haptic: HapticFeedback) {
-        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        if (enabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
     }
 
-    /** 强击: 删除 / 危险操作确认。 */
+    /** 强击: 删除 / 危险操作确认(与 medium 同档,语义预留以便后续接入更强反馈)。 */
     fun heavy(haptic: HapticFeedback) {
-        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        if (enabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
     }
 }

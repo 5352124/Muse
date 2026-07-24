@@ -1,4 +1,4 @@
-﻿package io.zer0.muse.transformer
+package io.zer0.muse.transformer
 
 import io.zer0.ai.core.MessageRole
 import io.zer0.ai.core.UIMessage
@@ -69,7 +69,7 @@ class TimeReminderTransformerTest {
 
         // Should contain date components
         assertTrue(timeContent.contains("-") || timeContent.contains("年"))
-        // Should contain weekday in Chinese
+        // 应包含中文星期
         assertTrue(timeContent.contains("星期") || timeContent.contains("周") || timeContent.contains("礼拜"))
         // Should contain timezone info
         assertTrue(timeContent.contains("时区"))
@@ -98,7 +98,7 @@ class TimeReminderTransformerTest {
         assertEquals(4, result.size)
         assertEquals(MessageRole.SYSTEM, result[0].role)
         assertTrue(result[0].content.contains("当前时间"))
-        // Original messages preserved in order
+        // 原始消息按顺序保留
         assertEquals(messages[0], result[1])
         assertEquals(messages[1], result[2])
         assertEquals(messages[2], result[3])

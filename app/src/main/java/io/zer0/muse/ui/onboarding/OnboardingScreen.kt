@@ -2,11 +2,14 @@ package io.zer0.muse.ui.onboarding
 
 import android.app.Activity
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,15 +38,12 @@ import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Psychology
-import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -59,17 +59,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.zer0.ai.ProviderRegistry
 import io.zer0.ai.core.Model
 import io.zer0.ai.core.ProviderConfig
 import io.zer0.common.Logger
+import io.zer0.common.resultOf
 import io.zer0.muse.R
 import io.zer0.muse.data.SettingsRepository
 import io.zer0.muse.data.assistant.AssistantRepository
@@ -77,6 +83,7 @@ import io.zer0.muse.data.preset.PresetProviders
 import io.zer0.muse.ui.theme.MusePaddings
 import io.zer0.muse.ui.theme.MuseShapes
 import io.zer0.muse.ui.theme.PresetThemes
+import io.zer0.muse.ui.theme.pill
 import io.zer0.muse.ui.theme.semiLarge
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -118,6 +125,7 @@ fun OnboardingScreen(onComplete: () -> Unit) {
     var agentName by rememberSaveable { mutableStateOf("Muse") }
     var selectedPresetId by rememberSaveable { mutableStateOf("") }
     var apiKey by rememberSaveable { mutableStateOf("") }
+    var customBaseUrl by rememberSaveable { mutableStateOf("") }
     var apiKeyVisible by rememberSaveable { mutableStateOf(false) }
     var testStatus by remember { mutableStateOf<TestStatus>(TestStatus.Idle) }
     var fetchedModels by remember { mutableStateOf<List<Model>>(emptyList()) }
@@ -130,9 +138,15 @@ fun OnboardingScreen(onComplete: () -> Unit) {
         keyboardController?.hide()
     }
 
-    // 当前选中的预设供应商
-    val selectedPreset: ProviderConfig? = remember(selectedPresetId) {
-        presetProviders.all.firstOrNull { it.id == selectedPresetId }
+    // 当前选中的预设供应商（自定义时注入用户填写的 baseUrl）
+    val selectedPreset: ProviderConfig? = remember(selectedPresetId, customBaseUrl) {
+        presetProviders.all.firstOrNull { it.id == selectedPresetId }?.let { preset ->
+            if (preset.id == "preset_custom_openai" && customBaseUrl.isNotBlank()) {
+                preset.copy(baseUrl = customBaseUrl)
+            } else {
+                preset
+            }
+        }
     }
 
     val pageCount = 6
@@ -196,6 +210,11 @@ fun OnboardingScreen(onComplete: () -> Unit) {
                         apiKey = it
                         testStatus = TestStatus.Idle
                     },
+                    customBaseUrl = customBaseUrl,
+                    onCustomBaseUrlChange = {
+                        customBaseUrl = it
+                        testStatus = TestStatus.Idle
+                    },
                     apiKeyVisible = apiKeyVisible,
                     onToggleApiKeyVisible = { apiKeyVisible = !apiKeyVisible },
                     testStatus = testStatus,
@@ -206,7 +225,7 @@ fun OnboardingScreen(onComplete: () -> Unit) {
                         scope.launch {
                             val config = preset.copy(apiKey = apiKey)
                             val result = withContext(Dispatchers.IO) {
-                                runCatching {
+                                resultOf {
                                     ProviderRegistry.create(config).listModels(config)
                                 }
                             }
@@ -216,9 +235,9 @@ fun OnboardingScreen(onComplete: () -> Unit) {
                                 if (models.isNotEmpty()) {
                                     selectedModelId = models.first().id
                                 }
-                            }.onFailure { e ->
-                                Logger.w("Onboarding", "测试连接失败: ${e.message}", e)
-                                testStatus = TestStatus.Error(e.message ?: "连接失败")
+                            }.onError { msg, t ->
+                                Logger.w("Onboarding", "测试连接失败: ${t?.message ?: msg}", t)
+                                testStatus = TestStatus.Error(t?.message ?: "连接失败")
                             }
                         }
                     },
@@ -335,6 +354,7 @@ private fun ProgressDots(
 }
 
 // ── 步骤 0：欢迎页 ──────────────────────────────────────────────
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StepWelcome() {
     val features = listOf(
@@ -352,32 +372,58 @@ private fun StepWelcome() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
+        // 品牌图标:应用启动图标 + 柔和渐变圆形背景
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.size(96.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                                MaterialTheme.colorScheme.primary,
+                            ),
+                        ),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_muse_logo),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(64.dp),
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(MusePaddings.sectionGap))
         Text(
-            text = stringResource(R.string.onboarding_welcome_title),
-            style = MaterialTheme.typography.displayLarge,
-            color = MaterialTheme.colorScheme.primary,
+            text = stringResource(R.string.app_name),
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontWeight = FontWeight.SemiBold,
+            ),
+            color = MaterialTheme.colorScheme.onSurface,
         )
-        Spacer(modifier = Modifier.height(MusePaddings.contentGap))
+        Spacer(modifier = Modifier.height(MusePaddings.tightGap))
         Text(
             text = stringResource(R.string.onboarding_welcome_subtitle),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(MusePaddings.sectionGap * 2))
-        // 2x2 功能特性网格
-        features.chunked(2).forEach { rowItems ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(MusePaddings.contentGap),
-            ) {
-                rowItems.forEach { item ->
-                    FeatureCard(
-                        item = item,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+        // 特性标签:带图标的胶囊,比纯文字更有层次
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(MusePaddings.contentGap, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(MusePaddings.contentGap),
+        ) {
+            features.forEach { item ->
+                FeatureChip(item = item)
             }
-            Spacer(modifier = Modifier.height(MusePaddings.contentGap))
         }
     }
 }
@@ -389,36 +435,34 @@ private data class FeatureItem(
 )
 
 @Composable
-private fun FeatureCard(
+private fun FeatureChip(
     item: FeatureItem,
-    modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = modifier,
-        shape = MuseShapes.large,
+        shape = MuseShapes.pill,
         color = MaterialTheme.colorScheme.surfaceContainer,
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+        ),
     ) {
-        Column(
-            modifier = Modifier.padding(MusePaddings.cardInner),
-            horizontalAlignment = Alignment.CenterHorizontally,
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(
                 imageVector = item.icon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.size(18.dp),
             )
-            Spacer(modifier = Modifier.height(MusePaddings.contentGap))
             Text(
                 text = item.title,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = FontWeight.Medium,
+                ),
                 color = MaterialTheme.colorScheme.onSurface,
-            )
-            Spacer(modifier = Modifier.height(MusePaddings.tightGap))
-            Text(
-                text = item.description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -476,7 +520,7 @@ private fun StepLanguageTheme(
             ) {
                 rowThemes.forEach { theme ->
                     ThemeColorBlock(
-                        color = theme.lightScheme.primary,
+                        theme = theme,
                         selected = selectedThemeId == theme.id,
                         onClick = { onThemeSelected(theme.id) },
                         modifier = Modifier.weight(1f),
@@ -529,7 +573,7 @@ private fun LanguageCard(
             )
             if (selected) {
                 Icon(
-                    imageVector = Icons.Outlined.CheckCircle,
+                    imageVector = Icons.Filled.CheckCircle,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                 )
@@ -540,7 +584,7 @@ private fun LanguageCard(
 
 @Composable
 private fun ThemeColorBlock(
-    color: Color,
+    theme: io.zer0.muse.ui.theme.PresetTheme,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -548,17 +592,39 @@ private fun ThemeColorBlock(
     val borderColor = if (selected) {
         MaterialTheme.colorScheme.primary
     } else {
-        Color.Transparent
+        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
     }
-    val borderWidth = if (selected) 3.dp else 0.dp
+    val borderWidth = if (selected) 2.dp else 1.dp
+    val label = stringResource(theme.nameResId)
     Surface(
         modifier = modifier
-            .height(56.dp)
+            .height(72.dp)
             .clickable(onClick = onClick),
-        shape = MuseShapes.medium,
-        color = color,
-        border = androidx.compose.foundation.BorderStroke(borderWidth, borderColor),
-    ) {}
+        shape = MuseShapes.semiLarge,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(borderWidth, borderColor),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = theme.lightScheme.primary,
+                modifier = Modifier.size(28.dp),
+            ) {}
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }
 
 // ── 步骤 2：你的名字 ──────────────────────────────────────────
@@ -616,12 +682,15 @@ private fun StepProviderConfig(
     onPresetSelected: (String) -> Unit,
     apiKey: String,
     onApiKeyChange: (String) -> Unit,
+    customBaseUrl: String,
+    onCustomBaseUrlChange: (String) -> Unit,
     apiKeyVisible: Boolean,
     onToggleApiKeyVisible: () -> Unit,
     testStatus: TestStatus,
     onTestConnection: () -> Unit,
     onSkip: () -> Unit,
 ) {
+    val isCustomSelected = selectedPresetId == "preset_custom_openai"
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -641,20 +710,41 @@ private fun StepProviderConfig(
         )
         Spacer(modifier = Modifier.height(MusePaddings.itemGap))
 
-        // 供应商选择列表
+        // 供应商选择列表（精选：海外/国产/中转各约 1/3 + 自定义）
         Text(
             text = stringResource(R.string.onboarding_provider_select_label),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(modifier = Modifier.height(MusePaddings.contentGap))
-        presetProviders.all.take(15).forEach { preset ->
+        presetProviders.onboardingPresets.forEach { preset ->
             LanguageCard(
                 label = preset.displayName,
                 selected = selectedPresetId == preset.id,
                 onClick = { onPresetSelected(preset.id) },
             )
             Spacer(modifier = Modifier.height(MusePaddings.contentGap))
+        }
+
+        // 自定义供应商：baseUrl 输入
+        androidx.compose.animation.AnimatedVisibility(visible = isCustomSelected) {
+            Column {
+                Text(
+                    text = stringResource(R.string.onboarding_provider_custom_baseurl_label),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(modifier = Modifier.height(MusePaddings.contentGap))
+                OutlinedTextField(
+                    value = customBaseUrl,
+                    onValueChange = onCustomBaseUrlChange,
+                    label = { Text(stringResource(R.string.onboarding_provider_custom_baseurl_input)) },
+                    singleLine = true,
+                    shape = MuseShapes.semiLarge,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(MusePaddings.contentGap))
+            }
         }
 
         // API Key 输入
@@ -695,22 +785,46 @@ private fun StepProviderConfig(
 
         Spacer(modifier = Modifier.height(MusePaddings.itemGap))
 
-        // 测试连接按钮
-        val canTest = selectedPresetId.isNotBlank() && apiKey.isNotBlank()
-        Button(
+        // 测试连接按钮（自定义供应商还需 baseUrl）
+        val canTest = selectedPresetId.isNotBlank() && apiKey.isNotBlank() &&
+            (!isCustomSelected || customBaseUrl.isNotBlank())
+        val testEnabled = canTest && testStatus !is TestStatus.Loading
+        Surface(
             onClick = onTestConnection,
-            enabled = canTest && testStatus !is TestStatus.Loading,
-            shape = MuseShapes.medium,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            if (testStatus is TestStatus.Loading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                )
+            enabled = testEnabled,
+            shape = MuseShapes.pill,
+            color = if (testEnabled) {
+                MaterialTheme.colorScheme.primary
             } else {
-                Text(stringResource(R.string.onboarding_provider_test_button))
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (testStatus is TestStatus.Loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    Text(
+                        text = stringResource(R.string.onboarding_provider_test_button),
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                        color = if (testEnabled) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        },
+                    )
+                }
             }
         }
 
@@ -720,7 +834,7 @@ private fun StepProviderConfig(
                 Spacer(modifier = Modifier.height(MusePaddings.contentGap))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Outlined.CheckCircle,
+                        imageVector = Icons.Filled.CheckCircle,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                     )
@@ -887,7 +1001,7 @@ private fun ModelItem(
             }
             if (selected) {
                 Icon(
-                    imageVector = Icons.Outlined.CheckCircle,
+                    imageVector = Icons.Filled.CheckCircle,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                 )
@@ -912,18 +1026,41 @@ private fun StepComplete() {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = MusePaddings.screen),
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
+        // 完成图标:品牌色圆形背景 + 白色对勾
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(80.dp),
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(40.dp),
+                )
+            }
+        }
         Spacer(modifier = Modifier.height(MusePaddings.sectionGap))
         Text(
             text = stringResource(R.string.onboarding_complete_title),
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontWeight = FontWeight.SemiBold,
+            ),
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(MusePaddings.contentGap))
         Text(
             text = stringResource(R.string.onboarding_complete_subtitle),
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(MusePaddings.sectionGap))
         tutorials.forEach { item ->
@@ -939,21 +1076,25 @@ private fun TutorialCard(item: FeatureItem) {
         modifier = Modifier.fillMaxWidth(),
         shape = MuseShapes.large,
         color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+        ),
     ) {
         Row(
             modifier = Modifier.padding(MusePaddings.cardInner),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
-                shape = MuseShapes.medium,
+                shape = CircleShape,
                 color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(44.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = item.icon,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp),
                     )
                 }
@@ -962,7 +1103,9 @@ private fun TutorialCard(item: FeatureItem) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.title,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.Medium,
+                    ),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Spacer(modifier = Modifier.height(MusePaddings.tightGap))
@@ -976,7 +1119,104 @@ private fun TutorialCard(item: FeatureItem) {
     }
 }
 
-// ── 底部按钮区域 ──────────────────────────────────────────────
+// ── iOS 风格胶囊按钮 ──────────────────────────────────────────
+
+@Composable
+private fun PrimaryPillButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = MuseShapes.pill,
+        color = if (enabled) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+        },
+        modifier = modifier.height(52.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            icon?.let {
+                Icon(
+                    imageVector = it,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = if (enabled) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    },
+                )
+                Spacer(modifier = Modifier.width(MusePaddings.tightGap))
+            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = FontWeight.SemiBold,
+                ),
+                color = if (enabled) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SecondaryPillButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+) {
+    Surface(
+        onClick = onClick,
+        shape = MuseShapes.pill,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+        ),
+        modifier = modifier.height(52.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            icon?.let {
+                Icon(
+                    imageVector = it,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(modifier = Modifier.width(MusePaddings.tightGap))
+            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = FontWeight.SemiBold,
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}
+
+// ── 底部按钮 ──────────────────────────────────────────────────
+
 @Composable
 private fun BottomButtons(
     currentPage: Int,
@@ -992,27 +1232,23 @@ private fun BottomButtons(
         when (currentPage) {
             // 步骤 0：只有"开始设置"按钮（居中）
             0 -> {
-                Button(
+                PrimaryPillButton(
+                    text = stringResource(R.string.onboarding_button_start),
                     onClick = onNext,
-                    shape = MuseShapes.medium,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(MusePaddings.screen),
-                ) {
-                    Text(stringResource(R.string.onboarding_button_start))
-                }
+                )
             }
             // 步骤 5：只有"开始使用"按钮（居中）
             5 -> {
-                Button(
+                PrimaryPillButton(
+                    text = stringResource(R.string.onboarding_button_finish),
                     onClick = onComplete,
-                    shape = MuseShapes.medium,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(MusePaddings.screen),
-                ) {
-                    Text(stringResource(R.string.onboarding_button_finish))
-                }
+                )
             }
             // 步骤 1-4：左边"上一步"，右边"下一步"
             else -> {
@@ -1022,36 +1258,19 @@ private fun BottomButtons(
                         .padding(MusePaddings.screen),
                     horizontalArrangement = Arrangement.spacedBy(MusePaddings.contentGap),
                 ) {
-                    OutlinedButton(
+                    SecondaryPillButton(
+                        text = stringResource(R.string.onboarding_button_previous),
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
                         onClick = onPrevious,
-                        shape = MuseShapes.medium,
                         modifier = Modifier.weight(1f),
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(modifier = Modifier.width(MusePaddings.tightGap))
-                        Text(stringResource(R.string.onboarding_button_previous))
-                    }
-                    Button(
+                    )
+                    PrimaryPillButton(
+                        text = stringResource(R.string.onboarding_button_next),
+                        icon = Icons.AutoMirrored.Filled.ArrowForward,
                         onClick = onNext,
                         enabled = canGoNext,
-                        shape = MuseShapes.medium,
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    ) {
-                        Text(stringResource(R.string.onboarding_button_next))
-                        Spacer(modifier = Modifier.width(MusePaddings.tightGap))
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
+                    )
                 }
             }
         }

@@ -67,7 +67,7 @@ fun RecentlyDeletedScreen(
     var pendingPermanentDeleteId by remember { mutableStateOf<String?>(null) }
     val dateFormat = remember { SimpleDateFormat(MuseDateFormats.DATE_TIME_FULL, Locale.getDefault()) }
 
-    // Auto purge old deleted sessions
+    // 自动清理旧的已删除会话
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) { sessionRepository.purgeOldDeletedSessions() }
     }

@@ -205,5 +205,20 @@ abstract class ProviderHttpSupport(
                 }
             }
         }
+
+        /**
+         * v1.0.16: 清理共享连接池中所有空闲连接。
+         *
+         * 应用从后台回到前台时调用,丢弃可能已被系统/路由器关闭的 idle socket,
+         * 避免下一次请求复用失效连接导致首次 HTTP 即失败(表现为切后台回来报错)。
+         * 正在使用的活跃连接不受影响。
+         */
+        fun evictIdleConnections() {
+            runCatching {
+                sharedHttpClient.connectionPool.evictAll()
+            }.onFailure {
+                io.zer0.common.Logger.w("ProviderHttpSupport", "evictIdleConnections 失败", it)
+            }
+        }
     }
 }

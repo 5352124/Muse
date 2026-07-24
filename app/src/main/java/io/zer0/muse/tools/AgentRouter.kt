@@ -1,5 +1,6 @@
 package io.zer0.muse.tools
 
+import io.zer0.common.Logger
 import io.zer0.muse.data.SettingsRepository
 import io.zer0.muse.data.assistant.AssistantEntity
 import io.zer0.muse.data.assistant.AssistantRepository
@@ -22,7 +23,7 @@ class AgentRouter(
     /**
      * 路由结果。
      *
-     * @param targetType "assistant" | "team" | null
+     * @param targetType 目标类型("assistant" | "team" | null)
      * @param targetId 目标 assistantId 或 teamId
      * @param confidence 0..1 匹配置信度
      * @param reason 路由原因(供 LLM/用户理解)
@@ -122,6 +123,11 @@ class AgentRouter(
             teamResult != null -> teamResult
             assistantResult != null -> assistantResult
             else -> {
+                // 未命中阈值:记录日志,便于排查为何回退默认 Agent
+                val teamScore = bestTeam?.second ?: 0f
+                val assistantScore = bestAssistant?.second ?: 0f
+                val bestScore = maxOf(teamScore, assistantScore)
+                Logger.d("AgentRouter", "路由置信度 $bestScore 低于阈值 $CONFIDENCE_THRESHOLD,回退默认 Agent")
                 // 未命中阈值,返回最高分候补供上层决策
                 val fallback = assistantResult ?: assistantScores.maxByOrNull { it.second }
                     ?.let { (assistant, score) ->

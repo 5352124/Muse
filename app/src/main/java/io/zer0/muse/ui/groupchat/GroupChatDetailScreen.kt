@@ -56,7 +56,7 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import io.zer0.muse.ui.common.IosChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -68,6 +68,7 @@ import androidx.compose.material3.TextButton
 import io.zer0.muse.ui.common.IosTopBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -97,9 +98,11 @@ import io.zer0.muse.data.groupchat.GroupChatMessageEntity
 import io.zer0.muse.doc.DocumentParser
 import io.zer0.muse.ui.SmartImage
 import io.zer0.muse.ui.common.AssistantAvatar
+import io.zer0.muse.ui.common.FullScreenMediaViewer
 import io.zer0.muse.ui.common.MuseBottomSheet
 import io.zer0.muse.ui.common.MuseDialog
 import io.zer0.muse.ui.markdown.MarkdownText
+import io.zer0.muse.ui.theme.MuseHaptics
 import io.zer0.muse.ui.theme.MusePaddings
 import io.zer0.muse.ui.theme.MuseShapes
 import io.zer0.muse.ui.theme.MuseIconSizes
@@ -271,6 +274,8 @@ fun GroupChatDetailScreen(
     // H-GC1 修复: 原先无条件 animateScrollToItem 到底部,用户查看历史消息时会被强制拉回。
     // 改为:仅当 listState 已在底部附近(最后 2 个 item 内)时才自动滚动,
     // 用户主动上滑查看历史时不打断。
+    // v1.53-GC: 列表头部多了一个"加载更多"指示器 item,自动滚到底部仍以消息 lastIndex 为准
+    // (思考指示器在消息之后,不影响"已到底部"判断)。
     LaunchedEffect(state.currentMessages.size, state.isAgentResponding) {
         if (state.currentMessages.isEmpty()) return@LaunchedEffect
         val lastIndex = state.currentMessages.lastIndex
@@ -278,6 +283,37 @@ fun GroupChatDetailScreen(
         val isNearBottom = lastVisible >= lastIndex - 2 || lastVisible < 0
         if (isNearBottom) {
             listState.animateScrollToItem(lastIndex)
+        }
+    }
+
+    // v1.53-GC: 上滑加载更多历史消息 — 到达列表顶部(firstVisibleItemIndex==0)且满足条件时触发。
+    // 触发后 ViewModel 设置 lastHistoryLoadCount,下面的 LaunchedEffect 据此调整滚动位置,
+    // 跳过新插入的条数,使 firstVisibleItemIndex 变为 lastHistoryLoadCount(>0),
+    // 从而避免在顶部重复触发(用户需再次主动上滑才继续加载)。
+    var savedScrollOffset by remember { mutableStateOf(0) }
+    val loadMoreTrigger by remember {
+        derivedStateOf {
+            state.hasMoreHistory &&
+                !state.isLoadingMore &&
+                !state.isAgentResponding &&
+                state.currentMessages.isNotEmpty() &&
+                listState.firstVisibleItemIndex == 0
+        }
+    }
+    LaunchedEffect(loadMoreTrigger) {
+        if (loadMoreTrigger) {
+            // 记录当前 offset,加载完成后跳到新位置时保持视觉位置
+            savedScrollOffset = listState.firstVisibleItemScrollOffset
+            viewModel.loadMoreHistory()
+        }
+    }
+    // v1.53-GC: 加载完成后调整滚动位置,保持视觉位置不跳动
+    // (原来在顶部的消息现在在 lastHistoryLoadCount 位置)
+    LaunchedEffect(state.lastHistoryLoadCount) {
+        if (state.lastHistoryLoadCount > 0) {
+            listState.scrollToItem(state.lastHistoryLoadCount, savedScrollOffset)
+            viewModel.clearHistoryLoadCount()
+            savedScrollOffset = 0
         }
     }
 
@@ -327,7 +363,7 @@ fun GroupChatDetailScreen(
                         keyboard?.hide()
                     },
                     onOpenToolSheet = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        MuseHaptics.light(haptic)
                         showToolSheet = true
                     },
                     enabled = !state.isAgentResponding,
@@ -343,7 +379,7 @@ fun GroupChatDetailScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(innerPadding)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(MusePaddings.cardInnerSpaced),
                 contentAlignment = Alignment.TopCenter,
             ) {
                 Surface(
@@ -395,6 +431,31 @@ fun GroupChatDetailScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(MusePaddings.itemGap),
             ) {
+                // v1.53-GC: 上滑加载更多历史时的顶部加载指示器(参考单聊 HistoryLoadMorePlaceholder)。
+                // isLoadingMore=true 时插入此 item(占据 index 0),加载完成后(lastHistoryLoadCount>0)
+                // 由 LaunchedEffect 调 scrollToItem 跳过新插入条数,保持视觉位置不跳。
+                if (state.isLoadingMore) {
+                    item(key = "load_more_indicator") {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = MusePaddings.contentGap),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = stringResource(R.string.chat_loading_more_history),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
                 items(
                     items = state.currentMessages,
                     key = { it.id },
@@ -410,7 +471,7 @@ fun GroupChatDetailScreen(
                         onToggleReasoningExpanded = { viewModel.toggleMessageReasoningExpanded(message.id) },
                         // v1.77: 长按弹出操作菜单
                         onLongClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            MuseHaptics.medium(haptic)
                             messageMenuTarget = message
                         },
                         onHtmlPreview = onHtmlPreview,
@@ -493,7 +554,7 @@ fun GroupChatDetailScreen(
                         shape = MuseShapes.semiLarge,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
+                        Column(modifier = Modifier.padding(MusePaddings.itemGap)) {
                             Text(
                                 text = template.name,
                                 style = MaterialTheme.typography.bodyLarge,
@@ -635,7 +696,7 @@ private fun GroupChatMessageBubble(
                     // v1.115: 统一为 surfaceVariant,与单聊 MessageBubble 一致(品牌色稀缺原则)
                     color = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
-                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Column(modifier = Modifier.padding(MusePaddings.cardInnerMedium)) {
                         Text(
                             text = message.body,
                             style = MaterialTheme.typography.bodyMedium,
@@ -729,7 +790,7 @@ private fun GroupChatMessageBubble(
                     shape = MuseShapes.assistantBubble,
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
                 ) {
-                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Column(modifier = Modifier.padding(MusePaddings.cardInnerMedium)) {
                         MarkdownText(
                             text = message.body,
                             style = MaterialTheme.typography.bodyMedium,
@@ -773,7 +834,7 @@ private fun GroupChatExpandableBlock(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onToggle() }
-                    .padding(vertical = 2.dp),
+                    .padding(vertical = MusePaddings.tinyGap),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -872,7 +933,7 @@ private fun ThinkingIndicator(currentSpeaker: AssistantEntity? = null) {
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                modifier = Modifier.padding(MusePaddings.cardInnerMedium),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -1275,7 +1336,7 @@ private fun EditGroupChatDialog(
                 ) {
                     assistants.forEach { assistant ->
                         val selected = assistant.id in selectedMemberIds
-                        FilterChip(
+                        IosChip(
                             selected = selected,
                             onClick = {
                                 showErrors = false
@@ -1285,8 +1346,7 @@ private fun EditGroupChatDialog(
                                     selectedMemberIds + assistant.id
                                 }
                             },
-                            label = { Text(assistant.name) },
-                            shape = MuseShapes.large,
+                            label = assistant.name,
                         )
                     }
                 }

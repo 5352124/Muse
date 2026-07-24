@@ -150,6 +150,14 @@ fun VideoGenerationPage(
     var videoUrl by rememberSaveable { mutableStateOf("") }
     var errorMessage by rememberSaveable { mutableStateOf("") }
 
+    // 9.5 修复: 进程重建后 rememberSaveable 会恢复 isGenerating=true,但任务上下文已丢失,
+    // 此时 loading 永不消失。首次进入页面时检查并重置。
+    LaunchedEffect(Unit) {
+        if (isGenerating) {
+            isGenerating = false
+        }
+    }
+
     Scaffold(
         topBar = {
             IosTopBar(

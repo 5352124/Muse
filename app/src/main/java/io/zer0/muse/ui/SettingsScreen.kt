@@ -2,6 +2,8 @@ package io.zer0.muse.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import io.zer0.muse.ui.common.WindowWidthClass
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Extension
@@ -46,6 +49,7 @@ import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.Search
@@ -86,6 +90,8 @@ import androidx.compose.ui.unit.sp
 import io.zer0.muse.ui.common.IosSettingsIcon
 import io.zer0.muse.ui.common.IosSwitch
 import io.zer0.muse.ui.common.MuseToast
+import io.zer0.muse.ui.common.rememberWindowWidthClass
+import io.zer0.muse.ui.theme.MusePaddings
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.zer0.muse.R
 import io.zer0.muse.data.ProxyConfig
@@ -116,6 +122,14 @@ import androidx.compose.material.icons.outlined.Refresh
  *  - 点击搜索图标 → 顶部栏切换为搜索输入框
  *  - 输入关键词后实时过滤所有设置项(标题 + 描述匹配)
  *  - 点击搜索结果项直接跳转到对应二级页
+ *
+ * v2.1 增强:搜索索引重构为 settingsIndex: List<SettingsEntry>。
+ *  - 每项含 title(中文标题) / keywords(搜索关键词列表) / route(MuseRoutes 路由) / groupName(所属分组)
+ *  - 过滤维度:title + keywords + groupName 三路匹配,中英文关键词均覆盖
+ *  - 搜索结果展示:标题 + 所属分组(对标 iOS 设置 App)
+ *  - 点击结果 → entry.onClick() 跳转(底层由调用方 navController.navigate(route) 执行)
+ *  - 索引覆盖 46 项:备份/云备份/语音/TTS/ASR/外观/主题/模型/API Key/助手/记忆/知识库/
+ *    工具/MCP/定时任务/主动消息/群聊/Web服务器/OCR/视觉辅助/安全/生物识别/开机自启/保持唤醒 等
  *
  * 每个 CardGroup 内的 item 共享圆角卡片(首项顶 20dp / 末项底 20dp / 中间 4dp),
  * 按下时圆角动画过渡(iOS 风格分组卡片的按压反馈)。
@@ -173,8 +187,15 @@ fun SettingsScreen(
     onOpenAssistantResources: () -> Unit = {},
     /** v1.0.4: 打开通知监听页(从「助手与 Agent」分组进入,引导用户授权通知使用权)。 */
     onOpenNotificationListener: () -> Unit = {},
-    /** v1.0.4: 打开 AI 工具管理页(从「助手与 Agent」分组进入,展示 ToolRegistry 中全部工具)。 */
+    /** v1.0.4: AI 工具管理页(从「助手与 Agent」分组进入,展示 ToolRegistry 中全部工具)。 */
     onOpenTools: () -> Unit = {},
+    /**
+     * 搜索结果跳转回调 — 传入 [MuseRoutes] 路由常量,由调用方执行 navController.navigate(route)。
+     *
+     * 用于搜索索引中无独立 onOpenXxx 回调的条目(如定时任务),默认空实现(向后兼容)。
+     * 在 MainActivity 中接线为 `onNavigate = { route -> navController.navigate(route) }` 后生效。
+     */
+    onNavigate: (String) -> Unit = {},
 ) {
     val settings: SettingsRepository = koinInject()
     val updateNotifier: UpdateNotifier = koinInject()
@@ -277,63 +298,92 @@ fun SettingsScreen(
     val searchHint = stringResource(R.string.settings_search_hint)
     val noResults = stringResource(R.string.settings_search_no_results)
 
-    // v1.132: 所有可搜索的设置项列表(标题 + 描述 + 图标 + 跳转回调)
-    // 搜索时按 (title + desc) 包含 query 过滤
-    data class SearchEntry(
-        val title: String,
-        val desc: String,
-        val icon: ImageVector,
-        val onClick: () -> Unit,
+    // 设置项索引数据结构 — 每项包含标题、关键词列表、导航路由、所属分组、图标、跳转回调
+    data class SettingsEntry(
+        val title: String,               // 中文标题
+        val keywords: List<String>,      // 搜索关键词列表(中英文均覆盖)
+        val route: String,               // 导航路由(MuseRoutes 常量,空串表示无独立路由)
+        val groupName: String,           // 所属分组(用于搜索结果展示)
+        val icon: ImageVector,           // 列表项图标
+        val onClick: () -> Unit,         // 跳转回调(实际由调用方 navController.navigate(route) 执行)
     )
-    val allEntries by remember(piiGuardEnabled, proxySubtitle, checkingUpdate) {
+
+    // 预置索引:覆盖所有设置子页面的关键设置项,内联定义便于维护。
+    // 搜索时按 (title + keywords + groupName) 包含 query 过滤。
+    val settingsIndex by remember(piiGuardEnabled, proxySubtitle, checkingUpdate) {
         mutableStateOf(
             listOf(
-                SearchEntry(userProfileTitle, userProfileDesc, Icons.Outlined.AccountCircle, onOpenUserProfile),
-                SearchEntry(appearanceTitle, appearanceDesc, Icons.Outlined.Palette, onOpenAppearanceSettings),
-                SearchEntry(chatTitle, chatDesc, Icons.Outlined.Forum, onOpenChatSettings),
-                SearchEntry(mediaTitle, mediaDesc, Icons.Outlined.RecordVoiceOver, onOpenMediaSettings),
-                SearchEntry(translateTitle, translateDesc, Icons.Outlined.Translate, onOpenTranslate),
-                SearchEntry(assistantTitle, assistantDesc, Icons.Outlined.Psychology, onOpenAssistants),
-                SearchEntry(agentTitle, agentDesc, Icons.Outlined.GroupWork, onOpenAgentSettings),
-                SearchEntry(providerTitle, providerDesc, Icons.Outlined.SettingsEthernet, onOpenModelSettings),
-                SearchEntry(visionTitle, visionDesc, Icons.Outlined.Visibility, onOpenVisionSettings),
-                SearchEntry(providerPluginsTitle, providerPluginsTitle, Icons.Outlined.Extension, onOpenProviderPlugins),
-                SearchEntry(videoGenTitle, videoGenDesc, Icons.Outlined.Movie, onOpenVideoGeneration),
-                // v1.133: 5 个新拆分入口
-                SearchEntry(webSearchEntryTitle, webSearchEntryDesc, Icons.Outlined.Language, onOpenWebSearch),
-                SearchEntry(asrEntryTitle, asrEntryDesc, Icons.Outlined.Mic, onOpenAsr),
-                SearchEntry(imageGenEntryTitle, imageGenEntryDesc, Icons.Outlined.Image, onOpenImageGen),
-                SearchEntry(mcpEntryTitle, mcpEntryDesc, Icons.Outlined.Hub, onOpenMcp),
-                SearchEntry(assistantResourcesTitle, assistantResourcesDesc, Icons.Outlined.AutoAwesome, onOpenAssistantResources),
-                SearchEntry(notificationListenerTitle, notificationListenerDesc, Icons.Outlined.Notifications, onOpenNotificationListener),
-                SearchEntry(toolsTitle, toolsDesc, Icons.Outlined.Build, onOpenTools),
-                SearchEntry(memoryTitle, memoryDesc, Icons.Outlined.Psychology, onOpenMemorySettings),
-                SearchEntry(ragTitle, ragDesc, Icons.AutoMirrored.Outlined.MenuBook, onOpenRagSettings),
-                SearchEntry(dataManagementTitle, dataManagementDesc, Icons.Outlined.Storage, onOpenDataManagement),
-                SearchEntry(dataBackupTitle, dataBackupDesc, Icons.Outlined.Cloud, onOpenDataSettings),
-                SearchEntry(dataImportTitle, dataImportDesc, Icons.Outlined.CloudUpload, onOpenDataImport),
-                SearchEntry(workspaceTitle, workspaceTitle, Icons.Outlined.Folder, onOpenWorkspace),
-                SearchEntry(piiGuardTitle, piiGuardDesc, Icons.Outlined.PrivacyTip, {}),
-                SearchEntry(securityTitle, securityDesc, Icons.Outlined.Lock, onOpenSecuritySettings),
-                SearchEntry(auditLogTitle, auditLogTitle, Icons.Outlined.History, onOpenAuditLog),
-                SearchEntry(proxyTitle, proxySubtitle, Icons.Outlined.Tune, onOpenProxySettings),
-                SearchEntry(experimentsTitle, experimentsDesc, Icons.Outlined.Science, onOpenExperimentsSettings),
-                SearchEntry(statsTitle, statsDesc, Icons.Outlined.BarChart, onOpenStats),
-                SearchEntry(reportsTitle, reportsDesc, Icons.Outlined.AutoAwesome, onOpenReports),
-                SearchEntry(tutorialTitle, tutorialDesc, Icons.Outlined.School, onOpenTutorial),
-                SearchEntry(aboutTitle, aboutDesc, Icons.Outlined.Info, onOpenAboutSettings),
-                SearchEntry(checkUpdateTitle, checkUpdateDesc, Icons.Outlined.Refresh, {}),
-                SearchEntry(debugLogTitle, debugLogDesc, Icons.Outlined.BugReport, onOpenDebugLog),
+                // ── 通用分组 ──
+                SettingsEntry("聊天行为", listOf("聊天", "对话", "消息", "输入", "发送"), MuseRoutes.SETTINGS_CHAT, "通用", Icons.Outlined.Forum, onOpenChatSettings),
+                SettingsEntry("外观", listOf("外观", "显示", "界面", "字号", "字体"), MuseRoutes.SETTINGS_APPEARANCE, "通用", Icons.Outlined.Palette, onOpenAppearanceSettings),
+                SettingsEntry("主题", listOf("主题", "配色", "深色", "浅色", "暗黑", "AMOLED", "颜色"), MuseRoutes.SETTINGS_APPEARANCE, "通用", Icons.Outlined.Palette, onOpenAppearanceSettings),
+                SettingsEntry("媒体", listOf("媒体", "录音", "语音", "播报"), MuseRoutes.SETTINGS_MEDIA, "通用", Icons.Outlined.RecordVoiceOver, onOpenMediaSettings),
+                SettingsEntry("TTS 语音播报", listOf("TTS", "tts", "语音播报", "朗读", "文字转语音", "TextToSpeech"), MuseRoutes.SETTINGS_MEDIA, "通用", Icons.Outlined.RecordVoiceOver, onOpenMediaSettings),
+                SettingsEntry("AI 翻译", listOf("翻译", "translate", "语言", "互译", "源语言", "目标语言"), MuseRoutes.TRANSLATE, "通用", Icons.Outlined.Translate, onOpenTranslate),
+                SettingsEntry("群聊", listOf("群聊", "群组", "group", "多人", "启动页"), MuseRoutes.SETTINGS_APPEARANCE, "通用", Icons.Outlined.Forum, onOpenAppearanceSettings),
+                SettingsEntry("用户画像", listOf("用户", "画像", "称呼", "年龄", "城市", "MBTI", "个性化"), MuseRoutes.USER_PROFILE_EDIT, "通用", Icons.Outlined.AccountCircle, onOpenUserProfile),
+
+                // ── 助手与 Agent 分组 ──
+                SettingsEntry("助手", listOf("助手", "assistant", "角色", "人设"), MuseRoutes.ASSISTANTS, "助手与 Agent", Icons.Outlined.Psychology, onOpenAssistants),
+                SettingsEntry("Agent", listOf("Agent", "代理", "智能体", "自主"), MuseRoutes.SETTINGS_AGENT, "助手与 Agent", Icons.Outlined.GroupWork, onOpenAgentSettings),
+                SettingsEntry("主动消息", listOf("主动消息", "主动", "推送", "定时发送", "proactive"), MuseRoutes.SETTINGS_AGENT, "助手与 Agent", Icons.Outlined.Notifications, onOpenAgentSettings),
+                SettingsEntry("定时任务", listOf("定时任务", "定时", "计划任务", "scheduled", "task", "cron"), MuseRoutes.SCHEDULED_TASKS, "助手与 Agent", Icons.Outlined.Schedule) { onNavigate(MuseRoutes.SCHEDULED_TASKS) },
+                SettingsEntry("助手资源", listOf("助手资源", "收藏夹", "世界书", "快捷消息", "模式注入", "Skills", "技能"), MuseRoutes.SETTINGS_ASSISTANT_RESOURCES, "助手与 Agent", Icons.Outlined.AutoAwesome, onOpenAssistantResources),
+                SettingsEntry("通知监听", listOf("通知监听", "通知", "NotificationListener", "通知权限"), MuseRoutes.NOTIFICATION_LISTENER, "助手与 Agent", Icons.Outlined.Notifications, onOpenNotificationListener),
+                SettingsEntry("AI 工具", listOf("工具", "AI工具", "ToolRegistry", "tool", "插件"), MuseRoutes.TOOLS, "助手与 Agent", Icons.Outlined.Build, onOpenTools),
+
+                // ── 模型与服务分组 ──
+                SettingsEntry("模型供应商", listOf("供应商", "模型", "provider", "API", "密钥"), MuseRoutes.SETTINGS_MODEL, "模型与服务", Icons.Outlined.SettingsEthernet, onOpenModelSettings),
+                SettingsEntry("API Key", listOf("API Key", "密钥", "key", "token", "凭证", "apiKey"), MuseRoutes.SETTINGS_MODEL, "模型与服务", Icons.Outlined.Lock, onOpenModelSettings),
+                SettingsEntry("视觉辅助", listOf("视觉辅助", "视觉", "vision", "看图", "图像理解"), MuseRoutes.SETTINGS_VISION, "模型与服务", Icons.Outlined.Visibility, onOpenVisionSettings),
+                SettingsEntry("OCR 文字识别", listOf("OCR", "ocr", "文字识别", "图片文字", "识别"), MuseRoutes.SETTINGS_VISION, "模型与服务", Icons.Outlined.Visibility, onOpenVisionSettings),
+                SettingsEntry("插件管理", listOf("插件", "plugin", "Provider插件", "导入"), MuseRoutes.PROVIDER_PLUGINS, "模型与服务", Icons.Outlined.Extension, onOpenProviderPlugins),
+                SettingsEntry("视频生成", listOf("视频", "video", "生成视频"), MuseRoutes.VIDEO_GENERATION, "模型与服务", Icons.Outlined.Movie, onOpenVideoGeneration),
+                SettingsEntry("联网搜索", listOf("联网搜索", "搜索", "web search", "网络搜索", "在线搜索"), MuseRoutes.SETTINGS_WEB_SEARCH, "模型与服务", Icons.Outlined.Language, onOpenWebSearch),
+                SettingsEntry("语音识别 ASR", listOf("ASR", "asr", "语音识别", "speech", "转文字", "识别语音"), MuseRoutes.SETTINGS_ASR, "模型与服务", Icons.Outlined.Mic, onOpenAsr),
+                SettingsEntry("图像生成", listOf("图像生成", "画图", "AI画", "image gen", "绘图"), MuseRoutes.SETTINGS_IMAGE_GEN, "模型与服务", Icons.Outlined.Image, onOpenImageGen),
+                SettingsEntry("MCP 服务器", listOf("MCP", "mcp", "服务器", "Model Context Protocol", "工具协议"), MuseRoutes.SETTINGS_MCP, "模型与服务", Icons.Outlined.Hub, onOpenMcp),
+
+                // ── 记忆与知识库分组 ──
+                SettingsEntry("记忆与通知", listOf("记忆", "通知", "memory", "遗忘", "回忆"), MuseRoutes.SETTINGS_MEMORY, "记忆与知识库", Icons.Outlined.Psychology, onOpenMemorySettings),
+                SettingsEntry("保持唤醒", listOf("保持唤醒", "唤醒", "wakelock", "不休眠", "常亮", "keep awake"), MuseRoutes.SETTINGS_MEMORY, "记忆与知识库", Icons.Outlined.Bolt, onOpenMemorySettings),
+                SettingsEntry("开机自启", listOf("开机自启", "自启", "自启动", "开机", "boot", "auto launch", "BootReceiver"), MuseRoutes.SETTINGS_MEMORY, "记忆与知识库", Icons.Outlined.Bolt, onOpenMemorySettings),
+                SettingsEntry("RAG 知识库", listOf("RAG", "知识库", "rag", "检索", "向量", "文档"), MuseRoutes.SETTINGS_RAG, "记忆与知识库", Icons.AutoMirrored.Outlined.MenuBook, onOpenRagSettings),
+
+                // ── 数据管理分组 ──
+                SettingsEntry("数据管理", listOf("数据管理", "数据", "存储", "清理", "缓存"), MuseRoutes.DATA_MANAGEMENT, "数据管理", Icons.Outlined.Storage, onOpenDataManagement),
+                SettingsEntry("云备份", listOf("备份", "云备份", "cloud", "backup", "S3", "WebDAV", "同步"), MuseRoutes.SETTINGS_DATA, "数据管理", Icons.Outlined.Cloud, onOpenDataSettings),
+                SettingsEntry("Web 服务器", listOf("Web服务器", "Web", "服务器", "webserver", "远程访问", "局域网", "PIN"), MuseRoutes.SETTINGS_DATA, "数据管理", Icons.Outlined.Language, onOpenDataSettings),
+                SettingsEntry("数据导入", listOf("数据导入", "导入", "import", "恢复数据"), MuseRoutes.SETTINGS_DATA_IMPORT, "数据管理", Icons.Outlined.CloudUpload, onOpenDataImport),
+                SettingsEntry("工作区", listOf("工作区", "文件管理", "workspace", "文件", "目录"), MuseRoutes.WORKSPACE, "数据管理", Icons.Outlined.Folder, onOpenWorkspace),
+
+                // ── 隐私与安全分组 ──
+                SettingsEntry("PII Guard", listOf("PII", "隐私", "脱敏", "pii guard", "信息保护"), "", "隐私与安全", Icons.Outlined.PrivacyTip) {},
+                SettingsEntry("安全", listOf("安全", "锁屏", "PIN", "密码", "应用锁", "share"), MuseRoutes.SETTINGS_SECURITY, "隐私与安全", Icons.Outlined.Lock, onOpenSecuritySettings),
+                SettingsEntry("生物识别", listOf("生物识别", "指纹", "biometric", "指纹解锁", "面容"), MuseRoutes.SETTINGS_SECURITY, "隐私与安全", Icons.Outlined.Lock, onOpenSecuritySettings),
+                SettingsEntry("网络代理", listOf("代理", "proxy", "网络", "VPN", "HTTP代理"), MuseRoutes.SETTINGS_PROXY, "隐私与安全", Icons.Outlined.Tune, onOpenProxySettings),
+                SettingsEntry("审计日志", listOf("审计", "日志", "audit", "操作记录", "审计日志"), MuseRoutes.AUDIT_LOG, "隐私与安全", Icons.Outlined.History, onOpenAuditLog),
+
+                // ── 关于分组 ──
+                SettingsEntry("使用教程", listOf("教程", "新手", "引导", "tutorial", "帮助"), MuseRoutes.SETTINGS_TUTORIAL, "关于", Icons.Outlined.School, onOpenTutorial),
+                SettingsEntry("关于", listOf("关于", "版本", "about", "信息"), MuseRoutes.SETTINGS_ABOUT, "关于", Icons.Outlined.Info, onOpenAboutSettings),
+                SettingsEntry("检查更新", listOf("检查更新", "更新", "update", "版本", "升级"), "", "关于", Icons.Outlined.Refresh) {},
+                SettingsEntry("调试日志", listOf("调试", "日志", "debug", "log", "Logger"), MuseRoutes.DEBUG, "关于", Icons.Outlined.BugReport, onOpenDebugLog),
+
+                SettingsEntry("实验性功能", listOf("实验性", "实验", "experimental", "beta", "试验"), MuseRoutes.SETTINGS_EXPERIMENTS, "关于", Icons.Outlined.Science, onOpenExperimentsSettings),
+                SettingsEntry("统计", listOf("统计", "使用统计", "stats", "热力图", "数据"), MuseRoutes.STATS, "关于", Icons.Outlined.BarChart, onOpenStats),
+                SettingsEntry("我的报告", listOf("报告", "周报", "月报", "年报", "report"), MuseRoutes.REPORTS, "关于", Icons.Outlined.AutoAwesome, onOpenReports),
             ),
         )
     }
-    // 过滤后的搜索结果(query 为空时返回全部,否则按 title/desc 包含查询)
-    val filteredEntries by remember(searchQuery, allEntries) {
+    // 过滤后的搜索结果(query 为空时返回全部,否则按 title/keywords/groupName 包含查询)
+    val filteredEntries by remember(searchQuery, settingsIndex) {
         mutableStateOf(
-            if (searchQuery.isBlank()) allEntries
-            else allEntries.filter {
-                it.title.contains(searchQuery, ignoreCase = true) ||
-                    it.desc.contains(searchQuery, ignoreCase = true)
+            if (searchQuery.isBlank()) settingsIndex
+            else settingsIndex.filter { entry ->
+                entry.title.contains(searchQuery, ignoreCase = true) ||
+                    entry.groupName.contains(searchQuery, ignoreCase = true) ||
+                    entry.keywords.any { it.contains(searchQuery, ignoreCase = true) }
             },
         )
     }
@@ -368,6 +418,8 @@ fun SettingsScreen(
     val translateCd = stringResource(R.string.settings_screen_translate_cd)
     val videoGenCd = stringResource(R.string.settings_screen_video_gen_cd)
     val checkUpdateCd = stringResource(R.string.settings_screen_check_update_cd)
+    // P2-1: 大屏(Expanded)下 LazyColumn 居中限宽 720dp,避免列表项过度拉伸
+    val widthClass = rememberWindowWidthClass()
 
     Scaffold(
         topBar = {
@@ -377,7 +429,7 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
-                        .background(MaterialTheme.colorScheme.background)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
                         .align(Alignment.TopCenter),
                 )
                 // iOS 风格 Large Title 顶部栏(替代 Material LargeTopAppBar)
@@ -385,7 +437,7 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .background(MaterialTheme.colorScheme.background),
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
                 ) {
                     // 返回按钮 + 搜索按钮行(v1.132: 右上角加搜索图标,与返回键同水平)
                     androidx.compose.foundation.layout.Row(
@@ -463,20 +515,34 @@ fun SettingsScreen(
                 }
             }
         },
-        containerColor = MaterialTheme.colorScheme.background,
+        // v1.0.27: 设置页背景改为 surfaceVariant(浅灰),让白色卡片区块从背景中浮出
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
     ) { innerPadding ->
         val layoutDirection = LocalLayoutDirection.current
-        LazyColumn(
+        // P2-1: Box 包裹 LazyColumn,Expanded 模式下用 TopCenter 居中限宽后的列表
+        Box(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                top = innerPadding.calculateTopPadding(),
-                bottom = innerPadding.calculateBottomPadding() + 16.dp,
-                // v1.99: 大R角/曲面屏 — 保留 innerPadding 的横向 safeDrawing,避免卡片贴边裁切
-                start = innerPadding.calculateStartPadding(layoutDirection),
-                end = innerPadding.calculateEndPadding(layoutDirection),
-            ),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentAlignment = Alignment.TopCenter,
         ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (widthClass == WindowWidthClass.Expanded) {
+                            Modifier.widthIn(max = 720.dp)
+                        } else {
+                            Modifier
+                        }
+                    ),
+                contentPadding = PaddingValues(
+                    top = innerPadding.calculateTopPadding(),
+                    bottom = innerPadding.calculateBottomPadding() + 16.dp,
+                    // v1.99: 大R角/曲面屏 — 保留 innerPadding 的横向 safeDrawing,避免卡片贴边裁切
+                    start = innerPadding.calculateStartPadding(layoutDirection),
+                    end = innerPadding.calculateEndPadding(layoutDirection),
+                ),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
             // v1.132: 搜索模式 — 只显示搜索结果列表
             if (isSearching) {
                 item(key = "search_status") {
@@ -504,7 +570,7 @@ fun SettingsScreen(
                         }
                     }
                 } else {
-                    items(filteredEntries, key = { it.title + it.desc }) { entry ->
+                    items(filteredEntries, key = { it.title + it.route }) { entry ->
                         CardGroup(
                             modifier = Modifier.padding(horizontal = 16.dp),
                         ) {
@@ -519,7 +585,7 @@ fun SettingsScreen(
                                     IosSettingsIcon(entry.icon)
                                 },
                                 headlineContent = { Text(entry.title) },
-                                supportingContent = { Text(entry.desc) },
+                                supportingContent = { Text(entry.groupName) },
                                 trailingContent = { ChevronRight() },
                             )
                         }
@@ -527,26 +593,37 @@ fun SettingsScreen(
                 }
             } else {
                 // ── 账户卡片(置顶,未登录状态占位)──
+                // v1.0.29: 增加顶部间距远离标题,减小底部间距靠近通用分组。
                 item(key = "account") {
-                    io.zer0.muse.ui.account.AccountCard(onClick = onOpenAccount)
+                    io.zer0.muse.ui.account.AccountCard(
+                        onClick = onOpenAccount,
+                        modifier = Modifier
+                            .padding(horizontal = MusePaddings.screen)
+                            .padding(top = MusePaddings.sectionGap),
+                    )
                 }
 
-                // ── 通用(用户高频外观偏好置顶)──
+                // v1.0.29: 账户卡片与下方设置分组保持紧凑。
+                item(key = "account_spacer") {
+                    Spacer(Modifier.height(MusePaddings.contentGap))
+                }
+
+                // ── 通用(按使用频率排序:聊天/外观/媒体/翻译/用户画像)──
                 item(key = "general") {
                     CardGroup(
                         modifier = Modifier.padding(horizontal = 16.dp),
                         title = {
                             Box(modifier = Modifier.semantics { contentDescription = appearanceGroupCd }) {
-                                Text(stringResource(R.string.settings_screen_appearance))
+                                Text(stringResource(R.string.settings_screen_general))
                             }
                         },
                     ) {
                         item(
-                            modifier = Modifier.semantics { contentDescription = userProfileCd },
-                            onClick = onOpenUserProfile,
-                            leadingContent = { IosSettingsIcon(Icons.Outlined.AccountCircle) },
-                            headlineContent = { Text(stringResource(R.string.settings_screen_user_profile)) },
-                            supportingContent = { Text(stringResource(R.string.settings_screen_user_profile_desc)) },
+                            modifier = Modifier.semantics { contentDescription = chatCd },
+                            onClick = onOpenChatSettings,
+                            leadingContent = { IosSettingsIcon(Icons.Outlined.Forum) },
+                            headlineContent = { Text(stringResource(R.string.settings_screen_chat)) },
+                            supportingContent = { Text(stringResource(R.string.settings_screen_chat_desc)) },
                             trailingContent = { ChevronRight() },
                         )
                         item(
@@ -555,14 +632,6 @@ fun SettingsScreen(
                             leadingContent = { IosSettingsIcon(Icons.Outlined.Palette) },
                             headlineContent = { Text(stringResource(R.string.settings_screen_appearance_label)) },
                             supportingContent = { Text(stringResource(R.string.settings_screen_appearance_desc)) },
-                            trailingContent = { ChevronRight() },
-                        )
-                        item(
-                            modifier = Modifier.semantics { contentDescription = chatCd },
-                            onClick = onOpenChatSettings,
-                            leadingContent = { IosSettingsIcon(Icons.Outlined.Forum) },
-                            headlineContent = { Text(stringResource(R.string.settings_screen_chat)) },
-                            supportingContent = { Text(stringResource(R.string.settings_screen_chat_desc)) },
                             trailingContent = { ChevronRight() },
                         )
                         item(
@@ -579,6 +648,14 @@ fun SettingsScreen(
                             leadingContent = { IosSettingsIcon(Icons.Outlined.Translate) },
                             headlineContent = { Text(stringResource(R.string.settings_screen_translate)) },
                             supportingContent = { Text(stringResource(R.string.settings_screen_translate_desc)) },
+                            trailingContent = { ChevronRight() },
+                        )
+                        item(
+                            modifier = Modifier.semantics { contentDescription = userProfileCd },
+                            onClick = onOpenUserProfile,
+                            leadingContent = { IosSettingsIcon(Icons.Outlined.AccountCircle) },
+                            headlineContent = { Text(stringResource(R.string.settings_screen_user_profile)) },
+                            supportingContent = { Text(stringResource(R.string.settings_screen_user_profile_desc)) },
                             trailingContent = { ChevronRight() },
                         )
                     }
@@ -713,13 +790,13 @@ fun SettingsScreen(
                     }
                 }
 
-                // ── 记忆与知识(记忆通知 / RAG / 数据管理)──
+                // ── 记忆与知识库(记忆通知 / RAG)──
                 item(key = "memory_knowledge") {
                     CardGroup(
                         modifier = Modifier.padding(horizontal = 16.dp),
                         title = {
                             Box(modifier = Modifier.semantics { contentDescription = memoryDataGroupCd }) {
-                                Text(stringResource(R.string.settings_screen_memory_data))
+                                Text(stringResource(R.string.settings_screen_memory_knowledge))
                             }
                         },
                     ) {
@@ -739,6 +816,19 @@ fun SettingsScreen(
                             supportingContent = { Text(stringResource(R.string.settings_screen_rag_desc)) },
                             trailingContent = { ChevronRight() },
                         )
+                    }
+                }
+
+                // ── 数据管理(数据管理 / 云备份 / 数据导入 / 工作区)──
+                item(key = "data_management") {
+                    CardGroup(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        title = {
+                            Box(modifier = Modifier.semantics { contentDescription = dataBackupCd }) {
+                                Text(stringResource(R.string.settings_screen_data_management_group))
+                            }
+                        },
+                    ) {
                         item(
                             onClick = onOpenDataManagement,
                             leadingContent = { IosSettingsIcon(Icons.Outlined.Storage) },
@@ -746,19 +836,6 @@ fun SettingsScreen(
                             supportingContent = { Text(stringResource(R.string.data_management_entry_desc)) },
                             trailingContent = { ChevronRight() },
                         )
-                    }
-                }
-
-                // ── 数据与备份(云备份 / 数据导入 / 工作区)──
-                item(key = "data_backup") {
-                    CardGroup(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        title = {
-                            Box(modifier = Modifier.semantics { contentDescription = dataBackupCd }) {
-                                Text(stringResource(R.string.settings_screen_data_backup_group))
-                            }
-                        },
-                    ) {
                         item(
                             modifier = Modifier.semantics { contentDescription = dataBackupCd },
                             onClick = onOpenDataSettings,
@@ -780,6 +857,7 @@ fun SettingsScreen(
                             onClick = onOpenWorkspace,
                             leadingContent = { IosSettingsIcon(Icons.Outlined.Folder) },
                             headlineContent = { Text(stringResource(R.string.workspace_title)) },
+                            supportingContent = { Text(stringResource(R.string.workspace_desc)) },
                             trailingContent = { ChevronRight() },
                         )
                     }
@@ -930,6 +1008,7 @@ fun SettingsScreen(
                     }
                 }
             }
+        }
         }
     }
 }

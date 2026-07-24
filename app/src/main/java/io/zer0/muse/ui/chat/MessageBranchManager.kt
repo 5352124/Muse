@@ -10,17 +10,17 @@ import kotlinx.coroutines.flow.update
 import kotlin.uuid.Uuid
 
 /**
- * Message branch manager (RikkaHub message branching ViewModel integration port).
+ * 消息分支管理器（移植自 RikkaHub 消息分支 ViewModel 集成）。
  *
- * Manages message branching state for the ChatViewModel.
- * Each assistant response position can have multiple branches (from regeneration).
+ * 为 ChatViewModel 管理消息分支状态。
+ * 每个助手响应位置可以拥有多个分支（来自重新生成）。
  *
- * Usage:
- * 1. Call [onMessageSent] when user sends a message → creates branch tracking
- * 2. Call [onAssistantResponse] when assistant responds → adds to current branch
- * 3. Call [regenerate] to create a new branch at the last position
- * 4. Call [selectBranch] to switch between branches
- * 5. [displayMessages] flow provides the current view (selected branches only)
+ * 用法：
+ * 1. 用户发送消息时调用 [onMessageSent] → 创建分支追踪
+ * 2. 助手响应时调用 [onAssistantResponse] → 添加到当前分支
+ * 3. 调用 [regenerate] 在最后一个位置创建新分支
+ * 4. 调用 [selectBranch] 在分支之间切换
+ * 5. [displayMessages] 流提供当前视图（仅包含已选中的分支）
  */
 class MessageBranchManager {
 
@@ -30,10 +30,10 @@ class MessageBranchManager {
     private val _displayMessages = MutableStateFlow<List<UIMessage>>(emptyList())
     val displayMessages: StateFlow<List<UIMessage>> = _displayMessages.asStateFlow()
 
-    /** Current branch state for each node position. */
-    private val branchStates = mutableMapOf<String, Int>() // nodeId → selectedIndex
+    /** 每个节点位置的当前分支状态。 */
+    private val branchStates = mutableMapOf<String, Int>() // nodeId → 选中索引
 
-    /** Update from external message list (e.g., from DB load). */
+    /** 从外部消息列表更新（例如从数据库加载）。 */
     fun syncFromMessages(messages: List<UIMessage>) {
         val nodes = messages.map { msg ->
             MessageNode(
@@ -46,7 +46,7 @@ class MessageBranchManager {
         refreshDisplay()
     }
 
-    /** Called when a new message is sent by the user. */
+    /** 用户发送新消息时调用。 */
     fun onMessageSent(message: UIMessage) {
         val node = MessageNode.from(message)
         _nodes.update { it + node }
@@ -54,10 +54,10 @@ class MessageBranchManager {
         refreshDisplay()
     }
 
-    /** Called when an assistant response arrives. */
+    /** 助手响应到达时调用。 */
     fun onAssistantResponse(message: UIMessage, isNewBranch: Boolean = false) {
         if (isNewBranch) {
-            // Add as new branch to the last assistant node
+            // 作为新分支添加到最后一个助手节点
             _nodes.update { nodes ->
                 if (nodes.isEmpty()) return@update nodes
                 val lastNode = nodes.last()
@@ -72,7 +72,7 @@ class MessageBranchManager {
                 }
             }
         } else {
-            // Replace current branch (streaming update)
+            // 替换当前分支（流式更新）
             _nodes.update { nodes ->
                 if (nodes.isEmpty()) return@update nodes
                 val lastNode = nodes.last()
@@ -91,7 +91,7 @@ class MessageBranchManager {
         refreshDisplay()
     }
 
-    /** Switch to a different branch at the given node position. */
+    /** 切换到指定节点位置的另一个分支。 */
     fun selectBranch(nodeId: String, index: Int) {
         branchStates[nodeId] = index
         _nodes.update { nodes ->
@@ -102,38 +102,38 @@ class MessageBranchManager {
         refreshDisplay()
     }
 
-    /** Get the current branch index for a node. */
+    /** 获取某个节点的当前分支索引。 */
     fun getBranchIndex(nodeId: String): Int = branchStates[nodeId] ?: 0
 
-    /** Get the total branch count for a node. */
+    /** 获取某个节点的分支总数。 */
     fun getBranchCount(nodeId: String): Int {
         return _nodes.value.firstOrNull { it.id == nodeId }?.branchCount ?: 1
     }
 
-    /** Check if a node has multiple branches. */
+    /** 检查某个节点是否有多个分支。 */
     fun hasBranches(nodeId: String): Boolean = getBranchCount(nodeId) > 1
 
-    /** Mark the last assistant position for regeneration. */
+    /** 标记最后一个助手位置以进行重新生成。 */
     fun prepareRegeneration(): Boolean {
         val nodes = _nodes.value
-        // Find last assistant node
+        // 查找最后一个助手节点
         val lastAssistantIdx = nodes.indexOfLast { node ->
             node.messages.firstOrNull()?.role == MessageRole.ASSISTANT
         }
         if (lastAssistantIdx < 0) return false
 
-        // Keep the current branch but mark for new branch creation
+        // 保留当前分支，但标记为需要创建新分支
         return true
     }
 
-    /** Remove the last assistant branch (for regeneration). */
+    /** 移除最后一个助手分支（用于重新生成）。 */
     fun removeLastBranch(): List<UIMessage> {
         val nodes = _nodes.value
         if (nodes.isEmpty()) return emptyList()
 
         val lastNode = nodes.last()
         if (lastNode.branchCount > 1 && lastNode.messages.firstOrNull()?.role == MessageRole.ASSISTANT) {
-            // Remove current branch, select previous
+            // 移除当前分支，选中前一个
             val newSelectIndex = (lastNode.selectIndex - 1).coerceAtLeast(0)
             val updatedNode = lastNode.copy(
                 messages = lastNode.messages.filterIndexed { i, _ -> i != lastNode.selectIndex },

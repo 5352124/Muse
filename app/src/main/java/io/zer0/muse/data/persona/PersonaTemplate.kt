@@ -3,8 +3,8 @@ package io.zer0.muse.data.persona
 import kotlinx.serialization.Serializable
 
 /**
- * Persona template presets (openhanako identity-templates/ + yuan/ + ishiki-templates/ port).
- * Presets: warm listener / creative partner / knowledge mentor / debate partner.
+ * 人格模板预置(openhanako identity-templates/ + yuan/ + ishki-templates/ 移植)。
+ * 预置模板:温暖倾听者 / 创意伙伴 / 知识导师 / 辩论伙伴。
  */
 @Serializable
 data class PersonaTemplate(

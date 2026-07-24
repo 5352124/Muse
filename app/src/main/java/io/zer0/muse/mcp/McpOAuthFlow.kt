@@ -127,7 +127,7 @@ object McpOAuthFlow {
     /**
      * 用授权码换 access_token。
      *
-     * POST application/x-www-form-urlencoded:
+     * 以 POST application/x-www-form-urlencoded 方式发送:
      * - grant_type=authorization_code
      * - code=...
      * - redirect_uri=...(必须与授权请求一致)
@@ -181,7 +181,7 @@ object McpOAuthFlow {
     /**
      * 用 refresh_token 续期 access_token。
      *
-     * POST application/x-www-form-urlencoded:
+     * 以 POST application/x-www-form-urlencoded 方式发送:
      * - grant_type=refresh_token
      * - refresh_token=...
      * - client_id=...

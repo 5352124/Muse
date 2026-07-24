@@ -196,8 +196,8 @@ class LocalAnalyticsTracker(
         }
     }
 
-    private fun todayStr(): String = DAY_FMT.get().format(Date())
-    private fun monthStr(): String = MONTH_FMT.get().format(Date())
+    private fun todayStr(): String = DAY_FMT.get()?.format(Date()) ?: ""
+    private fun monthStr(): String = MONTH_FMT.get()?.format(Date()) ?: ""
 }
 
 /** 分析数据快照。 */

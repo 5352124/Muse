@@ -114,7 +114,9 @@ class GenericOpenAiVideoProvider(
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             if (taskId.startsWith(SYNC_PREFIX)) {
-                syncTasks[taskId]
+                // 9.3 修复: 任务终态后立即清理,避免失败/超时任务在 map 中堆积。
+                // remove 原子取值并移除;若条目缺失则从 taskId 中解析 URL(同步任务 URL 编码在 taskId 内)
+                syncTasks.remove(taskId)
                     ?: taskId.removePrefix(SYNC_PREFIX)
             } else {
                 error("未知任务 ID:$taskId")

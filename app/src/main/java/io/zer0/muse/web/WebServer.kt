@@ -251,7 +251,7 @@ class WebServer(
      */
     private fun Application.configureCors() {
         install(CORS) {
-            // 安全注意: anyHost() 仅适用于局域网场景。若需公网暴露,必须改为 CORS 白名单。
+            // 安全边界：anyHost() 仅适用于局域网信任模型，公网暴露时需配置 Origin 白名单
             anyHost()
             allowMethod(io.ktor.http.HttpMethod.Get)
             allowMethod(io.ktor.http.HttpMethod.Post)
@@ -347,8 +347,8 @@ class WebServer(
                 clearAttempts(clientIp)
                 val token = issueJwt(algorithm)
                 // 通过 Cookie 下发 token,Web 端浏览器后续请求自动携带
-                // 安全注意: 当前为 HTTP 服务,Cookie 无法设 secure=true。
-                // 后续若启用 HTTPS,必须将 Cookie 设为 secure=true + httpOnly=true。
+                // 当前为 HTTP 服务,Cookie 无法设 secure=true(JWT token 明文传输,仅限局域网信任模型)。
+                // TODO: HTTPS 启用时改为 secure=true
                 call.response.cookies.append(
                     name = TOKEN_COOKIE_NAME,
                     value = token,
@@ -559,6 +559,10 @@ class WebServer(
         /** 检查是否超过速率限制(返回 true 表示允许请求)。 */
         private fun checkRateLimit(ip: String): Boolean {
             val now = System.currentTimeMillis()
+            // 清理超过 30s 窗口的过期 entry,避免从未成功登录的 IP 永久堆积导致内存泄漏
+            loginAttempts.entries.removeIf { (_, attempt) ->
+                now - attempt.firstAttemptAt > RATE_LIMIT_WINDOW_MS
+            }
             val tracker = loginAttempts[ip] ?: return true
             synchronized(tracker) {
                 if (now - tracker.firstAttemptAt > RATE_LIMIT_WINDOW_MS) {

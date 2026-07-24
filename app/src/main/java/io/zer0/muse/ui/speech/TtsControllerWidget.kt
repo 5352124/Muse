@@ -3,6 +3,7 @@ package io.zer0.muse.ui.speech
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import io.zer0.muse.ui.theme.MuseAnimation
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Forward5
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay5
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -80,8 +82,8 @@ fun TtsControllerWidget(
 
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(200)) + scaleIn(tween(200), initialScale = 0.7f),
-        exit = fadeOut(tween(200)) + scaleOut(tween(200), targetScale = 0.7f),
+        enter = fadeIn(tween(MuseAnimation.TACTILE_MS)) + scaleIn(tween(MuseAnimation.TACTILE_MS), initialScale = 0.7f),
+        exit = fadeOut(tween(MuseAnimation.TACTILE_MS)) + scaleOut(tween(MuseAnimation.TACTILE_MS), targetScale = 0.7f),
         modifier = modifier,
     ) {
         Surface(
@@ -126,12 +128,60 @@ fun TtsControllerWidget(
                     )
                 }
 
-                // 展开后:速度 + 快进 5s
+                // 展开后:分片导航 + 进退 5s + 倍速
                 AnimatedVisibility(visible = expanded) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
+                        // 上一片
+                        CircleIconButton(
+                            contentDescription = stringResource(R.string.speech_previous_chunk_cd),
+                            onClick = { ttsManager.previousChunk() },
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        // 下一片
+                        CircleIconButton(
+                            contentDescription = stringResource(R.string.speech_next_chunk_cd),
+                            onClick = { ttsManager.nextChunk() },
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        // 后退 5s
+                        CircleIconButton(
+                            contentDescription = stringResource(R.string.speech_seek_backward_5s_cd),
+                            onClick = { ttsManager.seekBy(-5_000) },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Replay5,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        // 快进 5s
+                        CircleIconButton(
+                            contentDescription = stringResource(R.string.speech_seek_forward_5s_cd),
+                            onClick = { ttsManager.seekBy(5_000) },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Forward5,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
                         // 速度按钮(点击循环 0.8x → 1.0x → 1.2x → 1.5x)
                         CircleIconButton(
                             contentDescription = stringResource(R.string.speech_playback_speed_cd, speeds[speedIndex].toString()),
@@ -146,18 +196,6 @@ fun TtsControllerWidget(
                                     fontWeight = FontWeight.SemiBold,
                                 ),
                                 color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
-                        // 快进 5s
-                        CircleIconButton(
-                            contentDescription = stringResource(R.string.speech_seek_forward_5s_cd),
-                            onClick = { ttsManager.seekBy(5_000) },
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Forward5,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.size(22.dp),
                             )
                         }
                     }

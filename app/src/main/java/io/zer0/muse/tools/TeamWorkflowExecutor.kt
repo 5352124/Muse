@@ -71,7 +71,8 @@ class TeamWorkflowExecutor(
             return errorResult(parentRequestId, "工作流节点缺少 assistantId: ${invalidNodes.map { it.id }}", startedAt)
         }
 
-        val executed = mutableMapOf<String, DelegationContract.DelegationResult>()
+        // H-TWE1: 用 ConcurrentHashMap 替代 mutableMapOf,async 并发写入安全
+        val executed = java.util.concurrent.ConcurrentHashMap<String, DelegationContract.DelegationResult>()
         val errors = mutableListOf<String>()
 
         try {
@@ -108,7 +109,7 @@ class TeamWorkflowExecutor(
             val pending = nodes.toMutableList()
             while (pending.isNotEmpty()) {
                 val ready = pending.filter { node ->
-                    node.dependsOn.all { it in executed }
+                    node.dependsOn.all { executed.containsKey(it) }
                 }
                 if (ready.isEmpty()) {
                     return errorResult(
@@ -156,7 +157,7 @@ class TeamWorkflowExecutor(
                         }
                     }
                     // 如果所有 ready 节点都被拒绝,继续下一轮
-                    if (ready.all { it.id in executed }) {
+                    if (ready.all { executed.containsKey(it.id) }) {
                         pending.removeAll(ready)
                         continue
                     }

@@ -37,7 +37,7 @@ import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import io.zer0.muse.ui.common.IosChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -71,6 +71,7 @@ import io.zer0.muse.R
 import io.zer0.muse.data.quota.QuotaManager
 import io.zer0.muse.data.quota.QuotaState
 import io.zer0.muse.ui.theme.MuseShapes
+import io.zer0.muse.ui.theme.MusePaddings
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import java.time.DayOfWeek
@@ -114,7 +115,7 @@ fun StatsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                        .padding(MusePaddings.chipInnerTight),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = onBack) {
@@ -160,56 +161,56 @@ fun StatsScreen(
                     TimeRangeFilterRow(
                         currentRange = state.timeRange,
                         onRangeChange = { viewModel.setTimeRange(it) },
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier.padding(horizontal = MusePaddings.screen),
                     )
                 }
                 item(key = "stats_grid") {
                     StatsGrid(
                         state = state,
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier.padding(horizontal = MusePaddings.screen),
                     )
                 }
                 item(key = "heatmap") {
                     HeatmapCard(
                         messagesPerDay = state.messagesPerDay,
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier.padding(horizontal = MusePaddings.screen),
                     )
                 }
                 item(key = "weekly_trend") {
                     WeeklyTrendCard(
                         weeklyTrend = state.weeklyTrend,
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier.padding(horizontal = MusePaddings.screen),
                     )
                 }
                 item(key = "model_usage") {
                     ModelUsageCard(
                         modelCounts = state.modelCounts,
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier.padding(horizontal = MusePaddings.screen),
                     )
                 }
                 item(key = "assistant_usage") {
                     AssistantUsageCard(
                         assistantCounts = state.assistantCounts,
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier.padding(horizontal = MusePaddings.screen),
                     )
                 }
                 item(key = "hourly_dist") {
                     HourlyDistributionCard(
                         hourlyDistribution = state.hourlyDistribution,
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier.padding(horizontal = MusePaddings.screen),
                     )
                 }
                 item(key = "top_sessions") {
                     TopSessionsCard(
                         topSessions = state.topSessions,
                         onOpenSession = onOpenSession,
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier.padding(horizontal = MusePaddings.screen),
                     )
                 }
                 // v1.0.4: 每日配额仪表盘(QuotaManager 后端能力接入)
                 item(key = "quota_dashboard") {
                     QuotaDashboardCard(
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier.padding(horizontal = MusePaddings.screen),
                     )
                 }
             }
@@ -241,10 +242,10 @@ private fun TimeRangeFilterRow(
     ) {
         items(ranges.size) { index ->
             val (range, labelRes) = ranges[index]
-            FilterChip(
+            IosChip(
                 selected = currentRange == range,
                 onClick = { onRangeChange(range) },
-                label = { Text(stringResource(labelRes)) },
+                label = stringResource(labelRes),
                 modifier = Modifier.semantics {
                     contentDescription = "$allCd: ${if (currentRange == range) "已选 " else ""}${ranges[index].first.name}"
                 },
@@ -313,7 +314,7 @@ private fun StatCard(
         shape = MuseShapes.extraLarge,
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(MusePaddings.screen),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(
@@ -366,7 +367,7 @@ private fun WeeklyTrendCard(
         shape = MuseShapes.extraLarge,
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(MusePaddings.screen),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
@@ -441,7 +442,7 @@ private fun HeatmapCard(
 ) {
     Card(modifier = modifier.fillMaxWidth(), shape = MuseShapes.extraLarge) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(MusePaddings.screen),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
@@ -671,7 +672,7 @@ private fun ModelUsageCard(
         shape = MuseShapes.extraLarge,
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(MusePaddings.screen),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
@@ -813,7 +814,7 @@ private fun AssistantUsageCard(
         shape = MuseShapes.extraLarge,
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(MusePaddings.screen),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
@@ -890,7 +891,7 @@ private fun HourlyDistributionCard(
         shape = MuseShapes.extraLarge,
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(MusePaddings.screen),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
@@ -985,7 +986,7 @@ private fun TopSessionsCard(
         shape = MuseShapes.extraLarge,
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(MusePaddings.screen),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
@@ -1002,7 +1003,7 @@ private fun TopSessionsCard(
                     if (idx > 0) {
                         HorizontalDivider(
                             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
-                            modifier = Modifier.padding(vertical = 2.dp),
+                            modifier = Modifier.padding(vertical = MusePaddings.tinyGap),
                         )
                     }
                     Row(
@@ -1010,7 +1011,7 @@ private fun TopSessionsCard(
                             .fillMaxWidth()
                             .clip(MaterialTheme.shapes.medium)
                             .clickable(role = Role.Button) { onOpenSession(session.sessionId) }
-                            .padding(vertical = 6.dp),
+                            .padding(vertical = MusePaddings.labelVerticalGap),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
@@ -1071,7 +1072,7 @@ private fun QuotaDashboardCard(modifier: Modifier = Modifier) {
         tonalElevation = 1.dp,
     ) {
         Column(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier.padding(MusePaddings.messageGap),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(
@@ -1101,7 +1102,7 @@ private fun QuotaDashboardCard(modifier: Modifier = Modifier) {
                         style = MaterialTheme.typography.labelSmall,
                         color = if (state.isPro) MaterialTheme.colorScheme.onPrimaryContainer
                             else MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(MusePaddings.chipInnerLoose),
                     )
                 }
             }

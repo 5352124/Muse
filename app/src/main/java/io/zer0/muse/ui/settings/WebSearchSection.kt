@@ -132,7 +132,7 @@ internal fun WebSearchSection(
                 text = "Auto 模式会自动尝试多个搜索引擎:优先使用已配置 API Key 的商用引擎,随后依次 fallback 到 Bing、Jina、SearXNG,并自动过滤低质量结果。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier.padding(MusePaddings.cardInner),
             )
         }
 
@@ -152,7 +152,7 @@ internal fun WebSearchSection(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(MusePaddings.cardInner),
             ) {
                 SettingField(
                     label = stringResource(R.string.settings_web_search_api_key_label),
@@ -189,7 +189,7 @@ internal fun WebSearchSection(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(MusePaddings.cardInner),
             ) {
                 SettingField(
                     label = stringResource(R.string.settings_web_search_endpoint_label),
@@ -232,7 +232,7 @@ private fun SavePillButton(
             text = text,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.padding(MusePaddings.cardInnerSpaced),
         )
     }
 }

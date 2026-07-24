@@ -5,16 +5,16 @@ import io.zer0.ai.core.ModelAbility
 import io.zer0.ai.core.VisionCapabilities
 
 /**
- * Model capability registry DSL (RikkaHub ModelDsl.kt port).
+ * 模型能力注册表 DSL（移植自 RikkaHub ModelDsl.kt）。
  *
- * Token-based model ID matching with scoring. Supports:
- *  - Subsequence token matching: tokens("gpt", "4", "o")
- *  - Negative matching: notTokens("mini")
- *  - Exact ID matching: exact("gpt-4o-2024-05-13")
- *  - Regex tokens: tokenRegex("^o$")
- *  - Alternatives: tokens("gpt|chatgpt")
+ * 基于 token 的模型 ID 匹配并带评分。支持：
+ *  - 子序列 token 匹配：tokens("gpt", "4", "o")
+ *  - 反向匹配：notTokens("mini")
+ *  - 精确 ID 匹配：exact("gpt-4o-2024-05-13")
+ *  - 正则 token：tokenRegex("^o$")
+ *  - 备选项：tokens("gpt|chatgpt")
  *
- * Usage:
+ * 用法：
  * ```kotlin
  * val GPT4O = defineModel {
  *     tokens("gpt", "4", "o")
@@ -24,7 +24,7 @@ import io.zer0.ai.core.VisionCapabilities
  * ```
  */
 
-// --- Public API ---
+// --- 公共 API ---
 
 interface ModelSelector {
     fun match(modelId: String): Boolean
@@ -67,7 +67,7 @@ fun defineGroup(block: ModelGroupBuilder.() -> Unit): ModelGroup =
 
 fun tokenRegex(pattern: String): TokenSpec = TokenRegexSpec(pattern.toRegex(RegexOption.IGNORE_CASE))
 
-// --- Builder ---
+// --- 构建器 ---
 
 class ModelDefinitionBuilder {
     private val matchers = mutableListOf<TokenMatcher>()
@@ -163,7 +163,7 @@ class ModelGroupBuilder {
     fun build(): ModelGroup = ModelGroup(members.toList())
 }
 
-// --- Token Spec ---
+// --- Token 规范 ---
 
 sealed interface TokenSpec {
     fun matches(token: String): Boolean
@@ -177,7 +177,7 @@ private data class TokenRegexSpec(val regex: Regex) : TokenSpec {
     override fun matches(token: String): Boolean = regex.matches(token)
 }
 
-// --- Token Matcher ---
+// --- Token 匹配器 ---
 
 interface TokenMatcher {
     fun score(modelId: String, tokens: List<String>): Int?
@@ -223,7 +223,7 @@ private class NotSequenceMatcher(private val specs: List<TokenSpec>) : TokenMatc
         if (inner.score(modelId, tokens) == null) 0 else null
 }
 
-// --- Helpers ---
+// --- 辅助函数 ---
 
 private fun parseTokenSpec(spec: String): TokenSpec {
     val options = spec.split('|')
@@ -236,8 +236,8 @@ private fun parseTokenSpec(spec: String): TokenSpec {
 private const val EXACT_ID_BONUS = 1000
 
 /**
- * Tokenize a model ID into letter/digit/symbol segments.
- * e.g. "gpt-4o-mini" → ["gpt", "4", "o", "-", "mini"]
+ * 将模型 ID 切分为字母/数字/符号片段。
+ * 例如 "gpt-4o-mini" → ["gpt", "4", "o", "-", "mini"]
  */
 internal fun tokenize(modelId: String): List<String> {
     val tokens = mutableListOf<String>()

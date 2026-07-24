@@ -18,7 +18,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 /**
  * iOS 风格通用顶部栏 — 替代 Material TopAppBar / LargeTopAppBar。
@@ -30,7 +29,7 @@ import androidx.compose.ui.unit.sp
  * @param onBack 返回回调(为 null 时不显示返回按钮)
  * @param largeTitle 是否使用 Large Title 样式(32dp 粗体)
  * @param actions 右侧操作区(如按钮/图标)
- * @param modifier Modifier
+ * @param modifier 修饰符
  */
 @Composable
 fun IosTopBar(
@@ -79,14 +78,11 @@ fun IosTopBar(
             }
             actions()
         }
-        // Large Title 独占一行
+        // Large Title 独占一行(v1.0.19: 字号改用 displayLarge 令牌,符合 iOS Large Title 34sp 标准)
         if (largeTitle) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 32.sp,
-                ),
+                style = MaterialTheme.typography.displayLarge,
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )

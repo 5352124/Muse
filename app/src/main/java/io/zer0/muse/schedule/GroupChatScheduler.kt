@@ -305,17 +305,20 @@ class GroupChatScheduler(
             val isMentioned = assistant.id in mentionedAgentIds
             // v1.104: 通知 UI 当前轮到谁发言
             onSpeakerChange?.invoke(assistant)
-            val reply = invokeAgent(chat, chatId, assistant, memberNames, model, isMentioned)
-
-            // v1.97: 决策修复 — 被提及的 agent 如果 PASS,重试一次
-            if (reply == null && isMentioned) {
-                Logger.i(TAG, "Agent「${assistant.name}」被@提及但 PASS,决策修复重试")
-                val retryReply = invokeAgent(chat, chatId, assistant, memberNames, model, isMentioned = true, isRepair = true)
-                if (retryReply != null) {
-                    replies.add(retryReply)
+            when (val result = invokeAgent(chat, chatId, assistant, memberNames, model, isMentioned)) {
+                is AgentResult.Reply -> replies.add(result.message)
+                is AgentResult.Pass -> {
+                    // v1.97: 决策修复 — 被提及的 agent 如果 PASS,重试一次
+                    if (isMentioned) {
+                        Logger.i(TAG, "Agent「${assistant.name}」被@提及但 PASS,决策修复重试")
+                        when (val retry = invokeAgent(chat, chatId, assistant, memberNames, model, isMentioned = true, isRepair = true)) {
+                            is AgentResult.Reply -> replies.add(retry.message)
+                            is AgentResult.Error -> Logger.w(TAG, "Agent「${assistant.name}」决策修复失败: ${retry.message}")
+                            is AgentResult.Pass -> Logger.i(TAG, "Agent「${assistant.name}」决策修复仍 PASS")
+                        }
+                    }
                 }
-            } else if (reply != null) {
-                replies.add(reply)
+                is AgentResult.Error -> Logger.w(TAG, "Agent「${assistant.name}」流式异常: ${result.message}")
             }
         }
 
@@ -361,6 +364,23 @@ class GroupChatScheduler(
     }
 
     /**
+     * 单个 agent 一轮调用的结果。
+     *
+     * 用于区分"主动 PASS"、"正常回复"与"流式异常",避免 [triggerAgentRoundRobin]
+     * 把流式异常误判为主动 PASS 触发决策修复重试。
+     */
+    private sealed class AgentResult {
+        /** 主动跳过本轮(返回 [PASS_MARKER] 或空文本)。 */
+        data object Pass : AgentResult()
+
+        /** 正常回复了一条消息。 */
+        data class Reply(val message: GroupChatMessageEntity) : AgentResult()
+
+        /** 流式调用失败或超时,无法回复。 */
+        data class Error(val message: String) : AgentResult()
+    }
+
+    /**
      * 调用单个 agent 生成发言。
      *
      * v1.97: 新增 isMentioned / isRepair 参数,支持 @mention 提示和决策修复。
@@ -372,7 +392,7 @@ class GroupChatScheduler(
      * @param model 当前选中的 Model(null 时由 ChatService 用默认)
      * @param isMentioned v1.97: 是否被 @提及(影响 prompt 提示)
      * @param isRepair v1.97: 是否为决策修复重试(提示 agent 上一轮没有回复)
-     * @return 保存的 agent 回复消息(null 表示跳过)
+     * @return [AgentResult] — Pass 表示主动跳过,Reply 表示正常回复,Error 表示流式异常/超时
      */
     private suspend fun invokeAgent(
         chat: io.zer0.muse.data.groupchat.GroupChatEntity,
@@ -382,7 +402,7 @@ class GroupChatScheduler(
         model: io.zer0.ai.core.Model?,
         isMentioned: Boolean = false,
         isRepair: Boolean = false,
-    ): GroupChatMessageEntity? {
+    ): AgentResult {
         // a. 构造上下文
         val contextSize = assistant.contextMessageSize.takeIf { it > 0 } ?: DEFAULT_CONTEXT_SIZE
         val recentMessages = groupChatRepository.getRecentMessages(chatId, contextSize)
@@ -413,6 +433,7 @@ class GroupChatScheduler(
                         is ChatStreamEvent.ToolCallDelta -> { /* 群聊不传 tools,忽略 */ }
                         is ChatStreamEvent.Done -> { /* 流结束 */ }
                         is ChatStreamEvent.Error -> streamError = event.message
+                        is ChatStreamEvent.StreamInterrupted -> streamError = event.message
                     }
                 }
                 if (streamError != null) {
@@ -422,12 +443,12 @@ class GroupChatScheduler(
             }
         }.onError { msg, t ->
             Logger.e(TAG, "Agent「${assistant.name}」LLM 调用失败: $msg", t)
-            return null
+            return AgentResult.Error(msg)
         }.getOrNull()
 
         if (rawReplyText == null) {
             Logger.w(TAG, "Agent「${assistant.name}」调用超时(${AGENT_TIMEOUT_MS / 1000}s),跳过")
-            return null
+            return AgentResult.Error("Agent「${assistant.name}」调用超时(${AGENT_TIMEOUT_MS / 1000}s)")
         }
 
         // e. 提取 mood / think 模块,再清理 channel_reply 包装
@@ -438,7 +459,7 @@ class GroupChatScheduler(
         // f. 检查是否跳过([PASS] 或空文本)
         if (replyText.isBlank() || replyText == PASS_MARKER) {
             Logger.i(TAG, "Agent「${assistant.name}」选择跳过本轮(PASS)")
-            return null
+            return AgentResult.Pass
         }
 
         // g. 保存 agent 回复到群聊
@@ -453,16 +474,18 @@ class GroupChatScheduler(
         )
 
         Logger.i(TAG, "Agent「${assistant.name}」在群聊「${chat.name}」中发言")
-        return GroupChatMessageEntity(
-            id = msgId,
-            chatId = chatId,
-            senderType = "assistant",
-            senderId = assistant.id,
-            senderName = assistant.name,
-            body = replyText,
-            timestamp = System.currentTimeMillis(),
-            mood = extractedMood,
-            reasoning = extractedReasoning,
+        return AgentResult.Reply(
+            GroupChatMessageEntity(
+                id = msgId,
+                chatId = chatId,
+                senderType = "assistant",
+                senderId = assistant.id,
+                senderName = assistant.name,
+                body = replyText,
+                timestamp = System.currentTimeMillis(),
+                mood = extractedMood,
+                reasoning = extractedReasoning,
+            )
         )
     }
 

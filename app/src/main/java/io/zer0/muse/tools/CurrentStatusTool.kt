@@ -8,10 +8,10 @@ import java.util.Locale
 import java.util.TimeZone
 
 /**
- * current_status tool (openhanako current-status-tool.ts port).
+ * current_status 工具(openhanako current-status-tool.ts 移植)。
  *
- * Lightweight environment sensing: time, device info, battery, display.
- * action=list returns available keys; action=get returns one key's value.
+ * 轻量级环境感知:时间、设备信息、电池、显示。
+ * action=list 返回可用键;action=get 返回某个键的值。
  */
 object CurrentStatusTool {
 
@@ -35,7 +35,7 @@ object CurrentStatusTool {
             val tz = TimeZone.getDefault()
             // v1.131: 复用 ThreadLocal 缓存的 formatter(此 fmt 仅在本线程的 time provider 内被设置 timeZone,
             // 不会与其他 provider 交叉,可安全复用)。
-            val fmt = FMT_FULL_TZ.get()
+            val fmt = FMT_FULL_TZ.get() ?: SimpleDateFormat("yyyy-MM-dd HH:mm:ss z", Locale.getDefault())
             fmt.timeZone = tz
             "time: ${fmt.format(Date())} | timezone: ${tz.id} | utcOffset: ${tz.getOffset(System.currentTimeMillis()) / 3600000}"
         },
@@ -44,7 +44,7 @@ object CurrentStatusTool {
             if (cal.get(java.util.Calendar.HOUR_OF_DAY) < DAY_BOUNDARY_HOUR) {
                 cal.add(java.util.Calendar.DAY_OF_MONTH, -1)
             }
-            val fmt = FMT_DATE.get()
+            val fmt = FMT_DATE.get() ?: SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             "logical_date: ${fmt.format(cal.time)} | dayBoundaryHour: $DAY_BOUNDARY_HOUR"
         },
         StatusProvider("device", "Device brand, model, Android version.") { _ ->

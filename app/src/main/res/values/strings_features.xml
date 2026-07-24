@@ -239,6 +239,7 @@
     <string name="quick_notes_new">新建记录</string>
     <string name="quick_notes_search">搜索记录…</string>
     <string name="quick_notes_pin">置顶</string>
+    <string name="quick_notes_unpin">取消置顶</string>
     <string name="quick_notes_edit">编辑</string>
     <string name="quick_notes_delete">删除</string>
     <string name="quick_notes_delete_title">删除记录</string>
@@ -249,6 +250,19 @@
     <string name="quick_notes_save">保存</string>
     <string name="quick_notes_cancel">取消</string>
     <string name="quick_notes_error_required">请填写标题</string>
+    <string name="quick_notes_input_hint">记录此刻的想法…</string>
+    <string name="quick_notes_tag_hint">输入 #标签 为记录分类</string>
+    <string name="quick_notes_history">历史记录</string>
+    <string name="quick_notes_count">共 %1$d 条</string>
+    <string name="quick_notes_empty_title">还没有记录</string>
+    <string name="quick_notes_empty_subtitle">写下第一条想法，它会出现在这里</string>
+    <string name="quick_notes_empty_search_title">未找到匹配记录</string>
+    <string name="quick_notes_empty_search_subtitle">换个关键词试试</string>
+    <string name="quick_notes_copy">复制</string>
+    <string name="quick_notes_copied">已复制到剪贴板</string>
+    <string name="quick_notes_send_to_chat">发送到新会话</string>
+    <string name="quick_notes_more">更多</string>
+    <string name="quick_notes_clear_search">清空搜索</string>
 
     <!-- ===== ui/knowledge ===== -->
     <string name="knowledge_title">知识库</string>

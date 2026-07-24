@@ -96,16 +96,17 @@ val WarmPaperTheme = PresetTheme(
         scrim = Color.Black,
     ),
     darkScheme = darkColorScheme(
-        primary = LaurelGreen,
+        // v1.0.21: 深色模式 primary 改用 LaurelGreenBright(#4A9F70),OLED 屏幕可见性提升
+        primary = LaurelGreenBright,
         onPrimary = Color.White,
         primaryContainer = LaurelGreenDarkContainer,
         onPrimaryContainer = LaurelGreenLight,
         inversePrimary = StarGold,
-        secondary = LaurelGreen,
+        secondary = LaurelGreenBright,
         onSecondary = Color.White,
         secondaryContainer = LaurelGreenDarkContainer,
         onSecondaryContainer = LaurelGreenLight,
-        tertiary = LaurelGreen,
+        tertiary = LaurelGreenBright,
         onTertiary = Color.White,
         // M-1: tertiary 与 primary 同色,container/onContainer 同步引用 primary 容器色。
         tertiaryContainer = LaurelGreenDarkContainer,
@@ -123,7 +124,7 @@ val WarmPaperTheme = PresetTheme(
         onSurface = DarkInk,
         surfaceVariant = DarkAiBubble,
         onSurfaceVariant = DarkInk,
-        surfaceTint = LaurelGreen,
+        surfaceTint = LaurelGreenBright,
         inverseSurface = DarkInk,
         inverseOnSurface = DarkBg,
         error = Danger,
@@ -522,16 +523,17 @@ val AmoledTheme = PresetTheme(
     // AMOLED 浅色模式沿用暖纸浅色 (OLED 用户多数时间用深色)
     lightScheme = WarmPaperTheme.lightScheme,
     darkScheme = darkColorScheme(
-        primary = LaurelGreen,
+        // v1.0.21: 深色模式 primary 改用 LaurelGreenBright,与 warm_paper 保持一致
+        primary = LaurelGreenBright,
         onPrimary = Color.White,
         primaryContainer = LaurelGreenDarkContainer,
         onPrimaryContainer = LaurelGreenLight,
         inversePrimary = StarGold,
-        secondary = LaurelGreen,
+        secondary = LaurelGreenBright,
         onSecondary = Color.White,
         secondaryContainer = LaurelGreenDarkContainer,
         onSecondaryContainer = LaurelGreenLight,
-        tertiary = LaurelGreen,
+        tertiary = LaurelGreenBright,
         onTertiary = Color.White,
         // M-1: tertiary 与 primary 同色,container/onContainer 同步引用 primary 容器色。
         tertiaryContainer = LaurelGreenDarkContainer,
@@ -548,7 +550,7 @@ val AmoledTheme = PresetTheme(
         onSurface = AmoledDarkInk,
         surfaceVariant = AmoledDarkAiBubble,
         onSurfaceVariant = AmoledDarkInk,
-        surfaceTint = LaurelGreen,
+        surfaceTint = LaurelGreenBright,
         inverseSurface = AmoledDarkInk,
         inverseOnSurface = AmoledDarkBg,
         error = Danger,
@@ -1096,7 +1098,7 @@ val DuskRoseTheme = PresetTheme(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Preset theme registry (must be after all theme val declarations)
+// 预设主题注册表(必须在所有 theme val 声明之后)
 // ─────────────────────────────────────────────────────────────────────────────
 val PresetThemes: List<PresetTheme> = listOf(
     WarmPaperTheme,

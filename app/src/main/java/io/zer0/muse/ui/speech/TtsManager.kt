@@ -517,6 +517,74 @@ class TtsManager(
         }
     }
 
+    /** v1.4: 绝对位置 seek(毫秒)。 */
+    fun seekTo(ms: Long) {
+        mediaPlayer?.let { mp ->
+            runCatching {
+                val target = ms.coerceIn(0, mp.duration.coerceAtLeast(0).toLong())
+                mp.seekTo(target.toInt())
+                updateState { it.copy(positionMs = target) }
+            }
+        }
+    }
+
+    /**
+     * 跳到下一片(如果存在)。
+     * 用于 TTS 控制器的长文本分段导航。
+     */
+    fun nextChunk() {
+        val state = _playbackState.value
+        val chunks = currentChunks
+        if (chunks.isEmpty() || state.currentChunkIndex >= chunks.size - 1) return
+        // 取消当前片播放,启动下一片
+        stopPlayback()
+        startPlaybackFromIndex(chunks, state.currentChunkIndex + 1)
+    }
+
+    /**
+     * 跳到上一片(如果存在)。
+     */
+    fun previousChunk() {
+        val state = _playbackState.value
+        val chunks = currentChunks
+        if (chunks.isEmpty() || state.currentChunkIndex <= 0) return
+        stopPlayback()
+        startPlaybackFromIndex(chunks, state.currentChunkIndex - 1)
+    }
+
+    /** 从指定分片索引开始串行播放(供 nextChunk/previousChunk 复用)。 */
+    private fun startPlaybackFromIndex(chunks: List<String>, startIndex: Int) {
+        val utteranceId = currentUtteranceId ?: return
+        startPositionUpdates()
+        playbackJob = playbackScope.launch {
+            updateState {
+                it.copy(
+                    status = PlaybackStatus.Playing,
+                    currentChunkIndex = startIndex,
+                    totalChunks = chunks.size,
+                    positionMs = 0L,
+                    durationMs = 0L,
+                )
+            }
+            for (index in startIndex until chunks.size) {
+                if (!isActive) return@launch
+                updateState { it.copy(currentChunkIndex = index, positionMs = 0L, durationMs = 0L) }
+                val file = File(cacheDir, "tts_chunk_${utteranceId}_$index.wav")
+                try {
+                    val ok = synthesizeToFile(chunks[index], file)
+                    if (!ok) continue
+                    if (!isActive) return@launch
+                    playWithMediaPlayer(file)
+                } finally {
+                    file.delete()
+                }
+            }
+            updateState { it.copy(status = PlaybackStatus.Ended, positionMs = it.durationMs) }
+            currentUtteranceId = null
+            onStateChange?.invoke(utteranceId, false)
+        }
+    }
+
     /**
      * v1.4: 设置播放速度(影响 MediaPlayer 播放速率,不影响 TTS 合成语速)。
      *
@@ -552,6 +620,10 @@ class TtsManager(
             return
         }
         if (chunk.isEmpty()) return
+        // 流式朗读暂不支持云端 TTS(设计限制),此处仅记日志便于排查,仍走系统 TTS
+        if (mediaConfig.ttsEngine != "system") {
+            Logger.d("TtsManager", "流式朗读暂不支持云端TTS，使用系统TTS")
+        }
         // 切到流式朗读前先停掉分片播放(MediaPlayer)
         stopPlayback()
         sentenceBuffer.append(chunk)

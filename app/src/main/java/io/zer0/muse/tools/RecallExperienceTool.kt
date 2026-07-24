@@ -4,10 +4,10 @@ import io.zer0.muse.data.experience.ExperienceRepository
 import kotlinx.coroutines.runBlocking
 
 /**
- * recall_experience tool (openhanako experience.ts port).
+ * recall_experience 工具(openhanako experience.ts 移植)。
  *
- * Progressive disclosure: no params returns category index,
- * with category returns specific experiences.
+ * 渐进式披露:不带参数时返回分类索引,
+ * 带分类名时返回该分类下的具体经验。
  */
 object RecallExperienceTool {
 
@@ -32,7 +32,7 @@ object RecallExperienceTool {
             if (all.isEmpty()) return@runBlocking "Experience library is empty. No experiences recorded yet."
 
             if (category.isNullOrEmpty()) {
-                // Return index: group by category
+                // 返回索引:按分类分组
                 val grouped = all.groupBy { it.category }
                 buildString {
                     appendLine("Experience Library (${all.size} entries, ${grouped.size} categories):")

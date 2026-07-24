@@ -15,7 +15,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
-import java.io.IOException
 
 /**
  * v1.97: 云端 TTS 服务 — 支持 OpenAI / MiniMax / Edge TTS。
@@ -285,8 +284,8 @@ class CloudTtsService(
     /**
      * Gemini TTS — POST {endpoint}/models/{model}:generateContent
      *
-     * Uses Gemini's text-to-speech capability via the generateContent endpoint.
-     * Response contains inline audio data in base64.
+     * 通过 generateContent 端点使用 Gemini 的文本转语音能力。
+     * 响应内含 base64 编码的音频数据。
      */
     private suspend fun synthesizeGemini(
         text: String,
@@ -337,7 +336,7 @@ class CloudTtsService(
             val body = resp.body.string()
             val json = Json { ignoreUnknownKeys = true }
             val root = json.parseToJsonElement(body) as? JsonObject ?: return ByteArray(0)
-            // Extract base64 audio from candidates[0].content.parts[0].inlineData.data
+            // 从 candidates[0].content.parts[0].inlineData.data 提取 base64 音频
             val candidates = root["candidates"]?.let { it as? kotlinx.serialization.json.JsonArray }
             val firstCandidate = candidates?.firstOrNull() as? JsonObject ?: return ByteArray(0)
             val content = firstCandidate["content"] as? JsonObject ?: return ByteArray(0)
@@ -439,7 +438,7 @@ class CloudTtsService(
      * 响应: audio/mpeg 二进制流
      *
      * voice 参数为 ElevenLabs 的 Voice ID(如 21m00Tcm4TlvDq8ikWAM)。
-     * 失败抛 [IOException],由上层 [synthesizeToFile] 统一捕获回退到系统 TTS。
+     * 失败返回空字节数组,由上层 [synthesizeToFile] 统一回退到系统 TTS。
      */
     private suspend fun synthesizeElevenLabs(
         text: String,
@@ -470,7 +469,8 @@ class CloudTtsService(
 
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) {
-                throw IOException("ElevenLabs TTS failed: HTTP ${resp.code}")
+                Logger.w(TAG, "ElevenLabs 合成失败: HTTP ${resp.code}")
+                return ByteArray(0)
             }
             return resp.body.bytes()
         }
@@ -483,7 +483,7 @@ class CloudTtsService(
      * 请求体: {"model": "playai-tts", "input": "...", "voice": "Fritz-PlayAI"}
      * 响应: audio/mpeg 二进制流
      *
-     * 失败抛 [IOException]。
+     * 失败返回空字节数组。
      */
     private suspend fun synthesizeGroq(
         text: String,
@@ -511,7 +511,8 @@ class CloudTtsService(
 
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) {
-                throw IOException("Groq TTS failed: HTTP ${resp.code}")
+                Logger.w(TAG, "Groq 合成失败: HTTP ${resp.code}")
+                return ByteArray(0)
             }
             return resp.body.bytes()
         }
@@ -526,7 +527,7 @@ class CloudTtsService(
      *         "parameters": {"voice": "longxiaochun"}}
      * 响应: JSON,音频在 output.audio.url 字段(需二次下载)。
      *
-     * 失败抛 [IOException]。
+     * 失败返回空字节数组。
      */
     private suspend fun synthesizeQwen(
         text: String,
@@ -558,23 +559,31 @@ class CloudTtsService(
 
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) {
-                throw IOException("Qwen TTS failed: HTTP ${resp.code}")
+                Logger.w(TAG, "Qwen 合成失败: HTTP ${resp.code}")
+                return ByteArray(0)
             }
             val body = resp.body.string()
             val json = Json { ignoreUnknownKeys = true }
             val root = json.parseToJsonElement(body) as? JsonObject
-                ?: throw IOException("Qwen TTS response is not JSON")
+                ?: run {
+                    Logger.w(TAG, "Qwen 合成失败: 响应非 JSON 格式")
+                    return ByteArray(0)
+                }
             // DashScope 原生返回结构:output.audio.url(兼容顶层 audio.url)
             val audioUrl = (root["output"] as? JsonObject)
                 ?.let { it["audio"] as? JsonObject }
                 ?.let { it["url"]?.jsonPrimitive?.contentOrNull }
                 ?: (root["audio"] as? JsonObject)?.let { it["url"]?.jsonPrimitive?.contentOrNull }
-                ?: throw IOException("Qwen TTS response missing output.audio.url")
+                ?: run {
+                    Logger.w(TAG, "Qwen 合成失败: 响应缺少 output.audio.url")
+                    return ByteArray(0)
+                }
             // 二次下载音频文件
             val audioReq = Request.Builder().url(audioUrl).build()
             client.newCall(audioReq).execute().use { audioResp ->
                 if (!audioResp.isSuccessful) {
-                    throw IOException("Qwen TTS audio download failed: HTTP ${audioResp.code}")
+                    Logger.w(TAG, "Qwen 合成失败: 音频下载失败 HTTP ${audioResp.code}")
+                    return ByteArray(0)
                 }
                 return audioResp.body.bytes()
             }
@@ -588,7 +597,7 @@ class CloudTtsService(
      * 请求体: {"model": "step-tts-mini", "input": "...", "voice": "speaker1"}
      * 响应: audio/mpeg 二进制流
      *
-     * 失败抛 [IOException]。
+     * 失败返回空字节数组。
      */
     private suspend fun synthesizeStep(
         text: String,
@@ -616,7 +625,8 @@ class CloudTtsService(
 
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) {
-                throw IOException("Step TTS failed: HTTP ${resp.code}")
+                Logger.w(TAG, "Step 合成失败: HTTP ${resp.code}")
+                return ByteArray(0)
             }
             return resp.body.bytes()
         }
@@ -626,7 +636,7 @@ class CloudTtsService(
      * xAI TTS — POST {endpoint}/audio/speech(OpenAI 兼容格式)
      *
      * 注:xAI 暂未提供 TTS 服务,本方法仅保留接口占位。
-     * 调用时直接抛 [IOException],由上层 [synthesizeToFile] 捕获后回退到系统 TTS。
+     * 调用时返回空字节数组,由上层 [synthesizeToFile] 回退到系统 TTS。
      * 待 xAI 官方上线 TTS 后,补全请求体即可启用。
      */
     private suspend fun synthesizeXai(
@@ -640,7 +650,7 @@ class CloudTtsService(
         val baseUrl = endpoint.ifBlank { XAI_DEFAULT_ENDPOINT }
         val modelName = model.ifBlank { XAI_DEFAULT_MODEL }
         val voiceName = voice.ifBlank { XAI_DEFAULT_VOICE }
-        Logger.w(TAG, "xAI TTS not yet available (endpoint=$baseUrl, model=$modelName, voice=$voiceName)")
-        throw IOException("xAI TTS not yet available, fallback to system TTS")
+        Logger.w(TAG, "xAI 合成失败: 服务暂不可用 (endpoint=$baseUrl, model=$modelName, voice=$voiceName)")
+        return ByteArray(0)
     }
 }

@@ -6,10 +6,10 @@ import kotlinx.serialization.json.Json
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * todo_write tool (openhanako todo.ts port).
+ * todo_write 工具(openhanako todo.ts 移植)。
  *
- * Replacement-style protocol, three-state state machine.
- * Each call replaces the full todo list for a session.
+ * 替换式协议,三态状态机。
+ * 每次调用替换会话的完整待办列表。
  */
 object TodoTool {
 
@@ -23,7 +23,7 @@ object TodoTool {
     @Serializable
     data class TodoList(val todos: List<TodoItem> = emptyList())
 
-    // Session-scoped storage: sessionId -> TodoList
+    // 会话级存储:sessionId -> TodoList
     private val sessionTodos = ConcurrentHashMap<String, TodoList>()
 
     fun toolDef() = ToolRegistry.ToolDef(
@@ -48,7 +48,7 @@ object TodoTool {
 
         val todos = try {
             AppJson.decodeFromString(TodoList.serializer(), TodoList.serializer().let {
-                // Parse as array then wrap
+                // 先解析为数组再包装
                 val arr = AppJson.decodeFromString(
                     kotlinx.serialization.builtins.ListSerializer(TodoItem.serializer()),
                     todosJson,
@@ -59,7 +59,7 @@ object TodoTool {
                 )
             })
         } catch (e: Exception) {
-            // Try parsing as wrapped object
+            // 尝试作为包装对象解析
             try {
                 AppJson.decodeFromString(TodoList.serializer(), todosJson)
             } catch (e2: Exception) {
@@ -69,7 +69,7 @@ object TodoTool {
 
         sessionTodos[sessionId] = todos
 
-        // Build summary
+        // 构建摘要
         val counts = mutableMapOf("pending" to 0, "in_progress" to 0, "completed" to 0)
         for (td in todos.todos) {
             counts[td.status] = (counts[td.status] ?: 0) + 1

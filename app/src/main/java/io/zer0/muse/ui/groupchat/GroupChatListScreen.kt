@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import io.zer0.muse.ui.common.WindowWidthClass
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -54,6 +56,7 @@ import io.zer0.muse.data.groupchat.GroupChatEntity
 import io.zer0.muse.data.groupchat.GroupChatMessageEntity
 import io.zer0.muse.ui.common.AssistantAvatar
 import io.zer0.muse.ui.common.EmptyState
+import io.zer0.muse.ui.common.rememberWindowWidthClass
 import io.zer0.muse.ui.common.MuseDialog
 import io.zer0.muse.ui.theme.MuseDateFormats
 import io.zer0.muse.ui.theme.MusePaddings
@@ -84,8 +87,26 @@ fun GroupChatListScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    // P2-1: 大屏(Expanded)下内容区居中限宽 720dp
+    val widthClass = rememberWindowWidthClass()
 
-    Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
+    // P2-1: Box 包裹,Expanded 模式下居中限宽
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (widthClass == WindowWidthClass.Expanded) {
+                        Modifier.widthIn(max = 720.dp)
+                    } else {
+                        Modifier
+                    }
+                )
+                .navigationBarsPadding(),
+        ) {
         // 顶部标题栏(标题 + 新建按钮)
         Row(
             modifier = Modifier
@@ -157,6 +178,7 @@ fun GroupChatListScreen(
                 }
             }
         }
+    }
     }
 
     // 新建群聊对话框

@@ -9,7 +9,9 @@
     <string name="translate_page_copy">Copy result</string>
     <string name="translate_page_paste">Paste</string>
     <string name="translate_page_clear">Clear</string>
+    <string name="translate_page_source_language">Source language</string>
     <string name="translate_page_target_language">Target language</string>
+    <string name="translate_page_auto_detect">Auto-detect</string>
     <string name="translate_page_translating">Translating...</string>
     <string name="translate_page_error_no_provider">Please configure an AI provider in Settings first</string>
     <string name="translate_page_error_empty_input">Please enter text to translate</string>
@@ -17,7 +19,14 @@
     <string name="translate_page_copied">Copied to clipboard</string>
     <string name="translate_page_pasted">Pasted</string>
     <string name="translate_page_clipboard_empty">Clipboard is empty</string>
-    <string name="translate_page_swap">Clear and re-enter</string>
+    <string name="translate_page_swap">Swap languages</string>
+    <string name="translate_page_copy_source">Copy source</string>
+    <string name="translate_page_speak_source">Speak source</string>
+    <string name="translate_page_speak_result">Speak translation</string>
+    <string name="translate_page_use_as_input">Use as input</string>
+    <string name="translate_page_send_to_chat">Send</string>
+    <string name="translate_page_style_label">Translation style</string>
+    <string name="translate_page_tts_not_ready">TTS is not ready, please try again later</string>
     <!-- v1.97: Translation history (in-memory, last 20 entries, not persisted) -->
     <string name="translate_page_history_section">History</string>
     <string name="translate_page_history_empty">No translation history yet</string>

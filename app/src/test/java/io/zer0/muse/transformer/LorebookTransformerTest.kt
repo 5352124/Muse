@@ -48,7 +48,7 @@ class LorebookTransformerTest {
         )
         val result = transformer.transform(messages, context)
 
-        // result: declaration + system + lorebook-after + user = 4
+        // 结果:declaration + system + lorebook-after + user = 4
         assertEquals(4, result.size)
         assertEquals(MessageRole.SYSTEM, result[2].role)
         assertTrue(result[2].content.contains("lorebook"))
@@ -101,7 +101,7 @@ class LorebookTransformerTest {
         )
         val result = transformer.transform(messages, context)
 
-        // result: declaration + lorebook-before + system + user = 4
+        // 结果:declaration + lorebook-before + system + user = 4
         assertEquals(4, result.size)
         assertTrue(result[1].content.contains("lorebook"))
         assertTrue(result[1].content.contains("巫师协会"))
@@ -123,7 +123,7 @@ class LorebookTransformerTest {
         )
         val result = transformer.transform(messages, context)
 
-        // result: declaration + system + lorebook1 + lorebook2 + user = 5
+        // 结果:declaration + system + lorebook1 + lorebook2 + user = 5
         assertEquals(5, result.size)
         val loreMsgs = result.filter { it.content.contains("lorebook") }
         assertEquals(2, loreMsgs.size)
@@ -144,7 +144,7 @@ class LorebookTransformerTest {
         )
         val result = transformer.transform(messages, context)
 
-        // Sanitized name should not contain raw double quotes
+        // 净化后的名称不应包含原始双引号
         assertTrue(!result[1].content.contains("test\"") || result[1].content.contains("test "))
     }
 }

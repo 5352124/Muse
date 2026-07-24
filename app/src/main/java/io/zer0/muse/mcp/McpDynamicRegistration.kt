@@ -126,7 +126,7 @@ object McpDynamicRegistration {
                 return@resultOf null
             }
 
-            // Step 1b: GET {auth_server}/.well-known/oauth-authorization-server
+            // 步骤 1b: GET {auth_server}/.well-known/oauth-authorization-server
             for (authServer in authServers) {
                 val authMeta = fetchJson("$authServer/.well-known/oauth-authorization-server") ?: continue
                 val authEndpoint = authMeta["authorization_endpoint"]?.jsonPrimitive?.contentOrNull ?: continue

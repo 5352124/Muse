@@ -1,4 +1,4 @@
-﻿package io.zer0.muse.transformer
+package io.zer0.muse.transformer
 
 import io.zer0.ai.core.MessageRole
 import io.zer0.ai.core.UIMessage
@@ -115,11 +115,11 @@ class ThinkTagTransformerTest {
         )
         val result = transformer.transform(messages, TransformContext())
 
-        // SYSTEM message unchanged
+        // SYSTEM 消息保持不变
         assertEquals(messages[0], result[0])
-        // USER message unchanged (even with think tag)
+        // USER 消息保持不变(即使包含 think 标签)
         assertEquals(messages[1], result[1])
-        // ASSISTANT message processed
+        // ASSISTANT 消息已处理
         assertEquals("回复", result[2].content)
         assertEquals("助手思考", result[2].reasoning)
     }
@@ -136,7 +136,7 @@ class ThinkTagTransformerTest {
         val result = transformer.transform(messages, TransformContext())
 
         assertEquals("已有推理", result[0].reasoning)
-        // content unchanged because existing reasoning -> skip
+        // content 保持不变,因为已有 reasoning 字段 -> 跳过处理
         assertEquals("<think>思考</think>回复", result[0].content)
     }
 

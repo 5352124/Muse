@@ -4,9 +4,9 @@ import io.zer0.memory.pin.PinnedMemoryStore
 import kotlinx.coroutines.runBlocking
 
 /**
- * unpin_memory tool (openhanako pinned-memory-store.ts port).
+ * unpin_memory 工具(openhanako pinned-memory-store.ts 移植)。
  *
- * Lets the AI remove pinned memories by keyword or id.
+ * 允许 AI 按关键词或 id 移除已置顶的记忆。
  */
 object UnpinMemoryTool {
 
@@ -31,7 +31,7 @@ object UnpinMemoryTool {
         }
         return runBlocking {
             val removed = if (!id.isNullOrEmpty()) {
-                // Try exact prefix match
+                // 尝试精确前缀匹配
                 val all = store.getAll()
                 val target = all.firstOrNull { it.id.startsWith(id) }
                 if (target != null) store.removeById(target.id) else false

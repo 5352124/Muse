@@ -33,7 +33,6 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.InsertDriveFile
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -59,7 +58,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.zer0.muse.R
 import io.zer0.muse.ui.common.EmptyState
+import io.zer0.muse.ui.common.ErrorStateBox
+import io.zer0.muse.ui.common.IosFloatingButton
 import io.zer0.muse.ui.common.IosTopBar
+import io.zer0.muse.ui.common.LoadingState
 import io.zer0.muse.ui.common.MuseDialog
 import io.zer0.muse.ui.common.MuseToast
 import io.zer0.muse.ui.common.WindowWidthClass
@@ -85,7 +87,7 @@ import java.util.Locale
  *  - 中间 [LazyColumn]:目录在前/文件在后,每条 [WorkspaceManager.WorkspaceEntry]
  *    点击目录进入子目录;点击文件弹 [MuseDialog] 显示内容;
  *    长按弹 [MuseDialog] 操作菜单(删除 / 重命名 / 复制路径)
- *  - 底部 [FloatingActionButton](MuseShapes.mega 圆角):弹出"新建"对话框
+ *  - 底部 [IosFloatingButton]:弹出"新建"对话框
  *    (新建文件 / 新建文件夹 二选一)
  *  - 空目录展示 [EmptyState]
  *
@@ -178,14 +180,11 @@ fun WorkspaceScreen(
         },
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
-            FloatingActionButton(
+            IosFloatingButton(
+                icon = Icons.Filled.Add,
                 onClick = { createDialog = CreateType.FILE },
-                shape = MuseShapes.mega,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.workspace_new_file))
-            }
+                contentDescription = stringResource(R.string.workspace_new_file),
+            )
         },
     ) { innerPadding ->
         Box(
@@ -202,24 +201,19 @@ fun WorkspaceScreen(
                             .padding(top = innerPadding.calculateTopPadding()),
                         contentAlignment = Alignment.Center,
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(MuseIconSizes.iconMedium),
-                            strokeWidth = 2.dp,
-                        )
+                        LoadingState()
                     }
                 }
                 errorMsg != null -> {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(top = innerPadding.calculateTopPadding())
-                            .padding(MusePaddings.screen),
+                            .padding(top = innerPadding.calculateTopPadding()),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            text = errorMsg ?: "",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error,
+                        ErrorStateBox(
+                            message = errorMsg ?: "",
+                            onRetry = { reload() },
                         )
                     }
                 }

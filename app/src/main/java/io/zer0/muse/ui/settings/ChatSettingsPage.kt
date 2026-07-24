@@ -43,7 +43,7 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.Waves
-import androidx.compose.material3.FilterChip
+import io.zer0.muse.ui.common.IosChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import io.zer0.muse.ui.common.IosSlider
@@ -61,7 +61,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -82,6 +81,7 @@ import io.zer0.muse.ui.common.SectionLabel
 import io.zer0.muse.ui.common.SettingsGroup
 import io.zer0.muse.ui.common.SettingsGroupDivider
 import io.zer0.muse.ui.common.SettingsItemRow
+import io.zer0.muse.ui.common.SettingsSegmentedRow
 import io.zer0.muse.ui.common.SettingsSwitchRow
 import io.zer0.muse.ui.theme.MuseIconSizes
 import io.zer0.muse.ui.theme.MusePaddings
@@ -237,32 +237,49 @@ fun ChatSettingsPage(
                 }
                 SettingsGroupDivider()
                 // 风格选择:concise/balanced/detailed
-                SegmentedOptionRow(
+                val styleOptions = listOf(
+                    stringResource(R.string.settings_chat_style_concise),
+                    stringResource(R.string.settings_chat_style_balanced),
+                    stringResource(R.string.settings_chat_style_detailed),
+                )
+                val selectedStyleIndex = when (prefs.responseStyle) {
+                    "concise" -> 0; "detailed" -> 2; else -> 1
+                }
+                SettingsSegmentedRow(
                     icon = Icons.Outlined.Psychology,
                     title = stringResource(R.string.settings_chat_style),
                     subtitle = stringResource(R.string.settings_chat_style_subtitle),
-                    options = listOf(
-                        "concise" to stringResource(R.string.settings_chat_style_concise),
-                        "balanced" to stringResource(R.string.settings_chat_style_balanced),
-                        "detailed" to stringResource(R.string.settings_chat_style_detailed),
-                    ),
-                    selectedValue = prefs.responseStyle,
-                    onSelect = { v -> update { it.copy(responseStyle = v) } },
+                    options = styleOptions,
+                    selectedIndex = selectedStyleIndex,
+                    onSelectedChange = { idx ->
+                        val value = when (idx) { 0 -> "concise"; 2 -> "detailed"; else -> "balanced" }
+                        update { it.copy(responseStyle = value) }
+                    },
                 )
                 SettingsGroupDivider()
                 // 语气选择:neutral/friendly/formal/humorous
-                SegmentedOptionRow(
+                val toneOptions = listOf(
+                    stringResource(R.string.settings_chat_tone_neutral),
+                    stringResource(R.string.settings_chat_tone_friendly),
+                    stringResource(R.string.settings_chat_tone_formal),
+                    stringResource(R.string.settings_chat_tone_humorous),
+                )
+                val selectedToneIndex = when (prefs.responseTone) {
+                    "neutral" -> 0; "friendly" -> 1; "formal" -> 2; "humorous" -> 3; else -> 0
+                }
+                SettingsSegmentedRow(
                     icon = Icons.Outlined.SmartButton,
                     title = stringResource(R.string.settings_chat_tone),
                     subtitle = stringResource(R.string.settings_chat_tone_subtitle),
-                    options = listOf(
-                        "neutral" to stringResource(R.string.settings_chat_tone_neutral),
-                        "friendly" to stringResource(R.string.settings_chat_tone_friendly),
-                        "formal" to stringResource(R.string.settings_chat_tone_formal),
-                        "humorous" to stringResource(R.string.settings_chat_tone_humorous),
-                    ),
-                    selectedValue = prefs.responseTone,
-                    onSelect = { v -> update { it.copy(responseTone = v) } },
+                    options = toneOptions,
+                    selectedIndex = selectedToneIndex,
+                    onSelectedChange = { idx ->
+                        val value = when (idx) {
+                            0 -> "neutral"; 1 -> "friendly"; 2 -> "formal"; 3 -> "humorous"
+                            else -> "neutral"
+                        }
+                        update { it.copy(responseTone = value) }
+                    },
                 )
             }
         }
@@ -398,91 +415,6 @@ private fun temperatureHint(value: Float): Int = when {
     value <= 1.2f -> R.string.settings_chat_temp_hint_balanced
     value <= 1.6f -> R.string.settings_chat_temp_hint_creative_low
     else -> R.string.settings_chat_temp_hint_creative
-}
-
-/**
- * 胶囊式 SegmentedControl 单选项(iOS 风格 Tab 切换)。
- *
- * @param options 候选项列表(value → 显示文案),至少 2 项
- * @param selectedValue 当前选中值
- * @param onSelect 选中回调
- */
-@Composable
-private fun SegmentedOptionRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    options: List<Pair<String, String>>,
-    selectedValue: String,
-    onSelect: (String) -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(MusePaddings.cardInner),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.outline,
-            modifier = Modifier.size(MuseIconSizes.iconMedium),
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
-            )
-            // 胶囊形容器(SegmentedControl 风格)
-            Surface(
-                shape = MuseShapes.extraLarge,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    options.forEach { (value, label) ->
-                        val selected = value == selectedValue
-                        Surface(
-                            shape = MuseShapes.semiLarge,
-                            color = if (selected) MaterialTheme.colorScheme.surface else Color.Transparent,
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable(onClick = { onSelect(value) }),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp, horizontal = 4.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = label,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                                    color = if (selected) MaterialTheme.colorScheme.onSurface
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 /**
@@ -682,16 +614,16 @@ private fun StickerLibrarySection(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                FilterChip(
+                IosChip(
                     selected = selectedCategory.isBlank(),
                     onClick = { selectedCategory = "" },
-                    label = { Text(stringResource(R.string.settings_sticker_category_all)) },
+                    label = stringResource(R.string.settings_sticker_category_all),
                 )
                 categories.forEach { cat ->
-                    FilterChip(
+                    IosChip(
                         selected = selectedCategory == cat,
                         onClick = { selectedCategory = cat },
-                        label = { Text(cat) },
+                        label = cat,
                     )
                 }
             }

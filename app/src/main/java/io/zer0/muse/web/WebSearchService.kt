@@ -158,7 +158,7 @@ class SearXNGProvider(
  * Tavily provider — AI 搜索 API(https://tavily.com),需 API key。
  *
  * 协议: POST https://api.tavily.com/search
- * Body: { "api_key": "...", "query": "...", "max_results": N, "search_depth": "basic" }
+ * 请求体: { "api_key": "...", "query": "...", "max_results": N, "search_depth": "basic" }
  * 返回: { results: [{ title, url, content, score }] }
  *
  * API key 在 settings 配置。无 key 时直接返回空列表。
@@ -1174,10 +1174,10 @@ class ExaSearchProvider(
 }
 
 /**
- * Firecrawl search provider (RikkaHub Firecrawl port).
+ * Firecrawl 搜索 provider(RikkaHub Firecrawl 移植版)。
  *
- * Protocol: POST {endpoint}/search with JSON body.
- * Requires API key. Supports web crawling and search.
+ * 协议: POST {endpoint}/search,请求体为 JSON。
+ * 需要 API key。支持网页抓取与搜索。
  */
 class FirecrawlProvider(
     private val client: OkHttpClient,
@@ -1186,51 +1186,52 @@ class FirecrawlProvider(
 ) : WebSearchService {
     override val name: String = "Firecrawl"
 
-    override suspend fun search(query: String, maxResults: Int): List<WebSearchResult> {
-        val payload = buildJsonObject {
-            put("query", JsonPrimitive(query))
-            put("limit", JsonPrimitive(maxResults))
-            put("lang", JsonPrimitive("en"))
-        }.toString()
+    override suspend fun search(query: String, maxResults: Int): List<WebSearchResult> =
+        withContext(AppDispatchers.io) {
+            // H-WS1: 用 resultOf 替代 try/catch,避免吞 CancellationException,与其他 provider 一致
+            resultOf {
+                val payload = buildJsonObject {
+                    put("query", JsonPrimitive(query))
+                    put("limit", JsonPrimitive(maxResults))
+                    put("lang", JsonPrimitive("en"))
+                }.toString()
 
-        val req = Request.Builder().url("$endpoint/search")
-            .header("Content-Type", "application/json")
-            .header("Authorization", "Bearer $apiKey")
-            .post(payload.toRequestBody("application/json".toMediaType()))
-            .build()
+                val req = Request.Builder().url("$endpoint/search")
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer $apiKey")
+                    .post(payload.toRequestBody("application/json".toMediaType()))
+                    .build()
 
-        return try {
-            client.executeAsync(req).use { resp ->
-                // 429/402 限速检测：标记 provider 并抛 SearchRateLimitException（由 catch 重抛到 UI）
-                SearchRateLimiter.assertNotRateLimited(name, resp)
-                if (!resp.isSuccessful) return emptyList()
-                val body = resp.body.string()
-                val json = Json { ignoreUnknownKeys = true }
-                val root = json.parseToJsonElement(body) as? JsonObject ?: return emptyList()
-                val data = root["data"]?.let { it as? JsonArray } ?: return emptyList()
-                data.take(maxResults).mapNotNull { item ->
-                    val obj = item as? JsonObject ?: return@mapNotNull null
-                    val url = obj["url"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                    val title = obj["title"]?.jsonPrimitive?.contentOrNull
-                        ?: obj["metadata"]?.let { (it as? JsonObject)?.get("title") }
-                            ?.jsonPrimitive?.contentOrNull ?: url
-                    val snippet = obj["description"]?.jsonPrimitive?.contentOrNull
-                        ?: obj["markdown"]?.jsonPrimitive?.contentOrNull?.take(300) ?: ""
-                    WebSearchResult(
-                        title = stripHtmlSimple(title),
-                        url = url,
-                        snippet = if (snippet.length > 300) snippet.take(300) + "\u2026" else snippet,
-                        source = name,
-                    )
+                client.executeAsync(req).use { resp ->
+                    // 429/402 限速检测：标记 provider 并抛 SearchRateLimitException（由 onError 重抛到 UI）
+                    SearchRateLimiter.assertNotRateLimited(name, resp)
+                    if (!resp.isSuccessful) return@use emptyList()
+                    val body = resp.body.string()
+                    val json = Json { ignoreUnknownKeys = true }
+                    val root = json.parseToJsonElement(body) as? JsonObject ?: return@use emptyList()
+                    val data = root["data"]?.let { it as? JsonArray } ?: return@use emptyList()
+                    data.take(maxResults).mapNotNull { item ->
+                        val obj = item as? JsonObject ?: return@mapNotNull null
+                        val url = obj["url"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                        val title = obj["title"]?.jsonPrimitive?.contentOrNull
+                            ?: obj["metadata"]?.let { (it as? JsonObject)?.get("title") }
+                                ?.jsonPrimitive?.contentOrNull ?: url
+                        val snippet = obj["description"]?.jsonPrimitive?.contentOrNull
+                            ?: obj["markdown"]?.jsonPrimitive?.contentOrNull?.take(300) ?: ""
+                        WebSearchResult(
+                            title = stripHtmlSimple(title),
+                            url = url,
+                            snippet = if (snippet.length > 300) snippet.take(300) + "\u2026" else snippet,
+                            source = name,
+                        )
+                    }
                 }
-            }
-        } catch (e: Exception) {
-            // 限速异常向上抛，供 UI 给用户友好提示；其余异常照旧吞掉返回空列表
-            if (e is SearchRateLimitException) throw e
-            Logger.w("Firecrawl", "search failed: ${e.message}")
-            emptyList()
+            }.onError { _, t ->
+                // 限速异常向上抛，供 UI 给用户友好提示；其余异常照旧吞掉返回空列表
+                if (t is SearchRateLimitException) throw t
+                Logger.w("Firecrawl", "search error", t)
+            }.getOrNull() ?: emptyList()
         }
-    }
 }
 
 /**
@@ -1328,16 +1329,11 @@ class PerplexitySearchProvider(
                     source = name,
                 )
             }
-            // 无引用但 AI 给出答案,降级为单条结果保留答案
-            content.isNotBlank() -> listOf(
-                WebSearchResult(
-                    title = "Perplexity AI",
-                    url = "",
-                    snippet = snippet,
-                    source = name,
-                ),
-            )
-            else -> emptyList()
+            // 无引用时直接返回空列表,避免构造 url="" 的无效结果污染下游
+            else -> {
+                Logger.d("WebSearchService", "Perplexity 无引用结果")
+                emptyList()
+            }
         }
     }
 

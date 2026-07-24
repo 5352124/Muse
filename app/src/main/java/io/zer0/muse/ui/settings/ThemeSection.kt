@@ -35,7 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
+import io.zer0.muse.ui.common.IosSlider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -76,6 +76,7 @@ import io.zer0.muse.ui.theme.MuseShapes
 import io.zer0.muse.ui.theme.PresetThemes
 import io.zer0.muse.ui.theme.PresetTheme
 import io.zer0.muse.ui.theme.semiLarge
+import io.zer0.muse.ui.theme.tiny
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -529,7 +530,7 @@ private fun ThemePreviewCard() {
             .padding(vertical = 8.dp),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(MusePaddings.screen),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
@@ -632,7 +633,7 @@ private fun ThemeGridCard(
                 indication = null,
                 onClick = onClick,
             ),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        shape = MuseShapes.medium,
         color = surfaceColor,
         border = androidx.compose.foundation.BorderStroke(
             width = if (isSelected) 2.dp else 0.dp,
@@ -656,7 +657,7 @@ private fun ThemeGridCard(
                         modifier = Modifier
                             .weight(1f)
                             .height(8.dp)
-                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                            .clip(MuseShapes.tiny)
                             .background(primaryColor.copy(alpha = 0.3f)),
                     )
                 }
@@ -1194,10 +1195,11 @@ private fun ColorPickerRow(
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.width(16.dp),
                     )
-                    Slider(
+                    IosSlider(
                         value = hue,
                         onValueChange = { updateColor(it, saturation, lightness) },
                         valueRange = 0f..360f,
+                        showValueLabel = false,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -1208,10 +1210,11 @@ private fun ColorPickerRow(
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.width(16.dp),
                     )
-                    Slider(
+                    IosSlider(
                         value = saturation,
                         onValueChange = { updateColor(hue, it, lightness) },
                         valueRange = 0f..1f,
+                        showValueLabel = false,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -1222,10 +1225,11 @@ private fun ColorPickerRow(
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.width(16.dp),
                     )
-                    Slider(
+                    IosSlider(
                         value = lightness,
                         onValueChange = { updateColor(hue, saturation, it) },
                         valueRange = 0f..1f,
+                        showValueLabel = false,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -1280,7 +1284,7 @@ private fun ThemeColorPreview(
                 .fillMaxWidth()
                 .clip(MuseShapes.medium)
                 .background(scheme.surface)
-                .padding(16.dp),
+                .padding(MusePaddings.screen),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             ColorSwatch(scheme.primary, "P")

@@ -3,6 +3,8 @@ package io.zer0.muse.ui.account
 import android.util.Patterns
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
+import io.zer0.muse.ui.theme.MuseAnimation
+import io.zer0.muse.ui.theme.MusePaddings
 import io.zer0.muse.util.MusePatterns
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -163,7 +165,7 @@ private fun LoggedInView(
     Column(
         modifier = modifier
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = MusePaddings.screen)
             .navigationBarsPadding(),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -355,7 +357,7 @@ private fun LoginRegisterView(
         modifier = modifier
             .verticalScroll(rememberScrollState())
             .imePadding()
-            .padding(horizontal = 24.dp)
+            .padding(horizontal = MusePaddings.largeGap)
             .navigationBarsPadding(),
     ) {
         Spacer(Modifier.height(16.dp))
@@ -376,7 +378,7 @@ private fun LoginRegisterView(
             targetState = mode,
             transitionSpec = {
                 (fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 4 }) togetherWith
-                    (fadeOut(tween(180)) + slideOutVertically(tween(180)) { -it / 4 })
+                    (fadeOut(tween(MuseAnimation.FAST_NORMAL_MS)) + slideOutVertically(tween(MuseAnimation.FAST_NORMAL_MS)) { -it / 4 })
             },
             label = "auth_form",
         ) { current ->
@@ -541,7 +543,7 @@ private fun LoginRegisterView(
                     error = null
                     onGuestMode()
                 }
-                .padding(vertical = 8.dp),
+                .padding(vertical = MusePaddings.contentGap),
             textAlign = TextAlign.Center,
         )
 
@@ -665,7 +667,7 @@ private fun SegmentItem(
         modifier = modifier.clickable(onClick = onClick),
     ) {
         Box(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = MusePaddings.auxGap),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -926,7 +928,7 @@ private fun SwitchLinkText(
     val prefix = if (mode == AuthMode.LOGIN) stringResource(R.string.account_no_account) else stringResource(R.string.account_has_account)
     val action = if (mode == AuthMode.LOGIN) stringResource(R.string.account_register_action) else stringResource(R.string.account_login_action)
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = MusePaddings.labelVerticalGap),
         horizontalArrangement = Arrangement.Center,
     ) {
         Text(
@@ -955,7 +957,7 @@ private fun DividerWithText(text: String) {
             text = text,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.outline,
-            modifier = Modifier.padding(horizontal = 12.dp),
+            modifier = Modifier.padding(horizontal = MusePaddings.itemGap),
         )
         Box(modifier = Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
     }
@@ -976,7 +978,7 @@ private fun ThirdPartyButton(
         modifier = modifier.height(48.dp).clickable(enabled = enabled, onClick = onClick),
     ) {
         Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = MusePaddings.contentGap),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
@@ -1009,7 +1011,7 @@ private fun AccountFeatureRow(
     subtitle: String,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = MusePaddings.auxGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(

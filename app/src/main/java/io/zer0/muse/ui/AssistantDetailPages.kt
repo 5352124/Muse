@@ -29,9 +29,8 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import io.zer0.muse.ui.common.IosChip
 import androidx.compose.material3.Surface
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -922,22 +921,10 @@ private fun <T> MultiSelectChipsDialog(
                     items.forEach { item ->
                         val id = itemId(item)
                         val selected = id in selectedIds
-                        FilterChip(
+                        IosChip(
                             selected = selected,
                             onClick = { onToggle(id) },
-                            label = {
-                                Text(
-                                    text = itemLabel(item),
-                                    style = MaterialTheme.typography.labelMedium,
-                                )
-                            },
-                            shape = MuseShapes.large,
-                            colors = FilterChipDefaults.filterChipColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            ),
+                            label = itemLabel(item),
                         )
                     }
                 }
@@ -1669,17 +1656,10 @@ private fun RegexRuleEditDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     scopeOptions.forEach { (value, label) ->
-                        FilterChip(
+                        IosChip(
                             selected = scope == value,
                             onClick = { scope = value },
-                            label = { Text(label) },
-                            shape = MuseShapes.large,
-                            colors = FilterChipDefaults.filterChipColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            ),
+                            label = label,
                         )
                     }
                 }
@@ -1761,21 +1741,14 @@ private fun CapabilityChipsSection(
                 ) {
                     AgentCapability.ALL_CAPABILITIES.forEach { capability ->
                         val isSelected = capability in selected
-                        FilterChip(
+                        IosChip(
                             selected = isSelected,
                             onClick = {
                                 val current = AgentCapability.parseCapabilitiesJson(capabilitiesJson)
                                 val updated = if (isSelected) current - capability else current + capability
                                 onCapabilitiesChange(AgentCapability.toJson(updated))
                             },
-                            label = { Text(AgentCapability.displayName(capability)) },
-                            shape = MuseShapes.large,
-                            colors = FilterChipDefaults.filterChipColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            ),
+                            label = AgentCapability.displayName(capability),
                         )
                     }
                 }

@@ -45,7 +45,7 @@ class ToolConfigStore(private val context: Context) {
         return policies[toolName] ?: ToolApprovalPolicy.ALWAYS_ALLOW
     }
 
-    /** Set the approval policy for a specific tool. */
+    /** 设置指定工具的审批策略。 */
     suspend fun setPolicy(toolName: String, policy: ToolApprovalPolicy) {
         context.toolDataStore.edit { prefs ->
             val current = parsePolicies(prefs)
@@ -62,7 +62,7 @@ class ToolConfigStore(private val context: Context) {
         }
     }
 
-    /** Resolve the approval state for a tool call based on stored policy. */
+    /** 根据已存储的策略解析工具调用的审批状态。 */
     suspend fun resolveApprovalState(toolName: String): ToolApprovalState {
         val policy = getPolicy(toolName)
         return when (policy) {

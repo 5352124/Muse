@@ -42,7 +42,7 @@ class SessionFileManager(private val context: Context) {
         } ?: emptyList()
     }
 
-    /** Add a file to a session (copy from source). */
+    /** 向会话添加文件(从源文件复制)。 */
     suspend fun addFile(sessionId: String, sourceFile: File, mimeType: String = ""): SessionFile? = withContext(Dispatchers.IO) {
         if (!sourceFile.exists()) return@withContext null
         val destDir = sessionDir(sessionId)
@@ -57,12 +57,12 @@ class SessionFileManager(private val context: Context) {
         if (file.exists()) file.delete() else false
     }
 
-    /** Clean up all files for a session. */
+    /** 清理会话的所有文件。 */
     suspend fun clearSession(sessionId: String) = withContext(Dispatchers.IO) {
         sessionDir(sessionId).deleteRecursively()
     }
 
-    /** Get total storage used by session files. */
+    /** 获取会话文件占用的总存储空间。 */
     suspend fun totalSize(): Long = withContext(Dispatchers.IO) {
         val root = File(context.filesDir, DIR_NAME)
         root.walkTopDown().filter { it.isFile }.sumOf { it.length() }

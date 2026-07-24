@@ -302,7 +302,14 @@ class McpRegistry(
                     it == McpConnectionState.FAILED ||
                     it == McpConnectionState.NEEDS_AUTH
             }
-        } ?: client.state.value
+        }
+        if (finalState == null) {
+            // 超时:底层 client.start() 启动的连接协程仍在后台运行,
+            // 直接断开 client(其 close() 会 scope.cancel() 取消所有协程),避免 registry 状态不准
+            Logger.w(TAG, "[${config.id}] connectServer 10s 超时,取消底层连接")
+            disconnectServer(config.id)
+            return
+        }
         updateState(config.id, finalState)
 
         // 连接成功,拉取 tools 并注册到 ToolRegistry

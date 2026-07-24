@@ -7,17 +7,17 @@ import io.zer0.muse.notification.MuseNotificationManager
 import android.content.Context
 
 /**
- * HanaAgent tools registrar (openhanako tool system port).
+ * HanaAgent 工具注册器（移植自 openhanako 工具系统）。
  *
- * Registers all HanaAgent-ported tools into the existing ToolRegistry:
- *  - pin_memory / unpin_memory (Phase 1C)
- *  - recall_experience / record_experience (Phase 3B)
- *  - search_memory (Phase 1 v6)
- *  - todo_write (Phase 4A)
- *  - show_card (Phase 4B)
- *  - notify (Phase 4C)
- *  - current_status (Phase 4D)
- *  - subagent_task (Phase 5A)
+ * 将所有从 HanaAgent 移植的工具注册到现有 ToolRegistry：
+ *  - pin_memory / unpin_memory（Phase 1C）
+ *  - recall_experience / record_experience（Phase 3B）
+ *  - search_memory（Phase 1 v6）
+ *  - todo_write（Phase 4A）
+ *  - show_card（Phase 4B）
+ *  - notify（Phase 4C）
+ *  - current_status（Phase 4D）
+ *  - subagent_task（Phase 5A）
  */
 class HanaAgentToolsRegistrar(
     private val toolRegistry: ToolRegistry,
@@ -30,7 +30,7 @@ class HanaAgentToolsRegistrar(
     init { registerAll() }
 
     fun registerAll() {
-        // Phase 1C: Pinned memories
+        // Phase 1C：置顶记忆
         toolRegistry.register(PinMemoryTool.toolDef()) { args ->
             PinMemoryTool.execute(args, pinnedMemoryStore)
         }
@@ -38,7 +38,7 @@ class HanaAgentToolsRegistrar(
             UnpinMemoryTool.execute(args, pinnedMemoryStore)
         }
 
-        // Phase 3B: Experience tools
+        // Phase 3B：经验工具
         toolRegistry.register(RecallExperienceTool.toolDef()) { args ->
             RecallExperienceTool.execute(args, experienceRepository)
         }
@@ -46,27 +46,27 @@ class HanaAgentToolsRegistrar(
             RecordExperienceTool.execute(args, experienceRepository)
         }
 
-        // Phase 1 v6: Long-term memory search
+        // Phase 1 v6：长期记忆搜索
         toolRegistry.register(SearchMemoryTool.toolDef()) { args ->
             SearchMemoryTool.execute(args, factStore)
         }
 
-        // Phase 4A: Todo
+        // Phase 4A：待办
         toolRegistry.register(TodoTool.toolDef()) { args ->
             TodoTool.execute(args)
         }
 
-        // Phase 4B: Show card
+        // Phase 4B：展示卡片
         toolRegistry.register(ShowCardTool.toolDef()) { args ->
             ShowCardTool.execute(args)
         }
 
-        // Phase 4C: Notify
+        // Phase 4C：通知
         toolRegistry.register(NotifyTool.toolDef()) { args ->
             NotifyTool.execute(args, notificationManager)
         }
 
-        // Phase 4D: Current status
+        // Phase 4D：当前状态
         toolRegistry.register(CurrentStatusTool.toolDef()) { args ->
             CurrentStatusTool.execute(args, context)
         }

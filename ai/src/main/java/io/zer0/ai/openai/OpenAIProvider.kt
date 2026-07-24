@@ -351,7 +351,12 @@ class OpenAIProvider(
                         }
                     } ?: (t?.message ?: ErrorCode.NETWORK_ERROR.toMessage())
                     Logger.e("OpenAIProvider", "streamChat onFailure: $msg", t)
-                    trySend(ChatStreamEvent.Error(msg, t))
+                    // v1.0.15: 已收到部分内容时发 StreamInterrupted,让 UI 保留已收内容并提示网络中断(可自动重连)
+                    if (anyDeltaSent.get()) {
+                        trySend(ChatStreamEvent.StreamInterrupted(msg, t))
+                    } else {
+                        trySend(ChatStreamEvent.Error(msg, t))
+                    }
                     close()
                 }
             })
@@ -376,9 +381,11 @@ class OpenAIProvider(
      *   在 Provider 层再加一层重试会放大延迟且难以向用户暴露进度。
      *   如确需重试,应由调用方(Worker)根据返回的异常类型决定。
      */
-    override suspend fun completeText(request: ChatRequest): ChatCompletion = withContext(Dispatchers.IO) {
+    override suspend fun completeText(request: ChatRequest): ChatCompletion = completeTextImpl(request, 0)
+
+    private suspend fun completeTextImpl(request: ChatRequest, keySwitchDepth: Int = 0): ChatCompletion = withContext(Dispatchers.IO) {
         // v1.0.7: useResponseApi=true 时走 Responses API 分支
-        if (useResponsesApi) return@withContext completeTextResponses(request)
+        if (useResponsesApi) return@withContext completeTextResponses(request, keySwitchDepth)
         val body = buildRequestBody(request, stream = false)
         // M-OAI4: 改用配置项 chatCompletionsPath(与 streamChat 一致)
         val url = baseUrl() + openAIConfig.chatCompletionsPath
@@ -399,9 +406,9 @@ class OpenAIProvider(
                 if (!resp.isSuccessful) {
                     val code = resp.code
                     // v1.0.1: 429 切换 key 重试(多 key 场景);401/403 标记 key 失败
-                    if (code == 429 && switchToNextKey()) {
-                        Logger.i("OpenAIProvider", "completeText 429 限流,已切换到下一个 key,重试")
-                        return@withContext completeText(request)
+                    if (code == 429 && keySwitchDepth < MAX_KEY_SWITCHES && switchToNextKey()) {
+                        Logger.i("OpenAIProvider", "completeText 429 限流,已切换到下一个 key,重试 ($keySwitchDepth/$MAX_KEY_SWITCHES)")
+                        return@withContext completeTextImpl(request, keySwitchDepth + 1)
                     }
                     if (code == 401 || code == 403) {
                         markKeyFailed(hardBlock = true)
@@ -753,7 +760,7 @@ class OpenAIProvider(
                 // reasoning_content 已在流式 delta 中解析,无需请求体控制
             }
             ThinkingFormat.KIMI -> {
-                // Kimi:thinking: {type: "enabled"|"disabled", keep: false}
+                // 月之暗面 Kimi:thinking: {type: "enabled"|"disabled", keep: false}
                 // keep=false 表示不保留思考链在最终响应中(节省 tokens)
                 baseMap["thinking"] = buildJsonObject {
                     put("type", if (thinkingEnabled) "enabled" else "disabled")
@@ -768,7 +775,7 @@ class OpenAIProvider(
                 }
             }
             ThinkingFormat.QWEN_CHAT_TEMPLATE -> {
-                // Qwen3-Coder:chat_template_kwargs: {enable_thinking: bool}
+                // 阿里 Qwen3-Coder:chat_template_kwargs: {enable_thinking: bool}
                 // (Qwen3-Coder 用 chat_template 协议,enable_thinking 必须嵌在 chat_template_kwargs 内)
                 baseMap["chat_template_kwargs"] = buildJsonObject {
                     put("enable_thinking", thinkingEnabled)
@@ -783,7 +790,7 @@ class OpenAIProvider(
                 }
             }
             ThinkingFormat.OPENROUTER -> {
-                // OpenRouter:reasoning: {effort: "low"|"medium"|"high"}
+                // OpenRouter 聚合中转:reasoning: {effort: "low"|"medium"|"high"}
                 // (Chat Completions 协议扩展,与 Responses API 的 reasoning 不同)
                 if (thinkingEnabled && level.effort != null) {
                     // OpenRouter 不接受 "minimal",OFF 时不发 reasoning 字段
@@ -1276,7 +1283,12 @@ class OpenAIProvider(
                         }
                     } ?: (t?.message ?: ErrorCode.NETWORK_ERROR.toMessage())
                     Logger.e("OpenAIProvider", "streamChatResponses onFailure: $msg", t)
-                    trySend(ChatStreamEvent.Error(msg, t))
+                    // v1.0.15: 已收到部分内容时发 StreamInterrupted,让 UI 保留已收内容并提示网络中断(可自动重连)
+                    if (anyDeltaSent.get()) {
+                        trySend(ChatStreamEvent.StreamInterrupted(msg, t))
+                    } else {
+                        trySend(ChatStreamEvent.Error(msg, t))
+                    }
                     close()
                 }
             })
@@ -1299,7 +1311,7 @@ class OpenAIProvider(
      *  - type="reasoning" 的 summary(推理内容,存入 reasoningContent)
      *  - type="function_call" 的 call_id/name/arguments(工具调用)
      */
-    private suspend fun completeTextResponses(request: ChatRequest): ChatCompletion = withContext(Dispatchers.IO) {
+    private suspend fun completeTextResponses(request: ChatRequest, keySwitchDepth: Int = 0): ChatCompletion = withContext(Dispatchers.IO) {
         val body = buildResponsesRequestBody(request, stream = false)
         val url = baseUrl() + openAIConfig.responsesPath
         Logger.i("OpenAIProvider", "completeTextResponses: POST $url model=${request.model}")
@@ -1317,9 +1329,9 @@ class OpenAIProvider(
             response.use { resp ->
                 if (!resp.isSuccessful) {
                     val code = resp.code
-                    if (code == 429 && switchToNextKey()) {
-                        Logger.i("OpenAIProvider", "completeTextResponses 429 限流,已切换 key,重试")
-                        return@withContext completeTextResponses(request)
+                    if (code == 429 && keySwitchDepth < MAX_KEY_SWITCHES && switchToNextKey()) {
+                        Logger.i("OpenAIProvider", "completeTextResponses 429 限流,已切换 key,重试 ($keySwitchDepth/$MAX_KEY_SWITCHES)")
+                        return@withContext completeTextResponses(request, keySwitchDepth + 1)
                     }
                     if (code == 401 || code == 403) {
                         markKeyFailed(hardBlock = true)
@@ -1610,6 +1622,8 @@ class OpenAIProvider(
         // M-OAI3: 流式重连参数
         const val MAX_RETRIES = 3
         const val RETRY_BASE_DELAY_MS = 1000L
+        // completeText 429 切换 key 最大次数,防止无限递归
+        const val MAX_KEY_SWITCHES = 3
         // M-OAI8: Vision 图片限制
         const val MAX_VISION_IMAGES = 4
         const val MAX_IMAGE_BASE64_LEN = 2 * 1024 * 1024  // 2MB

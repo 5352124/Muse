@@ -24,7 +24,6 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import io.zer0.muse.ui.common.IosDropdown
+import io.zer0.muse.ui.common.IosFloatingButton
 import io.zer0.muse.ui.common.IosSwitch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -109,7 +109,8 @@ fun LorebookScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
+            IosFloatingButton(
+                icon = Icons.Default.Add,
                 onClick = {
                     val now = System.currentTimeMillis()
                     editing = LorebookEntity(
@@ -120,10 +121,8 @@ fun LorebookScreen(
                     )
                     isNew = true
                 },
-                shape = MuseShapes.mega,
-            ) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.lorebook_new_cd))
-            }
+                contentDescription = stringResource(R.string.lorebook_new_cd),
+            )
         },
     ) { innerPadding ->
         LazyColumn(

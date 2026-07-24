@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BugReport
-import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.CircularProgressIndicator
@@ -39,6 +39,7 @@ import io.zer0.muse.ui.common.SectionLabel
 import io.zer0.muse.ui.common.SettingsGroup
 import io.zer0.muse.ui.common.SettingsGroupDivider
 import io.zer0.muse.ui.common.SettingsSwitchRow
+import io.zer0.muse.ui.theme.MusePaddings
 import io.zer0.muse.vision.VisionAnalysisException
 import io.zer0.muse.vision.VisionBridge
 import io.zer0.common.resultOf
@@ -142,7 +143,7 @@ fun VisionSettingsPage(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                                .padding(MusePaddings.cardInner),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
@@ -186,7 +187,7 @@ fun VisionSettingsPage(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            .padding(MusePaddings.cardInner),
                     ) {
                         Text(
                             text = stringResource(R.string.settings_vision_probe_desc),
@@ -314,12 +315,12 @@ private fun VisionModelRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(MusePaddings.cardInner),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Icon(
-            imageVector = if (isSelected) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+            imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
             contentDescription = null,
             tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(24.dp),

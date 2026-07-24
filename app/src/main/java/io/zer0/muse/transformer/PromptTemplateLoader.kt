@@ -16,7 +16,8 @@ import io.zer0.common.Logger
 class PromptTemplateLoader(private val context: Context) {
 
     private val engine = PebbleTemplateEngine()
-    private val cache = mutableMapOf<String, String>()
+    // M-TPL6: 多协程并发访问(如 buildStaticSnapshot 内多次 render),用 ConcurrentHashMap 保证线程安全
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     companion object {
         private const val TAG = "PromptTemplateLoader"

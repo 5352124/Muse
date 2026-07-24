@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.OpenInNew
@@ -39,10 +39,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import io.zer0.muse.R
 import io.zer0.muse.notification.MuseNotificationListenerService
 import io.zer0.muse.notification.NotificationRecord
 import io.zer0.muse.ui.common.MuseToast
@@ -101,7 +103,7 @@ fun NotificationListenerScreen(
     }
 
     SettingsSubPageScaffold(
-        title = "通知监听",
+        title = stringResource(R.string.notif_listener_screen_title),
         onBack = onBack,
     ) {
         // ── 状态卡片 ────────────────────────────────────────────────────
@@ -139,7 +141,7 @@ fun NotificationListenerScreen(
                                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                     context.startActivity(intent)
                                 }.onFailure {
-                                    MuseToast.show("无法打开系统设置")
+                                    MuseToast.show(context.getString(R.string.notif_listener_open_settings_failed))
                                 }
                             },
                             modifier = Modifier.weight(1f),
@@ -150,14 +152,14 @@ fun NotificationListenerScreen(
                                 modifier = Modifier.size(18.dp),
                             )
                             Spacer(Modifier.size(6.dp))
-                            Text("授权设置")
+                            Text(stringResource(R.string.notif_listener_auth_settings))
                         }
                         // 次按钮:清空通知记录(仅在已连接且有数据时启用)
                         OutlinedButton(
                             onClick = {
                                 MuseNotificationListenerService.clearAll()
                                 notifications = emptyList()
-                                MuseToast.show("已清空通知记录")
+                                MuseToast.show(context.getString(R.string.notif_listener_cleared_toast))
                             },
                             enabled = connected && notifications.isNotEmpty(),
                             modifier = Modifier.weight(1f),
@@ -168,7 +170,7 @@ fun NotificationListenerScreen(
                                 modifier = Modifier.size(18.dp),
                             )
                             Spacer(Modifier.size(6.dp))
-                            Text("清空记录")
+                            Text(stringResource(R.string.notif_listener_clear_records))
                         }
                     }
                 }
@@ -181,31 +183,27 @@ fun NotificationListenerScreen(
                 item {
                     Column(modifier = Modifier.padding(MusePaddings.cardInner)) {
                         Text(
-                            text = "功能说明",
+                            text = stringResource(R.string.notif_listener_feature_title),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Spacer(Modifier.height(MusePaddings.itemGap))
                         Text(
-                            text = "授权后,Muse 可感知其他 App 的通知作为事件源,供 AI 在聊天中查询。" +
-                                "例如你可以问:\"今天微信有什么通知?\"\"未读消息里有没有重要的\"",
+                            text = stringResource(R.string.notif_listener_feature_desc),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(MusePaddings.contentGap))
                         Text(
-                            text = "隐私边界",
+                            text = stringResource(R.string.notif_listener_privacy_title),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Spacer(Modifier.height(MusePaddings.itemGap))
                         Text(
-                            text = "• 通知内容仅存储在本地(最多 50 条,超出自动丢弃最旧)\n" +
-                                "• 系统 UI、Muse 自身通知已过滤,不会被采集\n" +
-                                "• 不上报任何通知数据到服务器\n" +
-                                "• 可随时在此页\"清空记录\"或到系统设置撤销授权",
+                            text = stringResource(R.string.notif_listener_privacy_desc),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -217,7 +215,7 @@ fun NotificationListenerScreen(
         // ── 最近通知列表 ────────────────────────────────────────────────
         item(key = "recent_header") {
             Text(
-                text = "最近通知(${notifications.size}/50)",
+                text = stringResource(R.string.notif_listener_recent_header, notifications.size),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -242,7 +240,7 @@ fun NotificationListenerScreen(
                         )
                         Spacer(Modifier.height(MusePaddings.contentGap))
                         Text(
-                            text = if (connected) "暂无通知记录\n授权后新通知会自动出现在这里" else "尚未授权\n请先点击上方\"授权设置\"",
+                            text = if (connected) stringResource(R.string.notif_listener_empty_connected) else stringResource(R.string.notif_listener_empty_disconnected),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.outline,
                         )
@@ -289,13 +287,13 @@ private fun StatusRow(
         Spacer(Modifier.size(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = if (connected) "已授权" else "未授权",
+                text = if (connected) stringResource(R.string.notif_listener_authorized) else stringResource(R.string.notif_listener_unauthorized),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "最近通知:$recentCount 条" + if (connected) "" else " · 请先到系统设置授权",
+                text = if (connected) stringResource(R.string.notif_listener_recent_count_connected, recentCount) else stringResource(R.string.notif_listener_recent_count_disconnected, recentCount),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -303,7 +301,7 @@ private fun StatusRow(
         IconButton(onClick = onRefresh) {
             Icon(
                 imageVector = Icons.Outlined.Refresh,
-                contentDescription = "刷新状态",
+                contentDescription = stringResource(R.string.notif_listener_refresh_cd),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -321,7 +319,7 @@ private fun StatusBadge(connected: Boolean) {
     } else {
         MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
     }
-    val icon: ImageVector = if (connected) Icons.Outlined.CheckCircle else Icons.Outlined.Warning
+    val icon: ImageVector = if (connected) Icons.Filled.CheckCircle else Icons.Outlined.Warning
     Box(
         modifier = Modifier
             .size(40.dp)

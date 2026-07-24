@@ -7,15 +7,15 @@ import io.zer0.ai.core.ModelAbility
 import io.zer0.ai.core.ModelContextWindowRegistry
 
 /**
- * Model capability registry (RikkaHub ModelRegistry.kt port).
+ * 模型能力注册表（移植自 RikkaHub ModelRegistry.kt）。
  *
- * Defines known model capabilities via DSL. When a model ID matches,
- * the registry returns resolved abilities/modalities/tools.
+ * 通过 DSL 定义已知模型能力。当模型 ID 匹配时，
+ * 注册表返回解析后的能力/模态/工具。
  *
- * Used by ChatService to auto-adapt request parameters:
- *  - Whether to send tools (function calling)
- *  - Whether to include images (vision input)
- *  - Whether to enable reasoning/thinking
+ * ChatService 使用它来自动适配请求参数：
+ *  - 是否发送工具（函数调用）
+ *  - 是否包含图片（视觉输入）
+ *  - 是否启用推理/思考
  */
 object ModelRegistry {
 
@@ -183,7 +183,7 @@ object ModelRegistry {
         visionInput(); visionGrounding("qwen")
     }
 
-    // ─── Others ───
+    // ─── 其他 ───
 
     private val GLM_4 = defineModel {
         tokens("glm", "4")
@@ -294,7 +294,7 @@ object ModelRegistry {
         visionInput()
     }
 
-    // ─── All models list ───
+    // ─── 全部模型列表 ───
 
     private val ALL_MODELS = listOf(
         GPT4O, GPT_4_1, OPENAI_O_MODELS, GPT_5, GPT_5_1, GPT_5_4, GPT_5_CODEX,
@@ -315,8 +315,8 @@ object ModelRegistry {
     )
 
     /**
-     * Resolve capabilities for a given model ID.
-     * Returns the best-matching definitions sorted by score.
+     * 解析给定模型 ID 的能力。
+     * 返回按分数排序的最佳匹配定义。
      *
      * v1.135: 先按原始 modelId 匹配;未命中时剥掉中转/聚合平台前缀再试一次,
      * 解决 `opencode-go/deepseek-v3` 这类 ID 无法识别能力的问题。
@@ -373,13 +373,13 @@ object ModelRegistry {
     }
 
     /**
-     * Resolve abilities for a model ID.
+     * 解析模型 ID 对应的能力。
      */
     fun resolveAbilities(modelId: String): Set<ModelAbility> =
         resolveDefinitions(modelId).flatMap { it.abilities }.toSet()
 
     /**
-     * Resolve input modalities for a model ID.
+     * 解析模型 ID 对应的输入模态。
      */
     fun resolveInputModalities(modelId: String): Set<String> {
         val defs = resolveDefinitions(modelId)
@@ -388,7 +388,7 @@ object ModelRegistry {
     }
 
     /**
-     * Resolve output modalities for a model ID.
+     * 解析模型 ID 对应的输出模态。
      */
     fun resolveOutputModalities(modelId: String): Set<String> {
         val defs = resolveDefinitions(modelId)
@@ -397,26 +397,26 @@ object ModelRegistry {
     }
 
     /**
-     * Check if a model supports vision input.
+     * 检查模型是否支持视觉输入。
      */
     fun supportsVision(modelId: String): Boolean =
         "image" in resolveInputModalities(modelId)
 
     /**
-     * Check if a model supports tool calling.
+     * 检查模型是否支持工具调用。
      */
     fun supportsToolCalling(modelId: String): Boolean =
         ModelAbility.TOOL in resolveAbilities(modelId)
 
     /**
-     * Check if a model supports reasoning/thinking.
+     * 检查模型是否支持推理/思考。
      */
     fun supportsReasoning(modelId: String): Boolean =
         ModelAbility.REASONING in resolveAbilities(modelId)
 
     /**
-     * Enhance a [Model] with registry-resolved capabilities.
-     * Only fills in fields that are not already explicitly set.
+     * 用注册表解析出的能力增强 [Model]。
+     * 仅填充尚未显式设置的字段。
      *
      * v1.0.8: 增强兜底链路 — 当 token 规则未命中时,回退到 [KnownModels] 与
      * [ModelContextWindowRegistry],补全 contextWindow / maxOutputTokens / modalities / abilities。

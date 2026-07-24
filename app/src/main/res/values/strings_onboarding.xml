@@ -39,6 +39,9 @@
     <string name="onboarding_provider_test_button">测试连接</string>
     <string name="onboarding_provider_test_success">连接成功，共 %1$d 个可用模型</string>
     <string name="onboarding_provider_skip">跳过配置，稍后设置</string>
+    <string name="onboarding_provider_custom">自定义（OpenAI 兼容）</string>
+    <string name="onboarding_provider_custom_baseurl_label">自定义接口地址</string>
+    <string name="onboarding_provider_custom_baseurl_input">https://api.example.com/v1</string>
 
     <!-- 步骤 4:选择模型 -->
     <string name="onboarding_model_title">选择默认模型</string>

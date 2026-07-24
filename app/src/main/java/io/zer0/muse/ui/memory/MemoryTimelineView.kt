@@ -18,7 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.filled.Circle
-import androidx.compose.material3.FilterChip
+import io.zer0.muse.ui.common.IosChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -96,10 +96,10 @@ fun MemoryTimelineView(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 filters.forEach { (key, label) ->
-                    FilterChip(
+                    IosChip(
                         selected = selectedFilter == key,
                         onClick = { selectedFilter = key },
-                        label = { Text(label) },
+                        label = label,
                     )
                 }
             }
@@ -109,11 +109,11 @@ fun MemoryTimelineView(
             else monthItems.filter { it.source == selectedFilter }
 
             if (filtered.isNotEmpty()) {
-                // Month header
+                // 月份标题
                 item(key = "month_$month") {
                     MonthHeader(month = month)
                 }
-                // Timeline items
+                // 时间轴条目
                 items(filtered, key = { it.id }) { item ->
                     TimelineEventCard(item = item)
                 }
@@ -149,7 +149,7 @@ private fun TimelineEventCard(item: TimelineItem) {
             .fillMaxWidth()
             .padding(start = 8.dp),
     ) {
-        // Timeline node
+        // 时间轴节点
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.width(24.dp),
@@ -160,7 +160,7 @@ private fun TimelineEventCard(item: TimelineItem) {
                 tint = nodeColor,
                 modifier = Modifier.size(12.dp),
             )
-            // Vertical line
+            // 竖向连接线
             Box(
                 modifier = Modifier
                     .width(2.dp)
@@ -169,7 +169,7 @@ private fun TimelineEventCard(item: TimelineItem) {
             )
         }
         Spacer(Modifier.width(8.dp))
-        // Event card
+        // 事件卡片
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = MuseShapes.medium,
@@ -179,12 +179,12 @@ private fun TimelineEventCard(item: TimelineItem) {
                 modifier = Modifier.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                // Type tag + importance stars
+                // 类型标签 + 重要性星标
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    // Source tag
+                    // 来源标签
                     Surface(
                         shape = MuseShapes.small,
                         color = nodeColor.copy(alpha = 0.15f),
@@ -196,7 +196,7 @@ private fun TimelineEventCard(item: TimelineItem) {
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         )
                     }
-                    // Importance stars
+                    // 重要性星标
                     if (item.importance > 0) {
                         Row {
                             repeat(item.importance) {
@@ -210,7 +210,7 @@ private fun TimelineEventCard(item: TimelineItem) {
                         }
                     }
                 }
-                // Content (max 3 lines)
+                // 内容(最多 3 行)
                 Text(
                     text = item.content,
                     style = MaterialTheme.typography.bodySmall,
@@ -218,7 +218,7 @@ private fun TimelineEventCard(item: TimelineItem) {
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                 )
-                // Time
+                // 时间
                 val timeStr = remember(item.createdAt) {
                     try {
                         val dt = Instant.parse(item.createdAt).atZone(ZoneId.systemDefault())
@@ -240,7 +240,7 @@ private fun TimelineEventCard(item: TimelineItem) {
 }
 
 /**
- * Simplified timeline item data class (mapped from MemoryItem in ViewModel).
+ * 简化的时间轴条目数据类(在 ViewModel 中由 MemoryItem 映射而来)。
  */
 data class TimelineItem(
     val id: String,

@@ -14,15 +14,15 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
+import io.zer0.muse.ui.common.IosFloatingButton
+import io.zer0.muse.ui.common.IosSwitch
+import io.zer0.muse.ui.common.IosTopBar
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,10 +37,10 @@ import io.zer0.muse.R
 import io.zer0.muse.data.experience.ExperienceEntity
 
 /**
- * Experience panel (openhanako experience UI port).
+ * 经验面板(openhanako experience UI 移植版)。
  *
- * Browse, search, add, and delete experiences.
- * Integrated with Settings page via the experience toggle switch.
+ * 浏览、搜索、新增和删除经验。
+ * 通过经验开关与设置页集成。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,26 +76,24 @@ fun ExperiencePanel(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.experience_title)) },
+            IosTopBar(
+                title = stringResource(R.string.experience_title),
+                onBack = onBack,
                 actions = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.experience_enabled), style = MaterialTheme.typography.labelSmall)
-                        Switch(checked = enabled, onCheckedChange = onToggleEnabled)
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Text("<-", style = MaterialTheme.typography.titleMedium)
+                        IosSwitch(checked = enabled, onCheckedChange = onToggleEnabled)
                     }
                 },
             )
         },
         floatingActionButton = {
             if (enabled) {
-                FloatingActionButton(onClick = { showAddDialog = true }) {
-                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.experience_add_cd))
-                }
+                IosFloatingButton(
+                    icon = Icons.Default.Add,
+                    onClick = { showAddDialog = true },
+                    contentDescription = stringResource(R.string.experience_add_cd),
+                )
             }
         },
     ) { padding ->
@@ -135,7 +133,7 @@ fun ExperiencePanel(
                 }
             }
 
-            // List
+            // 列表
             if (filtered.isEmpty()) {
                 Text(
                     text = if (experiences.isEmpty()) "No experiences yet. The AI will record lessons learned here."
@@ -156,7 +154,7 @@ fun ExperiencePanel(
         }
     }
 
-    // Add dialog
+    // 新增对话框
     if (showAddDialog) {
         AddExperienceDialog(
             categories = categories,

@@ -43,7 +43,7 @@ data class MessageEntity(
     val reasoning: String? = null,
     val modelId: String? = null,
     val createdAt: Long,
-    val imageUrlsJson: String = "[]",
+    @ColumnInfo(defaultValue = "[]") val imageUrlsJson: String = "[]",
     @ColumnInfo(defaultValue = "0") val favorite: Boolean = false,
     /**
      * v1.104 U7: 收藏分组标签(用户自定义,如"灵感"/"代码片段")。

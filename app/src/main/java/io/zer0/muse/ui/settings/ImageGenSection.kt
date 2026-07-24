@@ -19,7 +19,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -45,6 +44,7 @@ import io.zer0.ai.core.ProviderConfig
 import io.zer0.ai.core.ProviderType
 import io.zer0.muse.data.ImageGenConfig
 import io.zer0.muse.data.SettingsRepository
+import io.zer0.muse.ui.common.IosChip
 import io.zer0.muse.ui.common.SectionLabel
 import io.zer0.muse.ui.common.SettingsGroup
 import io.zer0.muse.ui.theme.MuseShapes
@@ -296,7 +296,7 @@ private fun ImageModelSelectorDialog(
                     ) {
                         providers.forEach { p ->
                             // v1.134 P0-8: FilterChip → 自定义胶囊(Surface + clickable)
-                            IosSelectChip(
+                            IosChip(
                                 selected = p.id == currentProviderId,
                                 onClick = { currentProviderId = p.id },
                                 label = p.displayName,
@@ -370,38 +370,6 @@ private fun ImageModelSelectorDialog(
     }
 }
 
-/**
- * v1.134 P0-8: iOS 风格选择胶囊 — 替代 Material3 FilterChip。
- *
- * 选中态:primary 色背景 + onPrimary 文本;未选中:透明 + onSurfaceVariant 文本。
- * 圆角 [MuseShapes.semiLarge],无 ripple(Surface onClick 默认无 ripple)。
- */
-@Composable
-private fun IosSelectChip(
-    selected: Boolean,
-    onClick: () -> Unit,
-    label: String,
-) {
-    val bgColor = if (selected) MaterialTheme.colorScheme.primary
-    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-    val contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
-    else MaterialTheme.colorScheme.onSurfaceVariant
-    Surface(
-        shape = MuseShapes.semiLarge,
-        color = bgColor,
-        contentColor = contentColor,
-        onClick = onClick,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            maxLines = 1,
-        )
-    }
-}
-
 @Composable
 private fun ModelGridCard(
     model: Model,
@@ -462,8 +430,8 @@ private fun LabeledChipGroup(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             options.forEach { (value, display) ->
-                // v1.134 P0-8: FilterChip → 自定义 IosSelectChip
-                IosSelectChip(
+                // v1.134 P0-8: FilterChip → IosChip
+                IosChip(
                     selected = selected == value,
                     onClick = { onSelect(value) },
                     label = display,

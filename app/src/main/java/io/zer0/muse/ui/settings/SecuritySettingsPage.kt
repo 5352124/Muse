@@ -16,8 +16,7 @@ import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
+import io.zer0.muse.ui.common.IosChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -43,6 +42,7 @@ import io.zer0.muse.data.SettingsRepository
 import io.zer0.muse.data.ShareTemplateConfig
 import io.zer0.muse.ui.common.SectionLabel
 import io.zer0.muse.ui.theme.MuseShapes
+import io.zer0.muse.ui.theme.MusePaddings
 import io.zer0.muse.ui.common.SettingsGroup
 import io.zer0.muse.ui.common.SettingsGroupDivider
 import io.zer0.muse.ui.common.SettingsSwitchRow
@@ -85,7 +85,7 @@ fun SecuritySettingsPage(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(MusePaddings.cardInner),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -119,12 +119,12 @@ fun SecuritySettingsPage(
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(MusePaddings.cardInnerSpaced),
                 )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(MusePaddings.cardInnerSpaced),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Button(
@@ -236,7 +236,7 @@ fun SecuritySettingsPage(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(MusePaddings.cardInner),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -260,19 +260,12 @@ fun SecuritySettingsPage(
                         ) {
                             val plainTextLabel = stringResource(R.string.settings_security_format_plain_text)
                             listOf("markdown" to "Markdown", "plain_text" to plainTextLabel, "html" to "HTML").forEach { (value, label) ->
-                                FilterChip(
+                                IosChip(
                                     selected = shareTemplate.format == value,
                                     onClick = {
                                         scope.launch { settings.saveShareTemplate(shareTemplate.copy(format = value)) }
                                     },
-                                    label = { Text(label) },
-                                    shape = MuseShapes.large,
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        selectedLabelColor = MaterialTheme.colorScheme.primary,
-                                    ),
+                                    label = label,
                                 )
                             }
                         }
@@ -288,7 +281,7 @@ fun SecuritySettingsPage(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(MusePaddings.cardInner),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -322,19 +315,12 @@ fun SecuritySettingsPage(
                                 "bing" to "Bing",
                                 "custom_api" to customApiLabel,
                             ).forEach { (value, label) ->
-                                FilterChip(
+                                IosChip(
                                     selected = searchEngine == value,
                                     onClick = {
                                         scope.launch { settings.saveDefaultSearchEngine(value) }
                                     },
-                                    label = { Text(label) },
-                                    shape = MuseShapes.large,
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        selectedLabelColor = MaterialTheme.colorScheme.primary,
-                                    ),
+                                    label = label,
                                 )
                             }
                         }

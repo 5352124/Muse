@@ -6,6 +6,8 @@ import android.os.Build
 import io.zer0.ai.core.MessageRole
 import io.zer0.ai.core.UIMessage
 import io.zer0.common.Logger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.TimeZone
 
@@ -116,18 +118,31 @@ class TemplateTransformer(
             }
         }
         // L-TPL4: vars 至少包含 date/time/datetime(永不为空),原 if (vars.isEmpty()) return messages 为死代码已删除
-        return messages.map { msg ->
-            if (msg.role != MessageRole.SYSTEM) return@map msg
-            if (!msg.content.contains("{{") && !msg.content.contains("{%")) return@map msg
+        // M-TPL5: 改用 for 循环而非 messages.map,以便在循环体内调用 suspend 的 withContext。
+        // PebbleTemplateEngine.render 是同步阻塞调用,复杂模板(含 for 循环/嵌套 if)可能耗时,
+        // 用 withContext(Dispatchers.Default) 包裹避免阻塞当前协程(如主线程派发的 IO 协程)。
+        val result = ArrayList<UIMessage>(messages.size)
+        for (msg in messages) {
+            if (msg.role != MessageRole.SYSTEM) {
+                result.add(msg)
+                continue
+            }
+            if (!msg.content.contains("{{") && !msg.content.contains("{%")) {
+                result.add(msg)
+                continue
+            }
 
             // 错误兜底:模板语法错误时返回原文,不阻塞对话
-            val rendered = runCatching { engine.render(msg.content, vars) }.getOrElse {
-                // 渲染失败:保留原文,Logger 记录(避免阻塞对话)
-                Logger.w("TemplateTransformer", "模板渲染失败: ${it.message}")
-                msg.content
+            val rendered = withContext(Dispatchers.Default) {
+                runCatching { engine.render(msg.content, vars) }.getOrElse {
+                    // 渲染失败:保留原文,Logger 记录(避免阻塞对话)
+                    Logger.w("TemplateTransformer", "模板渲染失败: ${it.message}")
+                    msg.content
+                }
             }
-            msg.copy(content = rendered)
+            result.add(msg.copy(content = rendered))
         }
+        return result
     }
 
     /**

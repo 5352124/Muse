@@ -200,6 +200,8 @@
     <string name="chat_list_scheduled_subtitle">自动执行</string>
     <string name="chat_list_quick_notes">快速记录</string>
     <string name="chat_list_quick_notes_subtitle">轻量笔记</string>
+    <string name="chat_list_quick_translate">快速翻译</string>
+    <string name="chat_list_knowledge_base">知识库</string>
 
     <!-- 分类筛选 -->
     <string name="chat_list_filter_all">全部</string>
@@ -221,6 +223,7 @@
 
     <!-- 底部按钮与对话框 -->
     <string name="chat_list_new_task">新任务</string>
+    <string name="chat_list_new_task_card_subtitle">记录想法、创建任务或开始一段对话</string>
     <string name="chat_list_folder_name_placeholder">文件夹名称</string>
     <string name="chat_list_create">创建</string>
 

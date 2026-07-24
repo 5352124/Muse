@@ -5,12 +5,15 @@ import io.zer0.common.Logger
 import io.zer0.muse.data.assistant.AssistantEntity
 import io.zer0.muse.data.assistant.AssistantRegex
 import kotlinx.serialization.builtins.ListSerializer
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * v1.97: 正则替换 Transformer — 对消息文本应用助手级正则规则。
  *
  * 在消息管道中执行,位于 PlaceholderTransformer 之后、发送给 LLM 之前。
  * 仅对文本内容做替换,不影响消息结构。
+ *
+ * 注意:本 object 是工具类,非 Transformer 接口实现。实际 Transformer 实现见 RegexMessageTransformer。
  */
 object RegexTransformer {
 
@@ -18,6 +21,13 @@ object RegexTransformer {
 
     /** JSON 序列化器。 */
     private val serializer = ListSerializer(AssistantRegex.serializer())
+
+    /**
+     * M-REG1: 正则编译缓存,以规则字符串为 key。
+     * 规则集通常稳定(用户配置后多轮复用),缓存编译结果避免每条消息都重新编译 Regex。
+     * 用 ConcurrentHashMap 保证多协程并发访问安全。
+     */
+    private val regexCache = ConcurrentHashMap<String, Regex>()
 
     /**
      * 从 AssistantEntity 解析正则规则列表。
@@ -78,7 +88,8 @@ object RegexTransformer {
             if (rule.visualOnly != visualOnly) continue
 
             result = try {
-                val regex = Regex(rule.findRegex)
+                // M-REG1: 复用缓存的 Regex 实例,避免每条消息都重新编译(rule.findRegex 通常稳定)
+                val regex = regexCache.getOrPut(rule.findRegex) { Regex(rule.findRegex) }
                 regex.replace(result, rule.replaceString)
             } catch (e: Exception) {
                 Logger.w(TAG, "正则替换失败: ${rule.name}(${rule.findRegex})", e)

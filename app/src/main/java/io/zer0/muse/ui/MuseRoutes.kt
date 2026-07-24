@@ -83,6 +83,9 @@ object MuseRoutes {
     /** v1.25: 设置二级页 — 多 Agent 协作。 */
     const val SETTINGS_MULTI_AGENT = "settings_multi_agent"
 
+    /** Multi-Agent 工作流可视化编排页(带 {teamId} 参数)。 */
+    const val WORKFLOW_EDITOR = "workflow_editor"
+
     /** v1.27: 设置二级页 — Agent 配置(Agent 助手选择/协作/主动消息)。 */
     const val SETTINGS_AGENT = "settings_agent"
 
@@ -177,6 +180,14 @@ object MuseRoutes {
      * @return 形如 "group_chat_detail/{chatId}" 的路由字符串
      */
     fun groupChatDetailRoute(chatId: String) = "$GROUP_CHAT_DETAIL/$chatId"
+
+    /**
+     * 构造工作流编排页路由(带 teamId 参数)。
+     *
+     * @param teamId 关联团队 id(空串表示独立工作流)
+     * @return 形如 "workflow_editor/{teamId}" 的路由字符串
+     */
+    fun workflowEditorRoute(teamId: String) = "$WORKFLOW_EDITOR/$teamId"
 
     /**
      * 构造 HTML 预览页路由(带 URL 编码的 html 参数)。

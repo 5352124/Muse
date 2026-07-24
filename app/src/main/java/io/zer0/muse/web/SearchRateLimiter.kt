@@ -86,6 +86,7 @@ object SearchRateLimiter {
         }
 
         // 2) 尝试解析为 HTTP-date（RFC 1123）
+        // 非 suspend 上下文，runCatching 安全（不会吞 CancellationException）
         runCatching {
             val sdf = java.text.SimpleDateFormat(
                 "EEE, dd MMM yyyy HH:mm:ss zzz",

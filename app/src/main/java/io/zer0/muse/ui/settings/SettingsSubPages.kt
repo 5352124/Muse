@@ -6,12 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import io.zer0.muse.ui.common.MuseToast
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
@@ -23,10 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.material.icons.outlined.AccountCircle
-import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -41,8 +35,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.zer0.muse.R
@@ -51,8 +43,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.zer0.muse.BuildConfig
 import io.zer0.muse.UpdateChecker
 import io.zer0.muse.data.SettingsRepository
+import io.zer0.muse.ui.common.ChevronRight
 import io.zer0.muse.ui.common.MuseAlertDialog
 import io.zer0.muse.ui.common.MuseDialog
+import io.zer0.muse.ui.common.SectionLabel
+import io.zer0.muse.ui.common.SettingsGroup
+import io.zer0.muse.ui.common.SettingsGroupDivider
+import io.zer0.muse.ui.common.SettingsItemRow
 import io.zer0.muse.ui.common.WindowWidthClass
 import io.zer0.muse.ui.common.rememberWindowWidthClass
 import io.zer0.muse.ui.theme.MusePaddings
@@ -482,10 +479,16 @@ fun SettingsAboutPage(
     var upToDate by remember { mutableStateOf(false) }
 
     SettingsSubPageScaffold(title = stringResource(R.string.section_about), onBack = onBack) {
+        // 应用信息
         item {
-            io.zer0.muse.ui.common.SettingsGroup {
+            SectionLabel(stringResource(R.string.settings_about_app_info))
+        }
+        item {
+            SettingsGroup(
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(MusePaddings.cardInner),
                 ) {
                     Text(
                         text = "muse",
@@ -508,174 +511,121 @@ fun SettingsAboutPage(
         }
         // P3-14: 反馈入口 — 调起邮件 Intent,fallback 到剪贴板
         item {
-            val feedbackCd = stringResource(R.string.settings_about_feedback_cd)
-            io.zer0.muse.ui.common.SettingsGroup {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { sendFeedback(context, versionName) }
-                        .semantics { contentDescription = feedbackCd }
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+            SectionLabel(stringResource(R.string.settings_about_feedback_section))
+        }
+        item {
+            SettingsGroup(
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                SettingsItemRow(
+                    title = stringResource(R.string.settings_about_feedback),
+                    onClick = { sendFeedback(context, versionName) },
                 ) {
-                    Text(
-                        text = stringResource(R.string.settings_about_feedback),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        text = "›",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    ChevronRight()
                 }
             }
         }
         // P3-15: 检查更新入口 — 异步请求 GitHub Releases
         item {
-            val checkUpdatePrefix = stringResource(R.string.settings_about_check_update_prefix)
-            val checkingText = stringResource(R.string.settings_about_checking)
-            val clickToEnterText = stringResource(R.string.settings_about_click_to_enter)
-            val checkUpdateCd = "$checkUpdatePrefix${if (checking) checkingText else clickToEnterText}"
-            io.zer0.muse.ui.common.SettingsGroup {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = !checking) {
-                            checking = true
-                            scope.launch {
-                                val result = updateChecker.check(versionName)
-                                checking = false
-                                when (result) {
-                                    is UpdateChecker.Result.NewVersion -> newVersion = result
-                                    is UpdateChecker.Result.UpToDate -> upToDate = true
-                                    is UpdateChecker.Result.Error -> MuseToast.show(context.getString(R.string.settings_about_update_check_failed, result.message))
-                                }
+            SectionLabel(stringResource(R.string.settings_about_update_section))
+        }
+        item {
+            SettingsGroup(
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                SettingsItemRow(
+                    title = stringResource(R.string.settings_about_check_update),
+                    enabled = !checking,
+                    onClick = {
+                        checking = true
+                        scope.launch {
+                            val result = updateChecker.check(versionName)
+                            checking = false
+                            when (result) {
+                                is UpdateChecker.Result.NewVersion -> newVersion = result
+                                is UpdateChecker.Result.UpToDate -> upToDate = true
+                                is UpdateChecker.Result.Error -> MuseToast.show(context.getString(R.string.settings_about_update_check_failed, result.message))
                             }
                         }
-                        .semantics { contentDescription = checkUpdateCd }
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    },
                 ) {
-                    Text(
-                        text = stringResource(R.string.settings_about_check_update),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Spacer(Modifier.weight(1f))
                     if (checking) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(20.dp),
                             strokeWidth = 2.dp,
                         )
                     } else {
-                        Text(
-                            text = "›",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        ChevronRight()
                     }
                 }
             }
         }
         item {
-            val licensesCd = stringResource(R.string.settings_about_licenses_cd)
-            io.zer0.muse.ui.common.SettingsGroup {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onOpenLicenses() }
-                        .semantics { contentDescription = licensesCd }
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+            SectionLabel(stringResource(R.string.settings_about_legal_section))
+        }
+        item {
+            SettingsGroup(
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                SettingsItemRow(
+                    title = stringResource(R.string.about_oss_licenses),
+                    onClick = onOpenLicenses,
                 ) {
-                    Text(
-                        text = stringResource(R.string.about_oss_licenses),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        text = "›",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    ChevronRight()
                 }
             }
         }
         // v1.119: 开源仓库分组 — 仓库主页 / Star / 问题反馈(均跳转 GitHub)
         item {
-            io.zer0.muse.ui.common.SettingsGroup {
-                AboutLinkRow(
-                    label = stringResource(R.string.settings_about_repo_home),
-                    contentDescription = stringResource(R.string.settings_about_repo_home_cd),
-                    onClick = {
-                        openUrl(
-                            context,
-                            "https://github.com/5352124/Muse",
-                        )
-                    },
-                )
-            }
-            io.zer0.muse.ui.common.SettingsGroup {
-                AboutLinkRow(
-                    label = stringResource(R.string.settings_about_star),
-                    contentDescription = stringResource(R.string.settings_about_star_cd),
-                    onClick = {
-                        openUrl(
-                            context,
-                            "https://github.com/5352124/Muse",
-                        )
-                    },
-                )
-            }
-            io.zer0.muse.ui.common.SettingsGroup {
-                AboutLinkRow(
-                    label = stringResource(R.string.settings_about_issues),
-                    contentDescription = stringResource(R.string.settings_about_issues_cd),
-                    onClick = {
-                        openUrl(
-                            context,
-                            "https://github.com/5352124/Muse/issues",
-                        )
-                    },
-                )
+            SectionLabel(stringResource(R.string.settings_about_repo_section))
+        }
+        item {
+            SettingsGroup(
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                SettingsItemRow(
+                    title = stringResource(R.string.settings_about_repo_home),
+                    onClick = { openUrl(context, "https://github.com/5352124/Muse") },
+                ) {
+                    ChevronRight()
+                }
+                SettingsGroupDivider()
+                SettingsItemRow(
+                    title = stringResource(R.string.settings_about_star),
+                    onClick = { openUrl(context, "https://github.com/5352124/Muse") },
+                ) {
+                    ChevronRight()
+                }
+                SettingsGroupDivider()
+                SettingsItemRow(
+                    title = stringResource(R.string.settings_about_issues),
+                    onClick = { openUrl(context, "https://github.com/5352124/Muse/issues") },
+                ) {
+                    ChevronRight()
+                }
             }
         }
         // v1.4: 退出登录入口 — 仅当已登录或游客模式时显示
         if (accountState.isAuthed) {
             item {
-                val logoutPrefix = stringResource(R.string.settings_about_logout_prefix)
-                val processingText = stringResource(R.string.settings_about_processing)
-                val clickToEnterText = stringResource(R.string.settings_about_click_to_enter)
-                val logoutCd = "$logoutPrefix${if (loggingOut) processingText else clickToEnterText}"
-                io.zer0.muse.ui.common.SettingsGroup {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = !loggingOut) { showLogoutDialog = true }
-                            .semantics { contentDescription = logoutCd }
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                SectionLabel(stringResource(R.string.settings_about_account_section))
+            }
+            item {
+                SettingsGroup(
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    SettingsItemRow(
+                        title = stringResource(R.string.settings_about_logout),
+                        enabled = !loggingOut,
+                        onClick = { showLogoutDialog = true },
                     ) {
-                        Text(
-                            text = stringResource(R.string.settings_about_logout),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                        Spacer(Modifier.weight(1f))
                         if (loggingOut) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(20.dp),
                                 strokeWidth = 2.dp,
                             )
                         } else {
-                            Text(
-                                text = "›",
-                                style = MaterialTheme.typography.headlineMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            ChevronRight()
                         }
                     }
                 }
@@ -744,38 +694,6 @@ fun SettingsAboutPage(
             title = stringResource(R.string.settings_about_check_update),
             message = stringResource(R.string.settings_about_up_to_date),
             confirmText = stringResource(R.string.settings_about_got_it),
-        )
-    }
-}
-
-/**
- * v1.119: 关于页链接行 — 统一样式的可点击 Row(左侧标签 + 右侧箭头)。
- * 用于"开源仓库 / Star / 问题反馈"等跳转入口,减少样板代码。
- */
-@Composable
-private fun AboutLinkRow(
-    label: String,
-    contentDescription: String,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .semantics { this.contentDescription = contentDescription }
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Spacer(Modifier.weight(1f))
-        Text(
-            text = "›",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.material3.FilterChip
+import io.zer0.muse.ui.common.IosChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -110,7 +110,7 @@ fun CreateGroupChatDialog(
                 ) {
                     assistants.forEach { assistant ->
                         val selected = assistant.id in selectedMemberIds
-                        FilterChip(
+                        IosChip(
                             selected = selected,
                             onClick = {
                                 showErrors = false
@@ -120,8 +120,7 @@ fun CreateGroupChatDialog(
                                     selectedMemberIds + assistant.id
                                 }
                             },
-                            label = { Text(assistant.name) },
-                            shape = MuseShapes.large,
+                            label = assistant.name,
                         )
                     }
                 }
@@ -151,19 +150,17 @@ fun CreateGroupChatDialog(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    FilterChip(
+                    IosChip(
                         selected = selectedTeamId == null,
                         onClick = { selectedTeamId = null },
-                        label = { Text(stringResource(R.string.groupchat_no_team)) },
-                        shape = MuseShapes.large,
+                        label = stringResource(R.string.groupchat_no_team),
                     )
                     teams.forEach { team ->
                         val selected = selectedTeamId == team.id
-                        FilterChip(
+                        IosChip(
                             selected = selected,
                             onClick = { selectedTeamId = team.id },
-                            label = { Text(team.name) },
-                            shape = MuseShapes.large,
+                            label = team.name,
                         )
                     }
                 }

@@ -1,10 +1,10 @@
 package io.zer0.muse.tools
 
 /**
- * show_card tool (openhanako show-card-tool.ts port).
+ * show_card 工具(openhanako show-card-tool.ts 移植)。
  *
- * Agent generates HTML/SVG card content, rendered inline in the conversation.
- * The actual rendering is handled by CardRenderer on the UI side.
+ * Agent 生成 HTML/SVG 卡片内容,在对话中内联渲染。
+ * 实际渲染由 UI 侧的 CardRenderer 处理。
  */
 object ShowCardTool {
 

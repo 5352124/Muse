@@ -87,7 +87,8 @@ class DashScopeAsrController(
     private val partialTranscripts = ConcurrentHashMap<String, String>()
 
     override fun start(onTranscriptChange: ((String) -> Unit)?) {
-        if (_state.value.isRecording) {
+        // 仅在 Listening 态拒绝重复 start;Connecting/Stopping 过渡态允许新 start 接续
+        if (_state.value.status == ASRStatus.Listening) {
             Logger.w(TAG, "已在录音,忽略重复 start")
             return
         }

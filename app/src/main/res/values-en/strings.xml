@@ -201,7 +201,6 @@
     <string name="err_auth_failed">Authentication failed. Please check your API key.</string>
     <string name="err_image_api_key_missing">Image generation requires an API key. Please configure it in Settings &gt; Provider.</string>
     <string name="err_image_empty_response">Image generation returned an empty response.</string>
-    <string name="err_image_gen_failed">Image generation failed.</string>
     <string name="err_image_invalid_uri">Invalid image URI or path.</string>
     <string name="err_image_no_results">No images were generated. Try a different prompt.</string>
     <string name="err_image_reference_download_failed">Failed to download reference image.</string>

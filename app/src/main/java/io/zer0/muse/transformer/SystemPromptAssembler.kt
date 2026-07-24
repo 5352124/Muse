@@ -348,10 +348,10 @@ class SystemPromptAssembler(
         }
         // M-ASM4: file.readText() 是阻塞 IO,须切到 Dispatchers.IO
         val content = withContext(Dispatchers.IO) {
-            runCatching { file.readText() }.getOrNull()
+            resultOf { file.readText() }.getOrNull()
         } ?: return ""
         if (content.isBlank()) return ""
-        val items = runCatching {
+        val items = resultOf {
             AppJson.decodeFromString<List<PinnedMemoryItem>>(content)
         }.getOrNull() ?: return ""
         if (items.isEmpty()) return ""
@@ -437,7 +437,7 @@ class SystemPromptAssembler(
                 name = skill.id,
                 description = skill.description,
                 requiredParams = skill.requiredJson.takeIf { it.isNotBlank() }?.let {
-                    runCatching { AppJson.decodeFromString<List<String>>(it) }.getOrDefault(emptyList())
+                    resultOf { AppJson.decodeFromString<List<String>>(it) }.getOrNull() ?: emptyList()
                 } ?: emptyList(),
                 optionalParams = emptyList(),
                 category = categorize(skill.id, skill.category),
@@ -532,8 +532,7 @@ class SystemPromptAssembler(
     /**
      * 7. Workspace 路径 — 告诉 LLM 应用沙盒根目录。
      *
-     * L-ASM6: 不直接暴露明文绝对路径到 system prompt(降低路径注入风险),
-     * 改为说明"应用沙盒根目录"概念,文件工具内部使用该路径。
+     * L-ASM6: 暴露沙盒根路径供文件工具使用,文件工具内部再做沙盒校验(深度防御)。
      */
     private fun buildWorkspaceSection(): String {
         val path = context.filesDir.absolutePath

@@ -164,8 +164,9 @@
     <!-- ===== Settings screen SettingsScreen ===== -->
     <string name="settings_screen_title">Settings</string>
     <string name="settings_screen_back_cd">Back</string>
-    <string name="settings_screen_appearance_group_cd">Appearance &amp; Personalization group</string>
+    <string name="settings_screen_appearance_group_cd">General group</string>
     <string name="settings_screen_appearance">Appearance &amp; Personalization</string>
+    <string name="settings_screen_general">General</string>
     <string name="settings_screen_user_profile_cd">Profile, name/persona, tap to enter</string>
     <string name="settings_screen_user_profile">Profile</string>
     <string name="settings_screen_user_profile_desc">Name / Assistant Name / User Persona</string>
@@ -178,8 +179,9 @@
     <string name="settings_screen_media_cd">Media, voice/TTS/audio output, tap to enter</string>
     <string name="settings_screen_media">Media</string>
     <string name="settings_screen_media_desc">Voice / TTS / Audio Output</string>
-    <string name="settings_screen_memory_data_group_cd">Memory &amp; Data group</string>
+    <string name="settings_screen_memory_data_group_cd">Memory &amp; Knowledge Base group</string>
     <string name="settings_screen_memory_data">Memory &amp; Data</string>
+    <string name="settings_screen_memory_knowledge">Memory &amp; Knowledge Base</string>
     <string name="settings_screen_memory_notification_cd">Memory &amp; Notifications, memory params/knowledge base/notification policy, tap to enter</string>
     <string name="settings_screen_memory_notification">Memory &amp; Notifications</string>
     <string name="settings_screen_memory_notification_desc">Memory Params / Knowledge Base / Notification Policy</string>
@@ -202,10 +204,10 @@
     <string name="settings_screen_model_service">Models &amp; Services</string>
     <string name="settings_screen_provider_cd">Providers, manage AI service providers, tap to enter</string>
     <string name="settings_screen_provider">Providers</string>
-    <string name="settings_screen_provider_desc">Manage AI service providers</string>
+    <string name="settings_screen_provider_desc">Manage model providers, API keys and web search</string>
     <string name="settings_screen_assistant_cd">Assistants, manage assistants/world books, tap to enter</string>
     <string name="settings_screen_assistant">Assistants</string>
-    <string name="settings_screen_assistant_desc">Manage assistants &amp; world books</string>
+    <string name="settings_screen_assistant_desc">Manage assistants, models, personas and world books</string>
     <string name="settings_screen_agent_cd">Agent, assistant selection/collaboration/proactive messages, tap to enter</string>
     <string name="settings_screen_agent_desc">Assistant Selection / Collaboration / Proactive Messages</string>
     <string name="settings_screen_advanced_group_cd">Advanced group</string>
@@ -274,12 +276,13 @@
     <string name="settings_search_no_results">matches</string>
     <string name="settings_screen_assistant_agent">Assistants &amp; Agent</string>
     <string name="settings_screen_data_backup_group">Data &amp; Backup</string>
+    <string name="settings_screen_data_management_group">Data Management</string>
 
     <!-- v1.97 gap8: Tools group (standalone translate page entry) -->
     <string name="settings_screen_tools_group_cd">Tools group</string>
     <string name="settings_screen_translate_cd">AI Translate, standalone translation tool, tap to enter</string>
     <string name="settings_screen_translate">AI Translate</string>
-    <string name="settings_screen_translate_desc">Multi-language translation, paste/copy supported</string>
+    <string name="settings_screen_translate_desc">Multi-language translation with source selection/swap/playback</string>
 
     <!-- v1.25: Vision Assist (let text-only models "see" images via vision model) -->
     <string name="settings_screen_vision">Vision Assist</string>
@@ -493,7 +496,7 @@
     <!-- ===== P2-8: Video Generation (SettingsScreen entry + VideoGenerationPage) ===== -->
     <string name="settings_screen_video_gen_cd">Video Generation, Kling API, click to open</string>
     <string name="settings_screen_video_gen">Video Generation</string>
-    <string name="settings_screen_video_gen_desc">Kling API text/image to video</string>
+    <string name="settings_screen_video_gen_desc">Text/image to video models and API configuration</string>
 
     <!-- ===== v1.133: 5 standalone sub-page entries split out from SettingsModelPage ===== -->
     <string name="settings_screen_web_search">Web Search</string>
@@ -543,6 +546,7 @@
 
     <!-- ===== P2-7: Workspace (WorkspaceScreen + tool descriptions) ===== -->
     <string name="workspace_title">Workspace</string>
+    <string name="workspace_desc">Local file management and temporary storage</string>
     <string name="workspace_empty">Workspace is empty</string>
     <string name="workspace_new_file">New File</string>
     <string name="workspace_new_folder">New Folder</string>

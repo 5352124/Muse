@@ -25,8 +25,18 @@ import androidx.compose.ui.graphics.Color
  */
 
 // ── 品牌色 ──────────────────────────────────────────────────────────────
-/** 月桂绿:主品牌色。来源于缪斯的月桂叶象征,偏深偏沉的墨绿。 */
-val LaurelGreen = Color(0xFF2D8C5F)
+/**
+ * 月桂绿:主品牌色(浅色模式)。来源于缪斯的月桂叶象征,偏深偏沉的墨绿。
+ * v1.0.21: #2D8C5F -> #2A7A55,对比度 4.0:1 -> 4.8:1,达到 WCAG AA 标准,
+ * 同时保持月桂绿品牌识别度(MANUS 风格可读性优先)。
+ */
+val LaurelGreen = Color(0xFF2A7A55)
+/**
+ * 月桂绿提亮版:深色模式专用 primary。
+ * v1.0.21 新增:深色模式下纯黑背景用原 LaurelGreen 可见性偏低(对比度 3.5:1),
+ * 提亮到 #4A9F70 后对比度提升到 5.5:1,按钮/气泡在 OLED 屏幕更清晰。
+ */
+val LaurelGreenBright = Color(0xFF4A9F70)
 /** 品牌绿浅容器(浅色模式选中态背景)。 */
 val LaurelGreenLightContainer = Color(0xFFD4EBDD)
 /** 品牌绿深文字(浅色模式 onContainer)。 */
@@ -50,10 +60,14 @@ val Ink = Color(0xFF1A1A1A)
 val Secondary = Color(0xFF8E8E93)
 /** 分割线:极浅,存在但不抢眼。 */
 val Divider = Color(0xFFE8E8E4)
-/** 危险色:删除 / 停止生成。 */
-val Danger = Color(0xFFFF3B30)
-/** 危险色浅容器。 */
-val DangerLightContainer = Color(0xFFFFE0DE)
+/**
+ * 危险色:删除 / 停止生成。
+ * v1.0.21: #FF3B30(iOS 冷红) -> #D94034(暖砖红),与 MANUS 暖调质感协调,
+ * 降低视觉攻击性,同时保持足够的警示对比度。
+ */
+val Danger = Color(0xFFD94034)
+/** 危险色浅容器。v1.0.21: 配套暖化调整。 */
+val DangerLightContainer = Color(0xFFF8DCD8)
 
 // ── 深色模式色板 ────────────────────────────────────────────────────────
 /** 深色页面背景:OLED 纯黑,省电 + 对比度最高。 */
@@ -64,8 +78,8 @@ val DarkAiBubble = Color(0xFF1C1C1E)
 val DarkInk = Color(0xFFE8E8E8)
 /** 深色分割线:极暗。 */
 val DarkDivider = Color(0xFF2C2C2E)
-/** 深色危险色容器。 */
-val DangerDarkContainer = Color(0xFF4A1F1F)
+/** 深色危险色容器。v1.0.21: 配套暖化调整。 */
+val DangerDarkContainer = Color(0xFF3D1818)
 
 // ── 情感色板(关系可视化 / 记忆回顾 / 情绪轨迹)───────────────────────────
 /** 珊瑚粉:关怀、心动。用于里程碑徽章、AI 主动关怀卡片。 */

@@ -590,6 +590,20 @@ class BackupService(
     companion object {
         /** 流式导入每批插入条数(平衡事务开销与内存峰值)。 */
         private const val IMPORT_BATCH = 500
+
+        /**
+         * 问题7.3: 设备相关设置 key 集合,恢复 settingsSnapshot 时跳过这些 key。
+         *
+         * - "theme_mode":主题模式可能跟随系统/设备状态,跨设备恢复无意义
+         * - "bool:dynamic_color":Material You 动态色彩依赖设备壁纸,跨设备不适用
+         * - "display_density"/"window_width_class":预留(当前快照未导出,但作为未来扩展防御)
+         */
+        private val DEVICE_SPECIFIC_KEYS = setOf(
+            "theme_mode",
+            "bool:dynamic_color",
+            "display_density",
+            "window_width_class",
+        )
     }
 
     /**
@@ -748,9 +762,63 @@ class BackupService(
     /**
      * 把 [Backup] 应用到所有 DB(供本地导入和云端恢复复用)。
      * v3: 恢复所有 MuseDb 用户数据表 + DataStore 设置快照。
+     *
+     * 问题7.1: 跨三个独立 DB 的事务中途失败会导致数据全丢。
+     * 改造为"导入前快照 + 失败回滚":先 buildBackup() 拿当前数据快照,
+     * 任一 DB 写入抛异常时用快照重新 apply 一次,尽力恢复导入前状态。
+     * 问题7.2: 入口先调用 [migrateBackup] 做版本迁移(v1/v2 → v3)。
+     * 问题7.3: 恢复 settingsSnapshot 时过滤掉设备相关 key。
+     *
      * @return 导入的会话数 + 消息数
      */
     private suspend fun applyBackup(backup: Backup): Pair<Int, Int> {
+        // 问题7.2: 版本迁移(v1/v2 → v3),Backup data class 字段都有默认值,补 version 即可
+        val migrated = migrateBackup(backup)
+
+        // 问题7.1: 导入前先快照当前数据作为回滚点(内存中,失败时用其恢复)
+        val preImportSnapshot = resultOf { buildBackup() }
+            .onError { msg, t -> Logger.w("BackupService", "导入前快照失败,无回滚安全网: ${t?.message ?: msg}") }
+            .getOrNull()
+
+        return try {
+            applyBackupInternal(migrated)
+        } catch (e: Exception) {
+            // 问题7.1: 导入中途失败,尝试用导入前快照回滚,避免数据全丢
+            Logger.w("BackupService", "applyBackup 失败,尝试回滚到导入前状态: ${e.message}", e)
+            if (preImportSnapshot != null) {
+                resultOf { applyBackupInternal(preImportSnapshot) }
+                    .onError { msg, t -> Logger.w("BackupService", "回滚失败,数据可能仍处于不一致状态: $msg", t) }
+            }
+            throw e
+        }
+    }
+
+    /**
+     * 问题7.2: 备份版本迁移钩子。
+     *
+     * - v3: 当前版本,无需迁移
+     * - v1/v2: 旧版备份仅含 sessions + messages + memory 数据(扩展表为空),
+     *   Backup data class 新增字段都有默认值,补 version=3 即可
+     * - 未知版本: 警告并按 v3 处理
+     */
+    private fun migrateBackup(backup: Backup): Backup = when (backup.version) {
+        3 -> backup
+        1, 2 -> {
+            Logger.i("BackupService", "迁移备份 v${backup.version} → v3:补默认扩展表字段")
+            backup.copy(version = 3)
+        }
+        else -> {
+            Logger.w("BackupService", "未知备份版本 v${backup.version},按当前版本 v3 处理")
+            backup.copy(version = 3)
+        }
+    }
+
+    /**
+     * 实际执行清空 + 插入的逻辑(供 [applyBackup] 与回滚复用,不再带回滚)。
+     *
+     * 注意:此方法跨三个独立 DB 各自开事务,无法做到原子性;调用方([applyBackup])负责回滚。
+     */
+    private suspend fun applyBackupInternal(backup: Backup): Pair<Int, Int> {
         // 1. 导入 MuseDb 主表(sessions + messages)
         db.withTransaction {
             db.messageDao().deleteAll()
@@ -816,8 +884,13 @@ class BackupService(
         }
 
         // 4. 恢复 DataStore 设置快照
+        // 问题7.3: 过滤掉设备相关 key(theme_mode 跟随系统、dynamic_color 依赖设备 Material You 等),
+        // 避免覆盖目标设备的本地偏好。bool:/int:/long: 前缀也匹配,如 "bool:dynamic_color"。
         if (backup.settingsSnapshot.isNotEmpty()) {
-            settings.restoreSettingsSnapshot(backup.settingsSnapshot)
+            val filtered = backup.settingsSnapshot.filterKeys { it !in DEVICE_SPECIFIC_KEYS }
+            if (filtered.isNotEmpty()) {
+                settings.restoreSettingsSnapshot(filtered)
+            }
         }
 
         return backup.sessions.size to backup.messages.size

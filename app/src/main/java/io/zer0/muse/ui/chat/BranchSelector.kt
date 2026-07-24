@@ -23,12 +23,12 @@ import androidx.compose.ui.unit.dp
 import io.zer0.muse.R
 
 /**
- * Branch selector UI (RikkaHub message branching port).
+ * 分支选择器 UI(RikkaHub 消息分支移植版)。
  *
  * Displays left/right arrows with "1/3" indicator to switch between
  * alternative assistant responses at the same conversation position.
  *
- * Only visible when there are multiple branches (hasBranches = true).
+ * 仅在存在多个分支时可见(hasBranches = true)。
  */
 @Composable
 fun BranchSelector(

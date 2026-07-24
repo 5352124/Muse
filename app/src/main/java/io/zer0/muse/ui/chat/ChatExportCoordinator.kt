@@ -166,6 +166,37 @@ class ChatExportCoordinator(
         }
     }
 
+    /**
+     * 导出当前会话为单文件 HTML(内联 CSS + base64 图片 + highlight.js CDN)。
+     *
+     * 委托至 [io.zer0.muse.data.export.ConversationExporter.exportToHtml],
+     * 消息列表与标题的加载逻辑与 [exportSessionAsMarkdown] 一致。
+     */
+    suspend fun exportSessionAsHtml(): String {
+        val state = accessor.snapshot
+        val title = resolveTitle(state)
+        val messages = loadAllMessages(state)
+        return io.zer0.muse.data.export.ConversationExporter.exportToHtml(messages, title)
+    }
+
+    /**
+     * 导出当前会话为 PDF 文件(Android 原生 PdfDocument 渲染,A4 分页)。
+     *
+     * 委托至 [io.zer0.muse.data.export.ConversationExporter.exportToPdf],
+     * 返回的文件位于 cacheDir/export/,通过 FileProvider 暴露给分享 Intent。
+     */
+    suspend fun exportSessionAsPdf(context: android.content.Context): java.io.File {
+        val state = accessor.snapshot
+        val title = resolveTitle(state)
+        val messages = loadAllMessages(state)
+        return io.zer0.muse.data.export.ConversationExporter.exportToPdf(context, messages, title)
+    }
+
+    /** 解析当前会话标题(空标题回退为 "muse 对话")。 */
+    private fun resolveTitle(state: io.zer0.muse.ui.ChatUiState): String =
+        state.sessions.find { it.id == state.currentSessionId }
+            ?.title?.takeIf { it.isNotBlank() } ?: "muse 对话"
+
     private suspend fun loadAllMessages(state: io.zer0.muse.ui.ChatUiState): List<io.zer0.ai.core.UIMessage> {
         val sessionId = if (state.isAgentMode) state.agentSessionId else state.currentSessionId
         return if (sessionId != null) {

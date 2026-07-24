@@ -2,6 +2,7 @@ package io.zer0.muse.ui.knowledge
 
 import io.zer0.common.Logger
 import io.zer0.muse.ui.common.EmptyState
+import io.zer0.muse.ui.common.IosFloatingButton
 import io.zer0.muse.ui.common.MuseToast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,19 +23,21 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SortByAlpha
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -65,9 +68,12 @@ import io.zer0.muse.data.knowledge.KnowledgeDocEntity
 import io.zer0.muse.ui.common.ConfirmDeleteDialog
 import io.zer0.muse.ui.common.MuseDialog
 import io.zer0.muse.ui.theme.MuseDateFormats
+import io.zer0.muse.ui.theme.MuseIconSizes
 import io.zer0.muse.ui.theme.MuseMonoFontFamily
+import io.zer0.muse.ui.theme.MusePaddings
 import io.zer0.muse.ui.theme.MuseShapes
 import io.zer0.muse.ui.theme.mega
+import io.zer0.muse.ui.theme.semiLarge
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -311,32 +317,19 @@ fun KnowledgeScreen(
                 title = stringResource(R.string.knowledge_title),
                 onBack = onBack,
                 actions = {
-                    // v1.66: 排序切换入口
+                    // v1.66: 排序切换入口(iOS 风格动作弹窗)
                     IconButton(onClick = { showSortMenu = true }) {
                         Icon(Icons.AutoMirrored.Outlined.Sort, contentDescription = stringResource(R.string.knowledge_sort))
-                    }
-                    DropdownMenu(
-                        expanded = showSortMenu,
-                        onDismissRequest = { showSortMenu = false },
-                    ) {
-                        KnowledgeSortMode.entries.forEach { mode ->
-                            DropdownMenuItem(
-                                text = { Text(stringResource(mode.labelRes)) },
-                                onClick = {
-                                    sortMode = mode
-                                    showSortMenu = false
-                                },
-                            )
-                        }
                     }
                 },
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
+            IosFloatingButton(
+                icon = Icons.Default.Add,
                 onClick = { if (!importing) importLauncher.launch("*/*") },
-                shape = MuseShapes.mega,
-            ) { Icon(Icons.Default.Add, contentDescription = stringResource(R.string.knowledge_import)) }
+                contentDescription = stringResource(R.string.knowledge_import),
+            )
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
@@ -455,6 +448,81 @@ fun KnowledgeScreen(
             // 不可中断,无按钮(onConfirm=null 隐藏主按钮,dismissText=null 隐藏次按钮)
             onConfirm = null,
             dismissText = null,
+        )
+    }
+
+    // 排序选择弹窗
+    if (showSortMenu) {
+        MuseDialog(
+            onDismissRequest = { showSortMenu = false },
+            title = stringResource(R.string.knowledge_sort),
+            content = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(MusePaddings.tightGap),
+                ) {
+                    KnowledgeSortMode.entries.forEach { mode ->
+                        val selected = mode == sortMode
+                        Surface(
+                            onClick = {
+                                sortMode = mode
+                                showSortMenu = false
+                            },
+                            shape = MuseShapes.semiLarge,
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        horizontal = MusePaddings.iconPadding,
+                                        vertical = MusePaddings.inputPadding,
+                                    ),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(MusePaddings.iconPadding),
+                            ) {
+                                Icon(
+                                    imageVector = mode.icon,
+                                    contentDescription = null,
+                                    tint = if (selected) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    modifier = Modifier.size(MuseIconSizes.iconMedium),
+                                )
+                                Text(
+                                    text = stringResource(mode.labelRes),
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                    ),
+                                    color = if (selected) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (selected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.size(MuseIconSizes.iconMedium),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            dismissText = stringResource(R.string.common_cancel),
+            onDismiss = { showSortMenu = false },
         )
     }
 }
@@ -761,9 +829,13 @@ private fun PdfOutlineCard(outline: List<String>) {
  * v1.66: 知识库排序模式。
  * DAO 仅支持 updated_at DESC,其余维度在 UI 层用 comparator 排序。
  */
-enum class KnowledgeSortMode(val labelRes: Int, val comparator: Comparator<KnowledgeDocEntity>) {
-    UPDATED(R.string.knowledge_sort_updated, compareByDescending { it.updatedAt }),
-    CREATED(R.string.knowledge_sort_created, compareByDescending { it.createdAt }),
-    TITLE(R.string.knowledge_sort_title, compareBy { it.title.lowercase(Locale.getDefault()) }),
-    SIZE(R.string.knowledge_sort_size, compareByDescending { it.content.length }),
+enum class KnowledgeSortMode(
+    val labelRes: Int,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val comparator: Comparator<KnowledgeDocEntity>,
+) {
+    UPDATED(R.string.knowledge_sort_updated, Icons.Default.AccessTime, compareByDescending { it.updatedAt }),
+    CREATED(R.string.knowledge_sort_created, Icons.Default.CalendarToday, compareByDescending { it.createdAt }),
+    TITLE(R.string.knowledge_sort_title, Icons.Default.SortByAlpha, compareBy { it.title.lowercase(Locale.getDefault()) }),
+    SIZE(R.string.knowledge_sort_size, Icons.Default.Storage, compareByDescending { it.content.length }),
 }

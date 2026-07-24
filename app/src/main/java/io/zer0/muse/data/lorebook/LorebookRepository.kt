@@ -48,7 +48,7 @@ class LorebookRepository(
      * 任一关键词命中即视为匹配;返回所有匹配的条目。
      *
      * 匹配方式: contains 子串匹配,大小写由 [LorebookEntity.caseSensitive] 控制
-     * (L-LB7/L-LB8: keep contains for backwards compatibility; TODO: add wholeWord mode to reduce false triggers).
+     * (L-LB7/L-LB8: 为向后兼容保留 contains;TODO:增加 wholeWord 模式以减少误触发)。
      * M-LB2: 显式按 priority 降序 + name 升序排序。
      * L-LB10: 防御性过滤已禁用条目(正常情况调用方已过滤)。
      *

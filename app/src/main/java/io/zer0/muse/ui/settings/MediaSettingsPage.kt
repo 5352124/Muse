@@ -1,6 +1,5 @@
 package io.zer0.muse.ui.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,8 +42,11 @@ import io.zer0.muse.ui.common.MuseToast
 import io.zer0.muse.ui.common.SectionLabel
 import io.zer0.muse.ui.common.SettingsGroup
 import io.zer0.muse.ui.common.SettingsGroupDivider
+import io.zer0.muse.ui.common.SettingsItemRow
+import io.zer0.muse.ui.common.SettingsSegmentedRow
 import io.zer0.muse.ui.common.SettingsSwitchRow
 import io.zer0.muse.ui.speech.TtsManager
+import io.zer0.muse.ui.theme.MusePaddings
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -71,7 +73,9 @@ fun MediaSettingsPage(
         // ── 1. 语音录制 ──
         item { SectionLabel(stringResource(R.string.settings_media_recording_section)) }
         item {
-            SettingsGroup {
+            SettingsGroup(
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
                 SliderRow(
                     icon = Icons.Outlined.GraphicEq,
                     title = stringResource(R.string.settings_media_sample_rate),
@@ -103,7 +107,9 @@ fun MediaSettingsPage(
         // ── 2. 语音播报(TTS) ──
         item { SectionLabel(stringResource(R.string.settings_media_tts_section)) }
         item {
-            SettingsGroup {
+            SettingsGroup(
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
                 SettingsSwitchRow(
                     icon = Icons.Outlined.RecordVoiceOver,
                     title = stringResource(R.string.settings_media_tts_enable),
@@ -162,33 +168,15 @@ fun MediaSettingsPage(
 
         // ── P2-9: 语音克隆入口(独立 SettingsGroup,从云端 TTS 引擎下方进入)──
         item {
-            SettingsGroup {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onOpenVoiceCloning() }
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+            SettingsGroup(
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                SettingsItemRow(
+                    icon = Icons.Outlined.RecordVoiceOver,
+                    title = stringResource(R.string.voice_cloning_title),
+                    subtitle = stringResource(R.string.voice_cloning_new_voice),
+                    onClick = onOpenVoiceCloning,
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.RecordVoiceOver,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.voice_cloning_title),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = stringResource(R.string.voice_cloning_new_voice),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline,
-                        )
-                    }
                     ChevronRight()
                 }
             }
@@ -197,52 +185,26 @@ fun MediaSettingsPage(
         // ── 4. 音频输出 ──
         item { SectionLabel(stringResource(R.string.settings_media_output_section)) }
         item {
-            SettingsGroup {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Outlined.VolumeUp,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.settings_media_output_method),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = stringResource(R.string.settings_media_output_method_subtitle),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline,
-                        )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            val speakerLabel = stringResource(R.string.settings_media_output_speaker)
-                            val earpieceLabel = stringResource(R.string.settings_media_output_earpiece)
-                            val bluetoothLabel = stringResource(R.string.settings_media_output_bluetooth)
-                            listOf("speaker" to speakerLabel, "earpiece" to earpieceLabel, "bluetooth" to bluetoothLabel).forEach { (value, label) ->
-                                androidx.compose.material3.FilterChip(
-                                    selected = config.audioOutput == value,
-                                    onClick = {
-                                        scope.launch { settings.saveMediaConfig(config.copy(audioOutput = value)) }
-                                    },
-                                    label = { Text(label) },
-                                )
-                            }
-                        }
-                    }
-                }
+            val outputOptions = listOf(
+                stringResource(R.string.settings_media_output_speaker),
+                stringResource(R.string.settings_media_output_earpiece),
+                stringResource(R.string.settings_media_output_bluetooth),
+            )
+            val outputValues = listOf("speaker", "earpiece", "bluetooth")
+            val selectedOutputIndex = outputValues.indexOf(config.audioOutput).coerceAtLeast(0)
+            SettingsGroup(
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                SettingsSegmentedRow(
+                    icon = Icons.AutoMirrored.Outlined.VolumeUp,
+                    title = stringResource(R.string.settings_media_output_method),
+                    subtitle = stringResource(R.string.settings_media_output_method_subtitle),
+                    options = outputOptions,
+                    selectedIndex = selectedOutputIndex,
+                    onSelectedChange = { idx ->
+                        scope.launch { settings.saveMediaConfig(config.copy(audioOutput = outputValues[idx])) }
+                    },
+                )
             }
         }
     }
@@ -262,7 +224,7 @@ private fun SliderRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(MusePaddings.cardInner),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -320,56 +282,37 @@ private fun TtsVoiceSelector(
     if (voices.isEmpty()) return
 
     var expanded by remember { mutableStateOf(false) }
-    val displayName = if (currentVoice.isNotBlank()) currentVoice else "默认"
+    val defaultLabel = stringResource(R.string.settings_media_tts_voice_default)
+    val displayName = if (currentVoice.isNotBlank()) currentVoice else defaultLabel
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { expanded = true }
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.RecordVoiceOver,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.outline,
-            modifier = Modifier.size(20.dp),
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "TTS 声音",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = displayName,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
-            )
+    Box {
+        SettingsItemRow(
+            icon = Icons.Outlined.RecordVoiceOver,
+            title = stringResource(R.string.settings_media_tts_voice_selector),
+            subtitle = displayName,
+            onClick = { expanded = true },
+        ) {
+            ChevronRight()
         }
-        ChevronRight()
-        Box {
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-            ) {
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text(defaultLabel) },
+                onClick = {
+                    onVoiceSelected("")
+                    expanded = false
+                },
+            )
+            voices.forEach { voice ->
                 DropdownMenuItem(
-                    text = { Text("默认") },
+                    text = { Text(voice.name) },
                     onClick = {
-                        onVoiceSelected("")
+                        onVoiceSelected(voice.name)
                         expanded = false
                     },
                 )
-                voices.forEach { voice ->
-                    DropdownMenuItem(
-                        text = { Text(voice.name) },
-                        onClick = {
-                            onVoiceSelected(voice.name)
-                            expanded = false
-                        },
-                    )
-                }
             }
         }
     }
@@ -391,7 +334,9 @@ private fun CloudTtsConfigSection(
     val systemLabel = stringResource(R.string.settings_media_tts_engine_system)
     val savedToast = stringResource(R.string.settings_media_tts_saved)
 
-    SettingsGroup {
+    SettingsGroup(
+        modifier = Modifier.padding(top = 8.dp),
+    ) {
         // 引擎选择(system + 11 家云端)
         var engineExpanded by remember { mutableStateOf(false) }
         // stringResource 必须在 @Composable 作用域直接调用,不能在 let/lambda 内嵌套
@@ -400,54 +345,34 @@ private fun CloudTtsConfigSection(
         val currentLabel = if (config.ttsEngine == "system" || matchedResId == null) systemLabel
         else stringResource(matchedResId)
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { engineExpanded = true }
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.CloudQueue,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.size(20.dp),
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.settings_media_tts_engine),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = currentLabel,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
-                )
+        Box {
+            SettingsItemRow(
+                icon = Icons.Outlined.CloudQueue,
+                title = stringResource(R.string.settings_media_tts_engine),
+                subtitle = currentLabel,
+                onClick = { engineExpanded = true },
+            ) {
+                ChevronRight()
             }
-            ChevronRight()
-            Box {
-                DropdownMenu(
-                    expanded = engineExpanded,
-                    onDismissRequest = { engineExpanded = false },
-                ) {
+            DropdownMenu(
+                expanded = engineExpanded,
+                onDismissRequest = { engineExpanded = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text(systemLabel) },
+                    onClick = {
+                        scope.launch { settings.saveMediaConfig(config.copy(ttsEngine = "system")) }
+                        engineExpanded = false
+                    },
+                )
+                TtsManager.CLOUD_TTS_ENGINES.forEach { (engineId, labelRes) ->
                     DropdownMenuItem(
-                        text = { Text(systemLabel) },
+                        text = { Text(stringResource(labelRes)) },
                         onClick = {
-                            scope.launch { settings.saveMediaConfig(config.copy(ttsEngine = "system")) }
+                            scope.launch { settings.saveMediaConfig(config.copy(ttsEngine = engineId)) }
                             engineExpanded = false
                         },
                     )
-                    TtsManager.CLOUD_TTS_ENGINES.forEach { (engineId, labelRes) ->
-                        DropdownMenuItem(
-                            text = { Text(stringResource(labelRes)) },
-                            onClick = {
-                                scope.launch { settings.saveMediaConfig(config.copy(ttsEngine = engineId)) }
-                                engineExpanded = false
-                            },
-                        )
-                    }
                 }
             }
         }
@@ -462,7 +387,7 @@ private fun CloudTtsConfigSection(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(MusePaddings.cardInner),
         ) {
             OutlinedTextField(
                 value = apiKey,
@@ -495,7 +420,7 @@ private fun CloudTtsConfigSection(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(MusePaddings.cardInner),
         ) {
             OutlinedTextField(
                 value = voice,
@@ -521,7 +446,7 @@ private fun CloudTtsConfigSection(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(MusePaddings.cardInner),
         ) {
             OutlinedTextField(
                 value = model,
@@ -547,7 +472,7 @@ private fun CloudTtsConfigSection(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(MusePaddings.cardInner),
         ) {
             OutlinedTextField(
                 value = endpoint,

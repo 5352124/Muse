@@ -2,6 +2,7 @@ package io.zer0.muse.ui.common
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import io.zer0.muse.ui.theme.MuseAnimation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
@@ -53,13 +54,13 @@ fun IosFilterCard(
     val bgColor by animateColorAsState(
         targetValue = if (isActive) MaterialTheme.colorScheme.primary
         else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        animationSpec = tween(200),
+        animationSpec = tween(MuseAnimation.TACTILE_MS),
         label = "filter_card_bg",
     )
     val contentColor by animateColorAsState(
         targetValue = if (isActive) MaterialTheme.colorScheme.onPrimary
         else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(200),
+        animationSpec = tween(MuseAnimation.TACTILE_MS),
         label = "filter_card_content",
     )
 

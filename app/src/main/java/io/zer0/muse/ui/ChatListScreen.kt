@@ -1,46 +1,42 @@
 package io.zer0.muse.ui
 
-import io.zer0.muse.ui.common.EmotionalEmptyState
 import io.zer0.muse.ui.common.EmptyState
+import io.zer0.muse.ui.common.LoadingState
 import io.zer0.muse.ui.common.MuseToast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.CreateNewFolder
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -60,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -75,15 +72,16 @@ import io.zer0.muse.data.session.FolderEntity
 import io.zer0.muse.data.session.SessionEntity
 import io.zer0.muse.ui.common.MuseDialog
 import io.zer0.muse.ui.theme.MuseDateFormats
+import io.zer0.muse.ui.theme.MuseHaptics
+import io.zer0.muse.ui.theme.MuseIconSizes
 import io.zer0.muse.ui.theme.MusePaddings
 import io.zer0.muse.ui.theme.MuseShapes
+import io.zer0.muse.ui.theme.huge
 import io.zer0.muse.ui.theme.mega
 import io.zer0.muse.ui.theme.pill
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-private enum class Filter { ALL, PINNED, ARCHIVED }
 
 @Composable
 fun ChatListScreen(
@@ -104,15 +102,19 @@ fun ChatListScreen(
     onToggleFolderExpanded: (String, Boolean) -> Unit,
     assistants: List<AssistantEntity> = emptyList(),
     currentAssistant: AssistantEntity? = null,
-    /** v0.45: 已归档会话列表(归档 FilterCard 用)。 */
+    /** v0.45: 已归档会话列表(历史数据保留,当前 UI 不再展示归档入口)。 */
     archivedSessions: List<SessionEntity> = emptyList(),
     /** v0.45: 归档会话(主列表项长按菜单用)。 */
     onArchive: (String) -> Unit = {},
     /** v0.45: 取消归档(归档列表项长按菜单用)。 */
     onUnarchive: (String) -> Unit = {},
     onOpenScheduledTasks: () -> Unit = {},
-                onOpenQuickNotes: () -> Unit = {},
-                /** v2.0: 打开最近删除页。 */
+    onOpenQuickNotes: () -> Unit = {},
+    /** v1.0.27: 打开快速翻译页。 */
+    onOpenQuickTranslate: () -> Unit = {},
+    /** v1.0.27: 打开知识库页。 */
+    onOpenKnowledgeBase: () -> Unit = {},
+    /** v2.0: 打开最近删除页。 */
     onOpenRecentlyDeleted: () -> Unit = {},
     /** Phase 1 WS5: 打开助手/角色管理页面(情感空状态 CTA 用)。 */
     onOpenAssistants: () -> Unit = {},
@@ -120,7 +122,6 @@ fun ChatListScreen(
     isSessionsLoading: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    var filter by remember { mutableStateOf(Filter.ALL) }
     // v1.69: 文件夹分组 UI — 新建文件夹对话框状态
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
@@ -136,91 +137,27 @@ fun ChatListScreen(
                 .navigationBarsPadding()
                 .padding(horizontal = MusePaddings.screen),
         ) {
-            // 两个大方块入口
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(MusePaddings.itemGap),
-            ) {
-                BigEntryCard(
-                    title = stringResource(R.string.chat_list_scheduled_tasks),
-                    subtitle = stringResource(R.string.chat_list_scheduled_subtitle),
-                    icon = Icons.Outlined.Schedule,
-                    onClick = onOpenScheduledTasks,
-                    modifier = Modifier.weight(1f),
-                )
-                BigEntryCard(
-                    title = stringResource(R.string.chat_list_quick_notes),
-                    subtitle = stringResource(R.string.chat_list_quick_notes_subtitle),
-                    icon = Icons.Default.Edit,
-                    onClick = onOpenQuickNotes,
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            // v1.0.28: 顶部快捷工具栏 — 统一胶囊容器,避免零散按钮。
+            QuickToolsBar(
+                onOpenScheduledTasks = onOpenScheduledTasks,
+                onOpenQuickNotes = onOpenQuickNotes,
+                onOpenQuickTranslate = onOpenQuickTranslate,
+            )
+
+            Spacer(Modifier.height(MusePaddings.contentGap))
+
+            // 主 CTA 卡片 — 新建任务
+            NewTaskCard(onClick = onCreate)
 
             Spacer(Modifier.height(MusePaddings.sectionGap))
 
-            // 分类卡片行
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(MusePaddings.itemGap),
-            ) {
-                FilterCard(
-                    label = stringResource(R.string.chat_list_filter_all),
-                    icon = Icons.Default.AccessTime,
-                    selected = filter == Filter.ALL,
-                    modifier = Modifier.weight(1f),
-                    onClick = { filter = Filter.ALL },
-                )
-                FilterCard(
-                    label = stringResource(R.string.chat_list_filter_pinned),
-                    icon = Icons.Default.PushPin,
-                    selected = filter == Filter.PINNED,
-                    modifier = Modifier.weight(1f),
-                    onClick = { filter = Filter.PINNED },
-                )
-                FilterCard(
-                    label = stringResource(R.string.chat_list_filter_archived),
-                    icon = Icons.Outlined.Archive,
-                    selected = filter == Filter.ARCHIVED,
-                    modifier = Modifier.weight(1f),
-                    onClick = { filter = Filter.ARCHIVED },
-                )
-            }
-
-            // v2.0: 最近删除入口
-            TextButton(
-                onClick = onOpenRecentlyDeleted,
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-            ) {
-                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.size(6.dp))
-                Text(
-                    stringResource(R.string.recently_deleted_entry),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.outline,
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    stringResource(R.string.recently_deleted_entry_subtitle),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline,
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
-
             // 会话列表或空状态
-            // v0.36 性能优化:缓存过滤+排序结果,避免每次重组都重新计算。
-            val filteredSessions = remember(filter, sessions, archivedSessions) {
-                when (filter) {
-                    Filter.ALL -> sessions.sortedByDescending { it.updatedAt }
-                    Filter.PINNED -> sessions.filter { it.pinned }.sortedByDescending { it.updatedAt }
-                    // v1.67: 归档列表也按 pinned 优先排序,与主列表一致
-                    Filter.ARCHIVED -> archivedSessions.sortedWith(
-                        compareByDescending<SessionEntity> { it.pinned }.thenByDescending { it.updatedAt }
-                    )
-                }
+            // v0.36 性能优化:缓存排序结果,避免每次重组都重新计算。
+            // v1.0.28: 移除置顶/归档筛选,统一展示全部会话(置顶优先,按更新时间倒序)。
+            val displayedSessions by remember(sessions) {
+                mutableStateOf(sessions.sortedWith(
+                    compareByDescending<SessionEntity> { it.pinned }.thenByDescending { it.updatedAt }
+                ))
             }
 
             // v1.72: 首次加载时显示 loading,避免 DB emit 前闪"还没有任务"空状态
@@ -229,35 +166,7 @@ fun ChatListScreen(
                     modifier = Modifier.weight(1f),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator()
-                }
-            } else if (filteredSessions.isEmpty()) {
-                Box(
-                    modifier = Modifier.weight(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (filter == Filter.ALL) {
-                        // Phase 1 WS5: emotional empty state for main chat list
-                        EmotionalEmptyState(
-                            onChatWithMuse = onCreate,
-                            onMeetCharacters = onOpenAssistants,
-                        )
-                    } else {
-                        EmptyState(
-                            icon = if (filter == Filter.ARCHIVED) Icons.Outlined.Archive
-                            else Icons.Outlined.ChatBubbleOutline,
-                            title = when (filter) {
-                                Filter.PINNED -> stringResource(R.string.chat_list_empty_pinned)
-                                Filter.ARCHIVED -> stringResource(R.string.chat_list_empty_archived)
-                                else -> ""
-                            },
-                            subtitle = when (filter) {
-                                Filter.PINNED -> stringResource(R.string.chat_list_empty_pinned_sub)
-                                Filter.ARCHIVED -> stringResource(R.string.chat_list_empty_archived_sub)
-                                else -> ""
-                            },
-                        )
-                    }
+                    LoadingState()
                 }
             } else {
                 LazyColumn(
@@ -265,217 +174,33 @@ fun ChatListScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(bottom = 16.dp),
                 ) {
-                    when (filter) {
-                        Filter.ALL -> {
-                            // v1.69: 文件夹分组 UI 接入
-                            // 布局: 置顶段(跨文件夹) → 各文件夹段(FolderHeaderRow + 会话) → 未分组段
-                            val pinned = filteredSessions.filter { it.pinned }
-                            val nonPinned = filteredSessions.filterNot { it.pinned }
-                            val byFolder = nonPinned.groupBy { it.folderId }
-                            val ungrouped = byFolder[null] ?: emptyList()
-                            val folderSessions = folders.associateWith { f -> byFolder[f.id] ?: emptyList() }
-
-                            // 置顶段
-                            if (pinned.isNotEmpty()) {
-                                item(key = "section_pinned") {
-                                    SectionTitle(stringResource(R.string.chat_list_filter_pinned))
-                                }
-                                items(pinned, key = { "pinned_${it.id}" }) { session ->
-                                    SessionRowItem(
-                                        session = session,
-                                        currentSessionId = currentSessionId,
-                                        folders = folders,
-                                        onSelect = onSelect,
-                                        onDelete = onDelete,
-                                        onRename = onRename,
-                                        onRenameTo = onRenameTo,
-                                        onTogglePinned = onTogglePinned,
-                                        onArchive = onArchive,
-                                        onMoveSessionToFolder = onMoveSessionToFolder,
-                                    )
-                                }
-                            }
-
-                            // 各文件夹段
-                            folders.forEach { folder ->
-                                val sessionsInFolder = folderSessions[folder] ?: emptyList()
-                                item(key = "folder_header_${folder.id}") {
-                                    FolderHeaderRow(
-                                        folder = folder,
-                                        sessionCount = sessionsInFolder.size,
-                                        onToggleExpanded = { onToggleFolderExpanded(folder.id, !folder.expanded) },
-                                        onRename = { newName -> onRenameFolder(folder.id, newName) },
-                                        onDelete = { onDeleteFolder(folder.id) },
-                                    )
-                                }
-                                if (folder.expanded && sessionsInFolder.isNotEmpty()) {
-                                    items(sessionsInFolder, key = { "folder_${folder.id}_${it.id}" }) { session ->
-                                        SessionRowItem(
-                                            session = session,
-                                            currentSessionId = currentSessionId,
-                                            folders = folders,
-                                            onSelect = onSelect,
-                                            onDelete = onDelete,
-                                            onRename = onRename,
-                                            onRenameTo = onRenameTo,
-                                            onTogglePinned = onTogglePinned,
-                                            onArchive = onArchive,
-                                            onMoveSessionToFolder = onMoveSessionToFolder,
-                                        )
-                                    }
-                                }
-                            }
-
-                            // 未分组段 + 新建文件夹入口
-                            if (pinned.isNotEmpty() || folders.isNotEmpty()) {
-                                item(key = "section_ungrouped") {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Box(modifier = Modifier.weight(1f)) {
-                                            SectionTitle(stringResource(R.string.chat_list_section_ungrouped))
-                                        }
-                                        TextButton(
-                                            onClick = {
-                                                newFolderName = ""
-                                                showCreateFolderDialog = true
-                                            },
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                        ) {
-                                            Icon(
-                                                Icons.Default.CreateNewFolder,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp),
-                                            )
-                                            Spacer(Modifier.size(4.dp))
-                                            Text(stringResource(R.string.chat_list_new_folder), style = MaterialTheme.typography.labelMedium)
-                                        }
-                                    }
-                                }
-                            } else if (ungrouped.isNotEmpty()) {
-                                item(key = "section_ungrouped") {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Box(modifier = Modifier.weight(1f)) {
-                                            SectionTitle(stringResource(R.string.chat_list_section_recent))
-                                        }
-                                        TextButton(
-                                            onClick = {
-                                                newFolderName = ""
-                                                showCreateFolderDialog = true
-                                            },
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                        ) {
-                                            Icon(
-                                                Icons.Default.CreateNewFolder,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp),
-                                            )
-                                            Spacer(Modifier.size(4.dp))
-                                            Text(stringResource(R.string.chat_list_new_folder), style = MaterialTheme.typography.labelMedium)
-                                        }
-                                    }
-                                }
-                            }
-                            items(ungrouped, key = { "ungrouped_${it.id}" }) { session ->
-                                SessionRowItem(
-                                    session = session,
-                                    currentSessionId = currentSessionId,
-                                    folders = folders,
-                                    onSelect = onSelect,
-                                    onDelete = onDelete,
-                                    onRename = onRename,
-                                    onRenameTo = onRenameTo,
-                                    onTogglePinned = onTogglePinned,
-                                    onArchive = onArchive,
-                                    onMoveSessionToFolder = onMoveSessionToFolder,
-                                )
-                            }
-                            // M-CL1: 已删除 empty_create_folder 死代码项 — 该分支仅在 filteredSessions.isNotEmpty() 时进入,
-                            //        内层判断 filteredSessions.isEmpty() 永远为 false,不可达。"新建文件夹"入口已移到上方 EmptyState 中
-                        }
-                        Filter.PINNED -> {
-                            items(filteredSessions, key = { "pinned_list_${it.id}" }) { session ->
-                                val onSelectSession = remember(session.id) { { onSelect(session.id) } }
-                                val onDeleteSession = remember(session.id) { { onDelete(session.id) } }
-                                val onRenameSession = remember(session.id) { { onRename(session) } }
-                                val onRenameToSession = remember(session.id) { { newName: String -> onRenameTo(session, newName) } }
-                                val onTogglePinnedSession = remember(session.id) { { onTogglePinned(session.id) } }
-                                val onArchiveSession = remember(session.id) { { onArchive(session.id) } }
-                                val onMoveToFolderSession = remember(session.id) { { folderId: String? -> onMoveSessionToFolder(session.id, folderId) } }
-                                ChatListItem(
-                                    modifier = Modifier.animateItem(),
-                                    session = session,
-                                    isActive = session.id == currentSessionId,
-                                    folders = folders,
-                                    onSelect = onSelectSession,
-                                    onDelete = onDeleteSession,
-                                    onRename = onRenameSession,
-                                    onRenameTo = onRenameToSession,
-                                    onTogglePinned = onTogglePinnedSession,
-                                    onMoveToFolder = onMoveToFolderSession,
-                                    onArchive = onArchiveSession,
-                                )
-                            }
-                        }
-                        Filter.ARCHIVED -> {
-                            items(filteredSessions, key = { "archived_${it.id}" }) { session ->
-                                val onSelectSession = remember(session.id) { { onSelect(session.id) } }
-                                val onDeleteSession = remember(session.id) { { onDelete(session.id) } }
-                                val onRenameSession = remember(session.id) { { onRename(session) } }
-                                val onRenameToSession = remember(session.id) { { newName: String -> onRenameTo(session, newName) } }
-                                val onTogglePinnedSession = remember(session.id) { { onTogglePinned(session.id) } }
-                                val onUnarchiveSession = remember(session.id) { { onUnarchive(session.id) } }
-                                val onMoveToFolderSession = remember(session.id) { { folderId: String? -> onMoveSessionToFolder(session.id, folderId) } }
-                                ChatListItem(
-                                    modifier = Modifier.animateItem(),
-                                    session = session,
-                                    isActive = session.id == currentSessionId,
-                                    folders = folders,
-                                    onSelect = onSelectSession,
-                                    onDelete = onDeleteSession,
-                                    onRename = onRenameSession,
-                                    onRenameTo = onRenameToSession,
-                                    onTogglePinned = onTogglePinnedSession,
-                                    onMoveToFolder = onMoveToFolderSession,
-                                    onUnarchive = onUnarchiveSession,
-                                )
-                            }
-                        }
+                    // v1.0.28: 移除筛选器后统一展示全部会话。
+                    // 置顶会话始终排在最前, followed by others sorted by updatedAt.
+                    // v1.0.29: 空列表时不显示任何占位,保持页面简洁。
+                    val pinned = displayedSessions.filter { it.pinned }
+                    val others = displayedSessions.filterNot { it.pinned }
+                    items(pinned + others, key = { "session_${it.id}" }) { session ->
+                        val onSelectSession = remember(session.id) { { onSelect(session.id) } }
+                        val onDeleteSession = remember(session.id) { { onDelete(session.id) } }
+                        val onRenameSession = remember(session.id) { { onRename(session) } }
+                        val onRenameToSession = remember(session.id) { { newName: String -> onRenameTo(session, newName) } }
+                        val onTogglePinnedSession = remember(session.id) { { onTogglePinned(session.id) } }
+                        val onArchiveSession = remember(session.id) { { onArchive(session.id) } }
+                        val onMoveToFolderSession = remember(session.id) { { folderId: String? -> onMoveSessionToFolder(session.id, folderId) } }
+                        ChatListItem(
+                            modifier = Modifier.animateItem(),
+                            session = session,
+                            isActive = session.id == currentSessionId,
+                            folders = folders,
+                            onSelect = onSelectSession,
+                            onDelete = onDeleteSession,
+                            onRename = onRenameSession,
+                            onRenameTo = onRenameToSession,
+                            onTogglePinned = onTogglePinnedSession,
+                            onMoveToFolder = onMoveToFolderSession,
+                            onArchive = onArchiveSession,
+                        )
                     }
-                }
-            }
-
-            // 底部按钮
-            // v1.131: 用 Box 包裹 + fillMaxWidth(0.55f) + height(48dp),水平居中,宽度约为之前一半多一点
-            // v1.132: Text 加 fillMaxWidth() + contentPadding=0 让文字真正水平居中(原 Button 默认 Row Start 导致偏左)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Button(
-                    onClick = onCreate,
-                    modifier = Modifier
-                        .fillMaxWidth(0.55f)
-                        .height(48.dp),
-                    shape = MuseShapes.mega,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
-                ) {
-                    Text(
-                        text = stringResource(R.string.chat_list_new_task),
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
                 }
             }
         }
@@ -509,149 +234,145 @@ fun ChatListScreen(
 }
 
 /**
- * v1.69: 会话行渲染辅助函数,避免文件夹分组场景下重复 lambda 缓存代码。
- * 在 LazyItemScope 上下文中调用,以支持 animateItem()。
+ * v1.0.29: 顶部快捷工具栏 — 统一胶囊容器,三个 icon-only 按钮共享背景。
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun LazyItemScope.SessionRowItem(
-    session: SessionEntity,
-    currentSessionId: String?,
-    folders: List<FolderEntity>,
-    onSelect: (String) -> Unit,
-    onDelete: (String) -> Unit,
-    onRename: (SessionEntity) -> Unit,
-    onRenameTo: (SessionEntity, String) -> Unit,
-    onTogglePinned: (String) -> Unit,
-    onArchive: (String) -> Unit,
-    onMoveSessionToFolder: (String, String?) -> Unit,
-) {
-    val onSelectSession = remember(session.id) { { onSelect(session.id) } }
-    val onDeleteSession = remember(session.id) { { onDelete(session.id) } }
-    val onRenameSession = remember(session.id) { { onRename(session) } }
-    val onRenameToSession = remember(session.id) { { newName: String -> onRenameTo(session, newName) } }
-    val onTogglePinnedSession = remember(session.id) { { onTogglePinned(session.id) } }
-    val onArchiveSession = remember(session.id) { { onArchive(session.id) } }
-    val onMoveToFolderSession = remember(session.id) { { folderId: String? -> onMoveSessionToFolder(session.id, folderId) } }
-    ChatListItem(
-        modifier = Modifier.animateItem(),
-        session = session,
-        isActive = session.id == currentSessionId,
-        folders = folders,
-        onSelect = onSelectSession,
-        onDelete = onDeleteSession,
-        onRename = onRenameSession,
-        onRenameTo = onRenameToSession,
-        onTogglePinned = onTogglePinnedSession,
-        onMoveToFolder = onMoveToFolderSession,
-        onArchive = onArchiveSession,
-    )
-}
-
-@Composable
-private fun FilterCard(
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    selected: Boolean,
-    onClick: () -> Unit,
+private fun QuickToolsBar(
+    onOpenScheduledTasks: () -> Unit,
+    onOpenQuickNotes: () -> Unit,
+    onOpenQuickTranslate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val bgColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        label = "filter_card_bg",
-    )
-    val contentColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.onPrimary
-        else MaterialTheme.colorScheme.onSurfaceVariant,
-        label = "filter_card_content",
-    )
-    Surface(
-        onClick = onClick,
-        shape = MuseShapes.medium,
-        color = bgColor,
-        modifier = modifier.aspectRatio(1f),
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+        Surface(
+            shape = MuseShapes.pill,
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            tonalElevation = 0.dp,
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = contentColor,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.SemiBold,
-                ),
-                color = contentColor,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                QuickToolButton(
+                    icon = Icons.Outlined.Schedule,
+                    contentDescription = stringResource(R.string.chat_list_scheduled_tasks),
+                    onClick = onOpenScheduledTasks,
+                )
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(20.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                )
+                QuickToolButton(
+                    icon = Icons.Default.Edit,
+                    contentDescription = stringResource(R.string.chat_list_quick_notes),
+                    onClick = onOpenQuickNotes,
+                )
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(20.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                )
+                QuickToolButton(
+                    icon = Icons.Outlined.Translate,
+                    contentDescription = stringResource(R.string.chat_list_quick_translate),
+                    onClick = onOpenQuickTranslate,
+                )
+            }
         }
     }
 }
 
+/**
+ * v1.0.29: 顶部快捷工具按钮 — 胶囊容器内的图标按钮。
+ */
 @Composable
-private fun SectionTitle(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.outline,
-        modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
-    )
+private fun QuickToolButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(MuseIconSizes.touchTarget),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(MuseIconSizes.iconMedium),
+        )
+    }
 }
 
 /**
- * 大方块入口卡片。
- *
- * 设计:
- *  - 较大的圆角卡片(高度自适应,padding 充裕)
- *  - 图标居中置顶 + 标题 + 副标题(全部居中对齐)
- *  - 点击涟漪效果
- *  - 背景色: surfaceVariant 半透明(暖纸风格)
+ * v1.0.29: 主页主 CTA 卡片 — 柔和品牌渐变 + 大圆角,降低色块压迫感。
  */
 @Composable
-private fun BigEntryCard(
-    title: String,
-    subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+private fun NewTaskCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
+    val gradient = androidx.compose.ui.graphics.Brush.horizontalGradient(
+        colors = listOf(
+            MaterialTheme.colorScheme.primary,
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+        ),
+    )
+    io.zer0.muse.ui.components.MuseSurface(
         onClick = onClick,
-        shape = MuseShapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        modifier = modifier,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(118.dp),
+        shape = MuseShapes.huge,
+        color = MaterialTheme.colorScheme.primaryContainer,
+        elevation = 0.dp,
+        enableScale = true,
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+                .fillMaxSize()
+                .background(gradient)
+                .padding(horizontal = 22.dp, vertical = 18.dp),
         ) {
-            // 线条风格图标
-            io.zer0.muse.ui.common.IosSettingsIcon(
-                icon = icon,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.SemiBold,
-                ),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Column(
+                modifier = Modifier.align(Alignment.CenterStart),
+            ) {
+                Text(
+                    text = stringResource(R.string.chat_list_new_task),
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.chat_list_new_task_card_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+                )
+            }
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.18f),
+                modifier = Modifier
+                    .size(48.dp)
+                    .align(Alignment.CenterEnd),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -690,15 +411,15 @@ private fun ChatListItem(
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             if (value == SwipeToDismissBoxValue.EndToStart) {
-                hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                MuseHaptics.medium(hapticFeedback)
                 showDeleteConfirm = true
                 false  // 不立即消失,等用户确认
             } else if (value == SwipeToDismissBoxValue.StartToEnd) {
                 if (onArchive != null) {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    MuseHaptics.medium(hapticFeedback)
                     showArchiveConfirm = true
                 } else if (onUnarchive != null) {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    MuseHaptics.medium(hapticFeedback)
                     onUnarchive()
                 }
                 false
@@ -722,7 +443,7 @@ private fun ChatListItem(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.errorContainer)
-                        .padding(horizontal = 20.dp),
+                        .padding(horizontal = MusePaddings.messageGap),
                     contentAlignment = Alignment.CenterEnd,
                 ) {
                     Icon(
@@ -737,7 +458,7 @@ private fun ChatListItem(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.primaryContainer)
-                            .padding(horizontal = 20.dp),
+                            .padding(horizontal = MusePaddings.messageGap),
                         contentAlignment = Alignment.CenterStart,
                     ) {
                         Icon(
@@ -762,13 +483,13 @@ private fun ChatListItem(
             .combinedClickable(
                 onClick = onSelect,
                 onLongClick = {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    MuseHaptics.medium(hapticFeedback)
                     showMenu = true
                 },
             ),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            modifier = Modifier.padding(MusePaddings.cardInnerLoose),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
@@ -827,17 +548,6 @@ private fun ChatListItem(
                         modifier = Modifier.padding(top = 4.dp),
                     )
                 }
-                // Phase 1 WS4: relationship duration
-                val days = remember(session.createdAt) {
-                    (System.currentTimeMillis() - session.createdAt) / (24 * 60 * 60 * 1000)
-                }
-                Text(
-                    text = if (days <= 0L) stringResource(R.string.chat_list_just_met_today)
-                    else stringResource(R.string.chat_list_days_together, days.toInt()),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                    modifier = Modifier.padding(top = 2.dp),
-                )
                 Text(
                     text = formatTime(session.updatedAt),
                     style = MaterialTheme.typography.labelSmall,
@@ -861,7 +571,7 @@ private fun ChatListItem(
                         contentDescription = if (session.pinned) stringResource(R.string.chat_list_unpin) else stringResource(R.string.chat_list_filter_pinned),
                         onClick = {
                             showMenu = false
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            MuseHaptics.light(hapticFeedback)
                             onTogglePinned()
                         },
                     )
@@ -905,8 +615,8 @@ private fun ChatListItem(
                             contentDescription = stringResource(R.string.chat_list_filter_archived),
                             onClick = {
                                 showMenu = false
-                                hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onArchive()
+                                MuseHaptics.light(hapticFeedback)
+                            onArchive()
                             },
                         )
                     }
@@ -928,7 +638,7 @@ private fun ChatListItem(
                         tint = MaterialTheme.colorScheme.error,
                         onClick = {
                             showMenu = false
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            MuseHaptics.light(hapticFeedback)
                             showDeleteConfirm = true
                         },
                     )
@@ -1024,125 +734,6 @@ private fun ActionSheetItem(
             text = text,
             style = MaterialTheme.typography.bodyLarge,
             color = tint,
-        )
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun FolderHeaderRow(
-    folder: FolderEntity,
-    sessionCount: Int,
-    onToggleExpanded: () -> Unit,
-    onRename: (String) -> Unit,
-    onDelete: () -> Unit,
-) {
-    var showMenu by remember { mutableStateOf(false) }
-    var showRenameDialog by remember { mutableStateOf(false) }
-    var renameText by remember { mutableStateOf(folder.name) }
-    // v1.48: 删除文件夹二次确认,避免误删导致该文件夹下所有会话丢失
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        ),
-        shape = MuseShapes.medium,
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = onToggleExpanded,
-                onLongClick = { showMenu = true },
-            ),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Default.Folder,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.size(12.dp))
-            Text(
-                text = folder.name,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = "$sessionCount",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
-            )
-        }
-    }
-
-    if (showMenu) {
-        MuseDialog(
-            onDismissRequest = { showMenu = false },
-            title = folder.name,
-            content = {
-                Column {
-                    TextButton(onClick = {
-                        showMenu = false
-                        renameText = folder.name
-                        showRenameDialog = true
-                    }) {
-                        Text(stringResource(R.string.chat_list_rename))
-                    }
-                    TextButton(onClick = {
-                        showMenu = false
-                        showDeleteConfirm = true
-                    }) {
-                        Text(stringResource(R.string.chat_list_delete_folder_title), color = MaterialTheme.colorScheme.error)
-                    }
-                }
-            },
-            onConfirm = null,
-            dismissText = stringResource(R.string.action_cancel),
-            onDismiss = { showMenu = false },
-        )
-    }
-
-    if (showRenameDialog) {
-        MuseDialog(
-            onDismissRequest = { showRenameDialog = false },
-            title = stringResource(R.string.chat_list_rename_folder_title),
-            content = {
-                OutlinedTextField(
-                    value = renameText,
-                    onValueChange = { renameText = it },
-                    singleLine = true,
-                    shape = MuseShapes.medium,
-                )
-            },
-            confirmText = stringResource(R.string.chat_list_confirm),
-            onConfirm = {
-                if (renameText.isNotBlank()) onRename(renameText.trim())
-                showRenameDialog = false
-            },
-            dismissText = stringResource(R.string.action_cancel),
-            onDismiss = { showRenameDialog = false },
-        )
-    }
-
-    // v1.48: 删除文件夹二次确认
-    if (showDeleteConfirm) {
-        MuseDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = stringResource(R.string.chat_list_delete_folder_title),
-            content = { Text(stringResource(R.string.chat_list_delete_folder_confirm, folder.name)) },
-            confirmText = stringResource(R.string.action_delete),
-            onConfirm = {
-                showDeleteConfirm = false
-                onDelete()
-            },
-            destructive = true,
         )
     }
 }

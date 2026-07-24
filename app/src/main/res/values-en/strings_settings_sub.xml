@@ -92,6 +92,12 @@
     <string name="settings_sub_user_profile_subtitle">Age / City / MBTI, etc. (for AI personalization)</string>
     <string name="settings_sub_data_backup">Data &amp; Backup</string>
     <string name="settings_about_version_full">Version %1$s (%2$d)</string>
+    <string name="settings_about_app_info">App Info</string>
+    <string name="settings_about_feedback_section">Feedback</string>
+    <string name="settings_about_update_section">Updates</string>
+    <string name="settings_about_legal_section">Legal</string>
+    <string name="settings_about_repo_section">Open Source</string>
+    <string name="settings_about_account_section">Account</string>
     <string name="settings_about_feedback_cd">Feedback, tap to open</string>
     <string name="settings_about_feedback">Feedback</string>
     <string name="settings_about_update_check_failed">Update check failed: %1$s</string>
@@ -394,6 +400,8 @@
     <string name="settings_media_tts_engine_xai">xAI TTS</string>
     <string name="settings_media_tts_api_key">API Key</string>
     <string name="settings_media_tts_voice">Voice / Voice ID</string>
+    <string name="settings_media_tts_voice_selector">TTS Voice</string>
+    <string name="settings_media_tts_voice_default">Default</string>
     <string name="settings_media_tts_voice_placeholder">Leave blank for default</string>
     <string name="settings_media_tts_model">Model</string>
     <string name="settings_media_tts_model_placeholder">Leave blank for default</string>

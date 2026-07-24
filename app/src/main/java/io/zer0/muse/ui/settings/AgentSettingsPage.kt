@@ -53,6 +53,7 @@ import io.zer0.muse.ui.common.SettingsGroup
 import io.zer0.muse.ui.common.SettingsGroupDivider
 import io.zer0.muse.ui.common.SettingsItemRow
 import io.zer0.muse.ui.common.SettingsSwitchRow
+import io.zer0.muse.ui.theme.MusePaddings
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -123,7 +124,9 @@ fun AgentSettingsPage(
         // ── Agent 默认助手 ──
         item { SectionLabel(stringResource(R.string.settings_agent_section_assistant)) }
         item {
-            SettingsGroup {
+            SettingsGroup(
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
                 val currentAgent = assistants?.find { it.id == proactiveConfig.agentId }
                     ?: assistants?.firstOrNull { it.id == "default" }
                     ?: assistants?.firstOrNull()
@@ -141,7 +144,9 @@ fun AgentSettingsPage(
         // ── v1.52: Agent 当前模型 ──
         item { SectionLabel(stringResource(R.string.settings_agent_section_model)) }
         item {
-            SettingsGroup {
+            SettingsGroup(
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
                 SettingsItemRow(
                     icon = Icons.Outlined.SmartToy,
                     title = stringResource(R.string.settings_agent_current_model),
@@ -166,7 +171,9 @@ fun AgentSettingsPage(
         // ── 多 Agent 协作 ──
         item { SectionLabel(stringResource(R.string.settings_agent_multi_agent_section)) }
         item {
-            SettingsGroup {
+            SettingsGroup(
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
                 SettingsItemRow(
                     icon = Icons.Outlined.GroupWork,
                     title = stringResource(R.string.settings_agent_collab_team),
@@ -195,7 +202,9 @@ fun AgentSettingsPage(
         // ── 主动消息 ──
         item { SectionLabel(stringResource(R.string.settings_agent_proactive_section)) }
         item {
-            SettingsGroup {
+            SettingsGroup(
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
                 SettingsSwitchRow(
                     icon = Icons.Outlined.NotificationsActive,
                     title = stringResource(R.string.settings_agent_proactive_title),
@@ -281,7 +290,7 @@ fun AgentSettingsPage(
                     when {
                         assistantList == null -> {
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                modifier = Modifier.fillMaxWidth().padding(MusePaddings.screen),
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -293,7 +302,7 @@ fun AgentSettingsPage(
                                 text = stringResource(R.string.settings_agent_no_assistants_hint),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.padding(16.dp),
+                                modifier = Modifier.padding(MusePaddings.screen),
                             )
                         }
                         else -> {
@@ -592,7 +601,7 @@ fun AgentSettingsPage(
                             text = stringResource(R.string.settings_agent_no_models_hint),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.padding(16.dp),
+                            modifier = Modifier.padding(MusePaddings.screen),
                         )
                     }
                 }
@@ -672,7 +681,7 @@ fun AgentSettingsPage(
                             text = stringResource(R.string.settings_agent_no_models_hint),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.padding(16.dp),
+                            modifier = Modifier.padding(MusePaddings.screen),
                         )
                     }
                 }
@@ -696,7 +705,7 @@ private fun AgentPickerRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(MusePaddings.cardInner),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AssistantAvatar(

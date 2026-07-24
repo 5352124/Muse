@@ -26,7 +26,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
+import io.zer0.muse.ui.common.IosChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -229,10 +229,10 @@ private fun FavoriteGroupFilterRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(groups, key = { it.first ?: "all" }) { (group, label) ->
-            FilterChip(
+            IosChip(
                 selected = currentGroup == group,
                 onClick = { onGroupChange(group) },
-                label = { Text(label) },
+                label = label,
             )
         }
     }
@@ -335,26 +335,26 @@ private fun FavoriteTagFilterRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item(key = "all") {
-            FilterChip(
+            IosChip(
                 selected = currentFilter == null,
                 onClick = { onFilterChange(null) },
-                label = { Text(stringResource(R.string.favorites_filter_all, allCount)) },
+                label = stringResource(R.string.favorites_filter_all, allCount),
             )
         }
         if (ungroupedCount > 0) {
             item(key = "ungrouped") {
-                FilterChip(
+                IosChip(
                     selected = currentFilter == ChatViewModel.FAVORITE_TAG_UNGROUPED,
                     onClick = { onFilterChange(ChatViewModel.FAVORITE_TAG_UNGROUPED) },
-                    label = { Text(stringResource(R.string.favorites_filter_ungrouped, ungroupedCount)) },
+                    label = stringResource(R.string.favorites_filter_ungrouped, ungroupedCount),
                 )
             }
         }
         items(tags, key = { it }) { tag ->
-            FilterChip(
+            IosChip(
                 selected = currentFilter == tag,
                 onClick = { onFilterChange(tag) },
-                label = { Text(stringResource(R.string.favorites_tag_chip, tag, tagCounts[tag] ?: 0)) },
+                label = stringResource(R.string.favorites_tag_chip, tag, tagCounts[tag] ?: 0),
             )
         }
     }

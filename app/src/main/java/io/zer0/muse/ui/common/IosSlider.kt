@@ -63,6 +63,8 @@ import io.zer0.muse.ui.theme.MusePaddings
  * @param steps 离散步数(0 = 连续,>0 = 离散 N 步,与 Material Slider 一致)
  * @param showValueLabel 是否在右侧显示当前值文本(默认 true)
  * @param valueFormatter 值格式化函数(默认保留 2 位小数)
+ * @param onValueChangeFinished 拖动结束回调(松手或取消时触发,默认空,向后兼容)。
+ *   P0-2: 用于支持 RagSettingsPage 等"松手时写 DataStore"的持久化优化场景。
  */
 @Composable
 fun IosSlider(
@@ -73,6 +75,7 @@ fun IosSlider(
     steps: Int = 0,
     showValueLabel: Boolean = true,
     valueFormatter: (Float) -> String = { "%.2f".format(it) },
+    onValueChangeFinished: () -> Unit = {},
 ) {
     val start = valueRange.start
     val end = valueRange.endInclusive
@@ -117,8 +120,14 @@ fun IosSlider(
                             val stepped = snapFraction(newFraction, steps)
                             onValueChange((start + stepped * range).coerceIn(start, end))
                         },
-                        onDragEnd = { isDragging = false },
-                        onDragCancel = { isDragging = false },
+                        onDragEnd = {
+                            isDragging = false
+                            onValueChangeFinished()
+                        },
+                        onDragCancel = {
+                            isDragging = false
+                            onValueChangeFinished()
+                        },
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
                             val currentFraction = if (usableWidth > 0) {

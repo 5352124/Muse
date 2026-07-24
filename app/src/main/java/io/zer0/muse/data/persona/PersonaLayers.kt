@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
  *
  * - Identity: basic identity (name, role, background)
  * - Capability (Yuan): capability type and behavior protocol
- * - Behavior (Ishiki): behavior tendencies and personality traits
+ * - Behavior(行为/Ishiki):行为倾向与性格特征
  */
 @Serializable
 data class PersonaLayers(

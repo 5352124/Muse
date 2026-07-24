@@ -259,4 +259,37 @@
     <string name="settings_tutorial_ch7_s5_content">• 401 Unauthorized(未授权):通常是 API Key 问题。检查 Key 是否填对、有没有多余空格、是否已过期或被禁用。重新去供应商后台生成一个新 Key 试试。\n• 400 Bad Request(请求错误):常见原因:模型名称写错、请求内容超长、参数不兼容。检查模型名是否和官网一致,尝试新建一个短对话测试。\n• 429 Too Many Requests(限流):请求太频繁或超出额度,等一会儿再试,或换一个 Key/供应商。\n• 5xx 服务器错误:供应商那边的问题,稍后重试,或去供应商状态页查看是否故障。\n\n遇到报错时,应用通常会显示具体错误信息,对照上面的说明排查即可。</string>
     <string name="settings_tutorial_ch7_s6_title">如何保护隐私(PII 脱敏)?</string>
     <string name="settings_tutorial_ch7_s6_content">PII(个人身份信息)脱敏功能会在发送给 AI 前,自动把对话里的敏感信息(手机号、身份证号、银行卡号、邮箱等)替换成占位符,AI 看不到真实信息,回复后再还原显示。\n\n• 开启方式:设置 → 隐私/安全 → PII 脱敏,打开开关。\n• 工作原理:本地识别敏感模式并脱敏,只在本地处理,不额外上传。\n• 适用场景:跟 AI 聊到含个人信息的场景(如让 AI 帮您整理通讯录、分析合同)时,开启更安心。\n• 局限:脱敏基于规则识别,可能漏判或误判,重要信息仍建议您自己注意,不要主动透露密码、验证码等。\n\n结合本地模型 + PII 脱敏,可以实现极高的隐私保护。</string>
+
+    <!-- CrashReportSettings.kt -->
+    <string name="settings_crash_page_title">崩溃上报</string>
+    <string name="settings_crash_pending_section">待上报崩溃</string>
+    <string name="settings_crash_pending_count">待上报崩溃: %1$d 条</string>
+    <string name="settings_crash_pending_hint_active">点击下方按钮上报(需先启用并配置)</string>
+    <string name="settings_crash_pending_hint_idle">应用崩溃后会自动加入待上报队列</string>
+    <string name="settings_crash_report_now_button">立即上报待处理崩溃</string>
+    <string name="settings_crash_settings_section">上报设置</string>
+    <string name="settings_crash_enable_title">启用崩溃上报</string>
+    <string name="settings_crash_enable_subtitle">默认关闭 — 开启后崩溃会进入待上报队列,需手动确认上报</string>
+    <string name="settings_crash_method_section">上报方式</string>
+    <string name="settings_crash_method_label">选择上报方式</string>
+    <string name="settings_crash_method_email">邮件</string>
+    <string name="settings_crash_email_label">收件人邮箱地址</string>
+    <string name="settings_crash_email_placeholder">例如:support@example.com</string>
+    <string name="settings_crash_email_saved_toast">邮箱地址已保存</string>
+    <string name="settings_crash_email_save_button">保存邮箱</string>
+    <string name="settings_crash_webhook_saved_toast">Webhook URL 已保存</string>
+    <string name="settings_crash_webhook_save_button">保存 URL</string>
+    <string name="settings_crash_privacy_section">隐私说明</string>
+    <string name="settings_crash_privacy_title">崩溃上报隐私承诺</string>
+    <string name="settings_crash_privacy_content">• 默认关闭,必须主动开启才生效\n• 上报前会弹窗确认,绝不静默上报\n• 崩溃堆栈已脱敏(API key / Bearer token 自动替换为 ***)\n• 仅收集:设备型号 / Android 版本 / App 版本 / 时间戳\n• 不收集 IMEI / Android ID / MAC 等唯一设备标识\n• 邮件方式:调起邮件应用由你确认发送\n• Webhook 方式:HTTP POST 到你配置的 URL</string>
+    <string name="settings_crash_confirm_dialog_title">确认上报崩溃</string>
+    <string name="settings_crash_confirm_target_email">邮件(%1$s)</string>
+    <string name="settings_crash_confirm_target_webhook">Webhook(%1$s)</string>
+    <string name="settings_crash_confirm_dialog_content">即将上报 %1$d 条崩溃记录到 %2$s\n\n上报内容包含:崩溃堆栈 + 设备型号 + Android 版本 + App 版本 + 时间戳。\n崩溃堆栈已脱敏处理。是否继续?</string>
+    <string name="settings_crash_confirm_button">确认上报</string>
+    <string name="settings_crash_no_pending">没有待上报的崩溃</string>
+    <string name="settings_crash_no_email">请先配置收件人邮箱</string>
+    <string name="settings_crash_no_webhook">请先配置有效的 Webhook URL</string>
+    <string name="settings_crash_no_method">上报方式未配置,已跳过</string>
+    <string name="settings_crash_reported_count">已上报 %1$d 条崩溃记录</string>
 </resources>

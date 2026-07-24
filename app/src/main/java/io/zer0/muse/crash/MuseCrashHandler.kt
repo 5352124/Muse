@@ -65,6 +65,9 @@ class MuseCrashHandler private constructor(private val appContext: Context) : Th
             // v2.0+: 同时写 SP 持久化层,带上崩溃时间和堆栈摘要,
             // SafeModeScreen 启动后可直接从 SP 读取,无需依赖文件 IO
             markSafeMode(crashText)
+            // 崩溃上报队列:把脱敏后的崩溃文本入队,下次启动时若用户已授权,
+            // 弹窗询问是否上报(默认不上报,隐私优先)
+            enqueueCrashReport(appContext, crashText)
         }
         // 交给 previous handler(通常是系统默认,会弹"应用已停止"对话框)
         previousHandler?.uncaughtException(t, e)
@@ -143,18 +146,92 @@ class MuseCrashHandler private constructor(private val appContext: Context) : Th
         private const val SP_KEY_CRASH_TRACE = "crash_trace"
         // v2.0+: SP crash_trace 字段最大长度(避免 SP 写入超大字符串导致 ANR)
         private const val MAX_SP_TRACE_LENGTH = 8000
+        // 崩溃上报队列 SP 文件名 — 与 safe_mode SP 分离,互不影响,且不依赖 Koin
+        private const val CRASH_QUEUE_SP = "muse_crash_queue"
+        // 队列字段 key — 与任务规约保持一致(queue_crash_reports)
+        private const val SP_KEY_QUEUE = "queue_crash_reports"
+        // 队列上限 — 超出丢弃最旧的,避免 SP 越积越大导致 ANR
+        private const val MAX_QUEUE_SIZE = 10
 
         /** 获取 Safe Mode 专用 SharedPreferences(不依赖 Koin,可在启动早期读取)。 */
         private fun safeModeSp(appContext: Context): SharedPreferences =
             appContext.getSharedPreferences(SAFE_MODE_SP, Context.MODE_PRIVATE)
 
+        /** 获取崩溃上报队列专用 SharedPreferences(不依赖 Koin,可在启动早期读取)。 */
+        private fun crashQueueSp(appContext: Context): SharedPreferences =
+            appContext.getSharedPreferences(CRASH_QUEUE_SP, Context.MODE_PRIVATE)
+
+        /**
+         * 从 SP 读取待上报队列 — 用换行分隔的字符串数组(避免引入 JSON 依赖)。
+         *
+         * 每条记录是一段脱敏后的崩溃文本(含 device info 头 + 堆栈),用 [QUEUE_DELIMITER] 分隔。
+         * 解析失败时返回空列表(兼容旧版本无此字段 / SP 损坏场景)。
+         */
+        private fun readQueueFromSp(sp: SharedPreferences): List<String> {
+            val raw = sp.getString(SP_KEY_QUEUE, null) ?: return emptyList()
+            if (raw.isEmpty()) return emptyList()
+            return raw.split(QUEUE_DELIMITER).filter { it.isNotEmpty() }
+        }
+
+        /** 把队列编码为 SP 存储字符串(用 [QUEUE_DELIMITER] 拼接)。 */
+        private fun encodeQueue(queue: List<String>): String =
+            queue.joinToString(QUEUE_DELIMITER)
+
+        // 队列条目分隔符 — 用零宽不可见字符序列,避免与崩溃堆栈文本冲突
+        private const val QUEUE_DELIMITER = "\u0000\u0001<CRASH_ENTRY>\u0001\u0000"
+
+        /**
+         * 把崩溃文本入队待上报队列。
+         *
+         * 调用时机:
+         *  - [uncaughtException]:崩溃线程同步入队
+         *  - [logComposeException]:Compose 渲染异常入队
+         *
+         * 设计:
+         *  - 队列上限 [MAX_QUEUE_SIZE] 条,超出丢弃最旧的(FIFO)
+         *  - 用 commit() 同步落盘,确保崩溃后进程被 kill 时数据不丢失
+         *  - 仅存储已脱敏的崩溃文本,设备信息在上报时通过 [buildStandardMetadata] 现取
+         *  - 队列与 safe_mode SP 文件分离,互不影响
+         *
+         * 上报时机:下次启动时由调用方检查 [hasPendingCrashReports] + 用户授权状态,
+         * 弹窗询问后调 [CrashReporter.report] 上报,[clearCrashQueue] 清空队列。
+         */
+        fun enqueueCrashReport(appContext: Context, crashText: String) {
+            val sp = crashQueueSp(appContext)
+            val queue = readQueueFromSp(sp).toMutableList()
+            queue.add(crashText.take(MAX_SP_TRACE_LENGTH))
+            // 超出上限丢弃最旧的(列表头)
+            while (queue.size > MAX_QUEUE_SIZE) queue.removeAt(0)
+            // commit() 同步落盘:崩溃后进程可能立即被 kill,apply() 异步写可能丢失
+            sp.edit().putString(SP_KEY_QUEUE, encodeQueue(queue)).commit()
+        }
+
+        /**
+         * 读取待上报的崩溃列表(按入队顺序,最旧的在前)。
+         *
+         * 调用方应在用户授权后遍历列表逐条上报,完成后调 [clearCrashQueue] 清空。
+         */
+        fun getPendingCrashReports(appContext: Context): List<String> =
+            readQueueFromSp(crashQueueSp(appContext))
+
+        /** 是否有待上报的崩溃(快速检查,避免启动时遍历整列表)。 */
+        fun hasPendingCrashReports(appContext: Context): Boolean =
+            readQueueFromSp(crashQueueSp(appContext)).isNotEmpty()
+
+        /** 清空待上报队列(用户已上报或选择不上报时调用)。 */
+        fun clearCrashQueue(appContext: Context) {
+            crashQueueSp(appContext).edit().clear().commit()
+        }
+
         /** 写 SharedPreferences 的 Safe Mode 持久化层(含崩溃时间和堆栈摘要)。 */
         private fun writeSafeModeSp(appContext: Context, crashTime: String, crashTrace: String) {
+            // 用 commit() 同步落盘:崩溃后进程可能被立即 kill,apply() 异步写盘可能未完成,
+            // 导致下次启动读不到 safe_mode_pending,反复崩溃形成崩溃循环。
             safeModeSp(appContext).edit()
                 .putBoolean(SP_KEY_PENDING, true)
                 .putString(SP_KEY_CRASH_TIME, crashTime)
                 .putString(SP_KEY_CRASH_TRACE, crashTrace)
-                .apply()
+                .commit()
         }
 
         /**
@@ -341,6 +418,9 @@ class MuseCrashHandler private constructor(private val appContext: Context) : Th
                 File(appContext.filesDir, SAFE_MODE_FLAG).writeText("1")
                 val now = SimpleDateFormat(CRASH_TIME_DISPLAY_FMT, Locale.US).format(Date())
                 writeSafeModeSp(appContext, now, redacted.take(MAX_SP_TRACE_LENGTH))
+
+                // 崩溃上报队列:与 uncaughtException 路径对齐,把 Compose 渲染异常也入队
+                enqueueCrashReport(appContext, redacted)
             }
         }
     }

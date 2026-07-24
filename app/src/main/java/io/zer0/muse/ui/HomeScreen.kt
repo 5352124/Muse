@@ -44,6 +44,8 @@ import io.zer0.muse.ui.common.DesktopShortcuts
 import io.zer0.muse.ui.common.rememberDesktopShortcutsEnabled
 import io.zer0.muse.ui.groupchat.GroupChatListScreen
 import io.zer0.muse.ui.theme.MusePaddings
+import io.zer0.muse.ui.theme.MuseShapes
+import io.zer0.muse.ui.theme.semiLarge
 import io.zer0.muse.update.UpdateChecker
 import io.zer0.muse.update.UpdateNotifier
 import kotlinx.coroutines.launch
@@ -76,6 +78,10 @@ fun HomeScreen(
     onOpenAssistants: () -> Unit = {},
     onOpenScheduledTasks: () -> Unit = {},
     onOpenQuickNotes: () -> Unit = {},
+    /** v1.0.27: 打开快速翻译页。 */
+    onOpenQuickTranslate: () -> Unit = {},
+    /** v1.0.27: 打开知识库页。 */
+    onOpenKnowledgeBase: () -> Unit = {},
     /** v0.27: 点击任务项 / 新建任务时 push 到独立聊天详情页。 */
     onOpenChat: () -> Unit = {},
     /** v0.45: 打开独立全局搜索页。 */
@@ -284,6 +290,8 @@ fun HomeScreen(
                     onUnarchive = { id -> viewModel.setSessionArchived(id, false) },
                     onOpenScheduledTasks = onOpenScheduledTasks,
                     onOpenQuickNotes = onOpenQuickNotes,
+                    onOpenQuickTranslate = onOpenQuickTranslate,
+                    onOpenKnowledgeBase = onOpenKnowledgeBase,
                     onOpenRecentlyDeleted = onOpenRecentlyDeleted,
                     onOpenAssistants = onOpenAssistants,
                     isSessionsLoading = state.isSessionsLoading,
@@ -353,7 +361,7 @@ private fun UpdateAvailableBanner(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = MusePaddings.screen, vertical = MusePaddings.contentGap),
-        shape = RoundedCornerShape(16.dp),
+        shape = MuseShapes.semiLarge,
         color = MaterialTheme.colorScheme.primaryContainer,
         tonalElevation = 2.dp,
     ) {

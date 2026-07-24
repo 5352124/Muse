@@ -8,9 +8,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 
 /**
- * Workflow orchestrator (openhanako workflow-tool.ts port).
+ * 工作流编排器(openhanako workflow-tool.ts 移植)。
  *
- * Simplified orchestration: parallel / pipeline / sequence, Kotlin coroutines.
+ * 简化编排:并行 / 流水线 / 顺序,基于 Kotlin 协程。
  */
 class WorkflowOrchestrator {
 

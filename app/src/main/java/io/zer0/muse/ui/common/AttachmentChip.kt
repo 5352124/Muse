@@ -38,7 +38,7 @@ import io.zer0.muse.ui.theme.MuseShapes
  *
  * @param filePath 沙盒内文件的绝对路径
  * @param fileSize 文件字节数(可选,显示尺寸)
- * @param modifier Modifier
+ * @param modifier 修饰符
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

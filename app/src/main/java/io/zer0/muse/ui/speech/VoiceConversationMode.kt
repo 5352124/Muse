@@ -9,6 +9,7 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
+import io.zer0.muse.ui.theme.MuseAnimation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -297,11 +298,11 @@ private fun VoiceConversationMainButton(
         targetValue = if (state == VoiceConversationState.LISTENING) 1.1f else 1f,
         animationSpec = if (state == VoiceConversationState.LISTENING) {
             infiniteRepeatable(
-                animation = tween(800, easing = FastOutSlowInEasing),
+                animation = tween(MuseAnimation.LOOP_SLOW_MS, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse,
             )
         } else {
-            tween(200)
+            tween(MuseAnimation.TACTILE_MS)
         },
         label = "voiceMainPulse",
     )
@@ -521,7 +522,7 @@ private fun ListeningWaveform(amplitudes: List<Float>) {
             val fraction = amp.coerceIn(0.05f, 1f)
             val animatedHeight by animateFloatAsState(
                 targetValue = fraction,
-                animationSpec = tween(120),
+                animationSpec = tween(MuseAnimation.FAST_MS),
                 label = "voiceWave",
             )
             Box(

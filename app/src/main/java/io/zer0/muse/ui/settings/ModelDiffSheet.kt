@@ -21,8 +21,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
+import io.zer0.muse.ui.common.IosChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -325,10 +324,10 @@ private fun DiffSectionHeader(
         horizontalArrangement = Arrangement.spacedBy(MusePaddings.contentGap),
     ) {
         SectionLabel(label)
-        FilterChip(
+        IosChip(
             selected = true,
             onClick = { /* 只读徽标,不响应点击 */ },
-            label = { Text(chipText, style = MaterialTheme.typography.labelSmall) },
+            label = chipText,
             leadingIcon = {
                 Icon(
                     imageVector = chipIcon,
@@ -336,13 +335,6 @@ private fun DiffSectionHeader(
                     modifier = Modifier.size(MuseIconSizes.iconTiny),
                 )
             },
-            shape = MuseShapes.pill,
-            colors = FilterChipDefaults.filterChipColors(
-                containerColor = chipColor,
-                labelColor = chipTextColor,
-                selectedContainerColor = chipColor,
-                selectedLabelColor = chipTextColor,
-            ),
         )
     }
 }

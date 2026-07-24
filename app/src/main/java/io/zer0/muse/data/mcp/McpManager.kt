@@ -17,15 +17,15 @@ import kotlinx.serialization.json.JsonObject
 import kotlin.uuid.Uuid
 
 /**
- * MCP subsystem manager (RikkaHub McpManager.kt port).
+ * MCP 子系统管理器（移植自 RikkaHub McpManager.kt）。
  *
- * Coordinates MCP config persistence, session management, tool discovery,
- * and tool injection into the Muse ToolRegistry.
+ * 协调 MCP 配置持久化、会话管理、工具发现，
+ * 以及将工具注入到 Muse ToolRegistry。
  *
- * Usage:
- * 1. Initialize with context
- * 2. Call [start] to begin observing config changes
- * 3. MCP tools are automatically injected into [ToolRegistry]
+ * 用法：
+ * 1. 使用 context 初始化
+ * 2. 调用 [start] 开始监听配置变更
+ * 3. MCP 工具会自动注入到 [ToolRegistry]
  */
 class McpManager(private val context: Context) {
 
@@ -46,7 +46,7 @@ class McpManager(private val context: Context) {
     private val _connectionStatuses = MutableStateFlow<Map<Uuid, McpConnectionStatus>>(emptyMap())
     val connectionStatuses: StateFlow<Map<Uuid, McpConnectionStatus>> = _connectionStatuses.asStateFlow()
 
-    /** Start observing config changes and managing sessions. */
+    /** 开始监听配置变更并管理会话。 */
     fun start() {
         scope.launch {
             configStore.serversFlow
@@ -57,7 +57,7 @@ class McpManager(private val context: Context) {
         }
     }
 
-    /** Get all enabled MCP tools across all connected servers. */
+    /** 获取所有已连接服务器中已启用的 MCP 工具。 */
     fun getAllAvailableTools(): List<McpToolInfo> {
         return sessionManager.getAllAvailableTools().map { (serverId, serverName, tool) ->
             McpToolInfo(
@@ -68,37 +68,37 @@ class McpManager(private val context: Context) {
         }
     }
 
-    /** Call an MCP tool. Returns the text result from the tool execution. */
+    /** 调用 MCP 工具。返回工具执行的文本结果。 */
     suspend fun callTool(serverId: Uuid, toolName: String, args: JsonObject): String {
         return sessionManager.callTool(serverId, toolName, args)
     }
 
-    /** Add or update an MCP server. */
+    /** 添加或更新 MCP 服务器。 */
     suspend fun upsertServer(config: McpServerConfig) {
         configStore.upsertServer(config)
     }
 
-    /** Remove an MCP server. */
+    /** 移除一个 MCP 服务器。 */
     suspend fun removeServer(id: Uuid) {
         configStore.removeServer(id)
     }
 
-    /** Toggle server enable/disable. */
+    /** 切换服务器的启用/禁用状态。 */
     suspend fun toggleServer(config: McpServerConfig, enabled: Boolean) {
         configStore.upsertServer(
             config.clone(commonOptions = config.commonOptions.copy(enable = enabled))
         )
     }
 
-    /** Import servers from JSON. */
+    /** 从 JSON 导入服务器。 */
     suspend fun importFromJson(json: String): Int = configStore.importFromJson(json)
 
-    /** Export servers as JSON. */
+    /** 将服务器导出为 JSON。 */
     suspend fun exportAsJson(): String = configStore.exportAsJson()
 
     /**
-     * Inject discovered MCP tools into the Muse ToolRegistry.
-     * Call this after MCP servers are connected and tools are discovered.
+     * 将已发现的 MCP 工具注入到 Muse ToolRegistry。
+     * 在 MCP 服务器已连接并发现工具后调用此方法。
      */
     fun injectToolsIntoRegistry(toolRegistry: ToolRegistry) {
         val mcpTools = getAllAvailableTools()
@@ -152,14 +152,14 @@ class McpManager(private val context: Context) {
         }
     }
 
-    /** Shutdown all MCP sessions. */
+    /** 关闭所有 MCP 会话。 */
     suspend fun shutdown() {
         sessionManager.shutdownAll()
     }
 }
 
 /**
- * MCP tool info combining server context with tool definition.
+ * MCP 工具信息，结合服务器上下文与工具定义。
  */
 data class McpToolInfo(
     val serverId: Uuid,

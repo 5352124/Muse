@@ -396,7 +396,12 @@ class GeminiProvider(
                         }
                     } ?: (t?.message ?: ErrorCode.NETWORK_ERROR.toMessage())
                     finished.set(true)
-                    trySend(ChatStreamEvent.Error(msg, t))
+                    // v1.0.15: 已收到部分内容时发 StreamInterrupted,让 UI 保留已收内容并提示网络中断(可自动重连)
+                    if (anyDeltaSent.get()) {
+                        trySend(ChatStreamEvent.StreamInterrupted(msg, t))
+                    } else {
+                        trySend(ChatStreamEvent.Error(msg, t))
+                    }
                     close()
                 }
             }
@@ -414,7 +419,9 @@ class GeminiProvider(
         }
     }.flowOn(Dispatchers.IO)
 
-    override suspend fun completeText(request: ChatRequest): ChatCompletion = withContext(Dispatchers.IO) {
+    override suspend fun completeText(request: ChatRequest): ChatCompletion = completeTextImpl(request, 0)
+
+    private suspend fun completeTextImpl(request: ChatRequest, keySwitchDepth: Int = 0): ChatCompletion = withContext(Dispatchers.IO) {
         val (system, contents) = splitSystem(request.messages)
         val body = buildRequestBody(
             system = system, contents = contents,
@@ -455,9 +462,9 @@ class GeminiProvider(
                     val code = resp.code
                     // v1.0.1 (P0): 429 切换 key 重试(多 key 场景);buildUrl 内部用 effectiveApiKey(),
                     //   递归调用 completeText 会用新 key 重新构建 URL(?key= 参数更新)
-                    if (code == 429 && switchToNextKey()) {
-                        Logger.i(TAG, "completeText 429 限流,已切换到下一个 key,重试")
-                        return@withContext completeText(request)
+                    if (code == 429 && keySwitchDepth < MAX_KEY_SWITCHES && switchToNextKey()) {
+                        Logger.i(TAG, "completeText 429 限流,已切换到下一个 key,重试 ($keySwitchDepth/$MAX_KEY_SWITCHES)")
+                        return@withContext completeTextImpl(request, keySwitchDepth + 1)
                     }
                     // v1.0.1: 401/403 鉴权失败时标记当前 key 失败(多 key 场景)
                     if (code == 401 || code == 403) {
@@ -994,6 +1001,8 @@ class GeminiProvider(
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         /** M-GEM2: 流式断连最大重试次数。 */
         const val MAX_RETRIES = 3
+        // completeText 429 切换 key 最大次数,防止无限递归
+        const val MAX_KEY_SWITCHES = 3
         /** M-GEM4: 安全相关 finishReason,发 Error 而非 Done。 */
         val SAFETY_FINISH_REASONS = setOf("SAFETY", "RECITATION", "BLOCKLIST")
         /** V-GEM1: Files API 状态轮询总超时(60s,覆盖常见视频处理时长)。 */

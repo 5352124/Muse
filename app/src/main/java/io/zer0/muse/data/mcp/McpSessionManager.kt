@@ -26,10 +26,10 @@ import kotlin.uuid.Uuid
 private const val TAG = "McpSessionManager"
 
 /**
- * MCP session manager (uses OkHttp + JSON-RPC over HTTP).
+ * MCP 会话管理器(基于 OkHttp + HTTP 上的 JSON-RPC)。
  *
- * Manages multiple server connections with automatic tool discovery.
- * MCP JSON-RPC: initialize → tools/list → tools/call.
+ * 管理多个服务器连接,支持自动工具发现。
+ * MCP JSON-RPC 流程:initialize → tools/list → tools/call。
  */
 class McpSessionManager(
     private val onToolsUpdated: (Uuid, List<McpTool>) -> Unit,

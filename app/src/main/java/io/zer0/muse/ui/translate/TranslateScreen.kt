@@ -3,12 +3,14 @@ package io.zer0.muse.ui.translate
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,25 +20,25 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.History
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,16 +49,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import io.zer0.muse.ui.common.IosTopBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -64,38 +65,42 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.zer0.muse.R
+import io.zer0.muse.ui.common.IosDropdown
+import io.zer0.muse.ui.common.IosTopBar
 import io.zer0.muse.ui.common.MuseDialog
 import io.zer0.muse.ui.common.MuseToast
-import io.zer0.muse.ui.theme.MuseShapes
 import io.zer0.muse.ui.theme.MuseDateFormats
-import io.zer0.muse.ui.theme.huge
+import io.zer0.muse.ui.theme.MusePaddings
+import io.zer0.muse.ui.theme.MuseShapes
+import io.zer0.muse.ui.theme.pill
 import org.koin.androidx.compose.koinViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
- * v1.97 gap8: 独立翻译页 — iOS 风格全屏页面。
+ * v1.0.30: 独立翻译页 — iOS 风格全屏页面。
  *
  * 布局:
- *  - TopAppBar:标题 + 返回按钮 + 目标语言下拉选择
+ *  - IosTopBar: 标题 + 返回按钮
  *  - 内容区(垂直滚动):
- *    - 输入卡片:OutlinedTextField(多行) + 粘贴/清空按钮
- *    - 进度指示(翻译中 LinearProgressIndicator / 空闲 HorizontalDivider)
- *    - 结果卡片:SelectionContainer 包裹 Text(可选中复制) + 复制按钮
- *  - FloatingActionButton:翻译/取消(根据 translating 状态切换)
+ *    - 顶部语言切换条(源语言 / 交换 / 目标语言),文字完整显示
+ *    - 原文输入大卡片: 占位文案 + 风格选择 + 操作栏 + 主翻译按钮
+ *    - 译文结果大卡片: 醒目展示译文 + 操作栏
+ *    - 翻译历史区(轻量展示最近几次翻译)
  *
- * 参考:rikkahub TranslatorPage(Apache 2.0),但用 muse 自己的 MuseShapes / TopAppBar。
+ * 新增回调 [onSendToNewChat] 允许将原文或译文快速发送到一个新的聊天会话,
+ * 由调用方负责创建会话、填充输入并跳转。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TranslateScreen(
     onBack: () -> Unit,
+    onSendToNewChat: (String) -> Unit = {},
     viewModel: TranslateViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    // v1.97: 清空历史二次确认弹窗状态
     var showClearHistoryDialog by remember { mutableStateOf(false) }
 
     // 错误消息 → Toast 提示(单次消费,避免重复弹)
@@ -107,44 +112,7 @@ fun TranslateScreen(
     }
 
     Scaffold(
-        topBar = {
-            TranslateTopBar(
-                state = state,
-                onBack = onBack,
-                onTargetLanguageChange = { viewModel.updateTargetLanguage(it) },
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    if (state.translating) {
-                        viewModel.cancelTranslation()
-                    } else {
-                        if (state.inputText.isBlank()) {
-                            MuseToast.show(context.getString(R.string.translate_page_error_empty_input))
-                        } else {
-                            viewModel.translate()
-                        }
-                    }
-                },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = MuseShapes.huge,
-            ) {
-                if (state.translating) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(24.dp),
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Filled.Translate,
-                        contentDescription = stringResource(R.string.translate_page_translate),
-                    )
-                }
-            }
-        },
+        topBar = { TranslateTopBar(onBack = onBack) },
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
         Column(
@@ -154,14 +122,26 @@ fun TranslateScreen(
                 .imePadding()
                 .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(horizontal = MusePaddings.screen, vertical = MusePaddings.contentGap),
+            verticalArrangement = Arrangement.spacedBy(MusePaddings.sectionGap),
         ) {
-            // ── 输入区 ──
-            TranslateInputCard(
-                inputText = state.inputText,
+            // ── 源/目标语言选择条 ──
+            LanguageSelectorBar(
+                sourceLanguage = state.sourceLanguage,
+                targetLanguage = state.targetLanguage,
+                onSourceChange = { viewModel.updateSourceLanguage(it) },
+                onTargetChange = { viewModel.updateTargetLanguage(it) },
+                onSwap = { viewModel.swapLanguages() },
+                enabled = !state.translating,
+            )
+
+            // ── 原文输入区 ──
+            SourceInputCard(
+                text = state.inputText,
                 translating = state.translating,
-                onInputChange = { viewModel.updateInput(it) },
+                translationStyle = state.translationStyle,
+                onTextChange = { viewModel.updateInput(it) },
+                onStyleChange = { viewModel.updateTranslationStyle(it) },
                 onPaste = {
                     val clipText = readClipboardText(context)
                     if (viewModel.paste(clipText)) {
@@ -171,35 +151,44 @@ fun TranslateScreen(
                     }
                 },
                 onClear = { viewModel.clear() },
+                onCopy = {
+                    if (state.inputText.isNotBlank()) {
+                        copyToClipboard(context, state.inputText)
+                        MuseToast.show(context.getString(R.string.translate_page_copied))
+                    }
+                },
+                onSpeak = {
+                    if (!viewModel.speakSource()) {
+                        MuseToast.show(context.getString(R.string.translate_page_tts_not_ready))
+                    }
+                },
+                onTranslate = { viewModel.translate() },
             )
 
-            // ── 进度指示(翻译中显示波浪进度条,空闲时显示分隔线) ──
-            Crossfade(targetState = state.translating, label = "translate_progress") { translating ->
-                if (translating) {
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    )
-                } else {
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                    )
-                }
-            }
-
-            // ── 结果区 ──
-            TranslateResultCard(
+            // ── 译文结果区 ──
+            TranslationResultCard(
                 translatedText = state.translatedText,
+                translating = state.translating,
                 onCopy = {
                     if (state.translatedText.isNotBlank()) {
                         copyToClipboard(context, state.translatedText)
                         MuseToast.show(context.getString(R.string.translate_page_copied))
                     }
                 },
+                onSpeak = {
+                    if (!viewModel.speakTranslated()) {
+                        MuseToast.show(context.getString(R.string.translate_page_tts_not_ready))
+                    }
+                },
+                onUseAsInput = { viewModel.swapResultToInput() },
+                onSendToNewChat = {
+                    if (state.translatedText.isNotBlank()) {
+                        onSendToNewChat(state.translatedText)
+                    }
+                },
             )
 
-            // ── v1.97: 翻译历史区(内存保留最近 20 条,不持久化) ──
+            // ── 翻译历史区 ──
             TranslateHistorySection(
                 history = state.history,
                 onItemClick = { item ->
@@ -208,8 +197,9 @@ fun TranslateScreen(
                 },
                 onClearClick = { showClearHistoryDialog = true },
             )
-            // 底部留白(避免 FAB 遮挡)
-            Spacer(Modifier.height(80.dp))
+
+            // 底部留白
+            Spacer(Modifier.height(24.dp))
         }
     }
 
@@ -239,119 +229,471 @@ fun TranslateScreen(
 }
 
 /**
- * 翻译页顶栏 — 标题 + 返回 + 目标语言下拉选择。
- *
- * 用 ExposedDropdownMenuBox 实现只读下拉框(与 rikkahub LanguageSelector 一致),
- * 点击展开菜单列出 [TranslateViewModel.TARGET_LANGUAGES] 全部语言。
+ * 翻译页顶栏 — 标题 + 返回。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TranslateTopBar(
-    state: TranslateViewModel.State,
     onBack: () -> Unit,
-    onTargetLanguageChange: (String) -> Unit,
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
-
     IosTopBar(
         title = stringResource(R.string.translate_page_title),
         onBack = onBack,
-        actions = {
-            // 目标语言下拉选择
-            ExposedDropdownMenuBox(
-                expanded = menuExpanded,
-                onExpandedChange = { menuExpanded = it },
-            ) {
-                Surface(
-                    shape = MuseShapes.small,
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                    modifier = Modifier
-                        .menuAnchor()
-                        .padding(end = 8.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Text(
-                            text = state.targetLanguage,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = menuExpanded)
-                    }
-                }
-                DropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false },
-                ) {
-                    TranslateViewModel.TARGET_LANGUAGES.forEach { lang ->
-                        DropdownMenuItem(
-                            text = { Text(lang) },
-                            onClick = {
-                                onTargetLanguageChange(lang)
-                                menuExpanded = false
-                            },
-                        )
-                    }
-                }
-            }
-        },
     )
 }
 
 /**
- * 输入卡片 — OutlinedTextField + 粘贴/清空按钮。
+ * 顶部语言选择条 — 源语言 + 交换 + 目标语言。
  *
- * TextField 最多 10 行(与 rikkahub 一致),placeholder 引导用户输入。
- * 翻译中禁用粘贴/清空(避免干扰进行中的任务)。
+ * 使用自定义按钮避免 IosDropdown 在狭小空间内文字截断,确保"自动检测"等语言名完整显示。
  */
 @Composable
-private fun TranslateInputCard(
-    inputText: String,
-    translating: Boolean,
-    onInputChange: (String) -> Unit,
-    onPaste: () -> Unit,
-    onClear: () -> Unit,
+private fun LanguageSelectorBar(
+    sourceLanguage: String,
+    targetLanguage: String,
+    onSourceChange: (String) -> Unit,
+    onTargetChange: (String) -> Unit,
+    onSwap: () -> Unit,
+    enabled: Boolean,
+) {
+    var showSourcePicker by rememberSaveable { mutableStateOf(false) }
+    var showTargetPicker by rememberSaveable { mutableStateOf(false) }
+
+    Surface(
+        shape = MuseShapes.pill,
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 1.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 6.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            LanguageSelectorButton(
+                label = stringResource(R.string.translate_page_source_language),
+                value = sourceLanguage,
+                onClick = { if (enabled) showSourcePicker = true },
+                modifier = Modifier.weight(1f),
+            )
+
+            IconButton(
+                onClick = onSwap,
+                enabled = enabled && sourceLanguage != TranslateViewModel.SOURCE_AUTO,
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.SwapHoriz,
+                    contentDescription = stringResource(R.string.translate_page_swap),
+                    tint = if (enabled && sourceLanguage != TranslateViewModel.SOURCE_AUTO) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.outline
+                    },
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+
+            LanguageSelectorButton(
+                label = stringResource(R.string.translate_page_target_language),
+                value = targetLanguage,
+                onClick = { if (enabled) showTargetPicker = true },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+
+    if (showSourcePicker) {
+        LanguagePickerDialog(
+            title = stringResource(R.string.translate_page_source_language),
+            selected = sourceLanguage,
+            options = TranslateViewModel.SOURCE_LANGUAGES,
+            onSelected = {
+                onSourceChange(it)
+                showSourcePicker = false
+            },
+            onDismiss = { showSourcePicker = false },
+        )
+    }
+
+    if (showTargetPicker) {
+        LanguagePickerDialog(
+            title = stringResource(R.string.translate_page_target_language),
+            selected = targetLanguage,
+            options = TranslateViewModel.TARGET_LANGUAGES,
+            onSelected = {
+                onTargetChange(it)
+                showTargetPicker = false
+            },
+            onDismiss = { showTargetPicker = false },
+        )
+    }
+}
+
+/**
+ * 语言选择按钮 — 两行文本书写(label/value) + 下拉箭头,点击弹出选择器。
+ */
+@Composable
+private fun LanguageSelectorButton(
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
-        shape = MuseShapes.large,
+        shape = MuseShapes.pill,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        onClick = onClick,
+        modifier = modifier,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                )
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                imageVector = Icons.Filled.ArrowDropDown,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+    }
+}
+
+/**
+ * 语言选择弹窗 — 复用 MuseDialog 保持 iOS 风格。
+ */
+@Composable
+private fun LanguagePickerDialog(
+    title: String,
+    selected: String,
+    options: List<String>,
+    onSelected: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    MuseDialog(
+        onDismissRequest = onDismiss,
+        title = title,
+        content = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                options.forEach { option ->
+                    val isSelected = option == selected
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelected(option) }
+                            .padding(vertical = 12.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = option,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (isSelected) {
+                            Spacer(Modifier.width(8.dp))
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmText = stringResource(R.string.common_cancel),
+        onConfirm = onDismiss,
+        onDismiss = onDismiss,
+    )
+}
+
+/**
+ * 原文输入大卡片 — 输入区域 + 风格选择 + 工具栏 + 主翻译按钮。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SourceInputCard(
+    text: String,
+    translating: Boolean,
+    translationStyle: String,
+    onTextChange: (String) -> Unit,
+    onStyleChange: (String) -> Unit,
+    onPaste: () -> Unit,
+    onClear: () -> Unit,
+    onCopy: () -> Unit,
+    onSpeak: () -> Unit,
+    onTranslate: () -> Unit,
+) {
+    Surface(
+        shape = MuseShapes.extraLarge,
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 0.dp,
+        shadowElevation = 1.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(MusePaddings.cardInner),
+            verticalArrangement = Arrangement.spacedBy(MusePaddings.contentGap),
         ) {
-            OutlinedTextField(
-                value = inputText,
-                onValueChange = onInputChange,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text(stringResource(R.string.translate_page_input_placeholder)) },
-                minLines = 3,
-                maxLines = 10,
-                enabled = !translating,
-                shape = MuseShapes.medium,
-            )
+            // 标题行：源语言标签 + 字数
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onPaste, enabled = !translating) {
-                    Icon(
-                        imageVector = Icons.Filled.ContentPaste,
+                Text(
+                    text = stringResource(R.string.translate_page_source_language),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "${text.length}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+
+            // 输入框
+            OutlinedTextField(
+                value = text,
+                onValueChange = onTextChange,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text(stringResource(R.string.translate_page_input_placeholder)) },
+                minLines = 4,
+                maxLines = 10,
+                enabled = !translating,
+                shape = MuseShapes.large,
+            )
+
+            // 翻译风格选择
+            Text(
+                text = stringResource(R.string.translate_page_style_label),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TranslateViewModel.TRANSLATION_STYLES.forEach { style ->
+                    val selected = style == translationStyle
+                    Surface(
+                        shape = MuseShapes.pill,
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        },
+                        onClick = { if (!translating) onStyleChange(style) },
+                    ) {
+                        Text(
+                            text = style,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            // 工具栏 + 主翻译按钮
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(MusePaddings.tightGap)) {
+                    ActionIconButton(
+                        icon = Icons.Filled.ContentPaste,
                         contentDescription = stringResource(R.string.translate_page_paste),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onClick = onPaste,
+                        enabled = !translating,
+                    )
+                    ActionIconButton(
+                        icon = Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.translate_page_clear),
+                        onClick = onClear,
+                        enabled = !translating && text.isNotEmpty(),
+                    )
+                    ActionIconButton(
+                        icon = Icons.Filled.ContentCopy,
+                        contentDescription = stringResource(R.string.translate_page_copy_source),
+                        onClick = onCopy,
+                        enabled = !translating && text.isNotBlank(),
+                    )
+                    ActionIconButton(
+                        icon = Icons.AutoMirrored.Filled.VolumeUp,
+                        contentDescription = stringResource(R.string.translate_page_speak_source),
+                        onClick = onSpeak,
+                        enabled = !translating && text.isNotBlank(),
                     )
                 }
-                IconButton(onClick = onClear, enabled = !translating && inputText.isNotEmpty()) {
-                    Icon(
-                        imageVector = Icons.Filled.ContentCopy,
-                        contentDescription = stringResource(R.string.translate_page_clear),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+
+                TranslateButton(
+                    onClick = onTranslate,
+                    enabled = !translating && text.isNotBlank(),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 主翻译按钮 — 胶囊主色按钮。
+ */
+@Composable
+private fun TranslateButton(
+    onClick: () -> Unit,
+    enabled: Boolean,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        shape = MuseShapes.pill,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            disabledContentColor = MaterialTheme.colorScheme.outline,
+        ),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Translate,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = stringResource(R.string.translate_page_translate),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+/**
+ * 译文结果大卡片 — 醒目展示译文 + 操作栏。
+ */
+@Composable
+private fun TranslationResultCard(
+    translatedText: String,
+    translating: Boolean,
+    onCopy: () -> Unit,
+    onSpeak: () -> Unit,
+    onUseAsInput: () -> Unit,
+    onSendToNewChat: () -> Unit,
+) {
+    AnimatedVisibility(visible = translatedText.isNotBlank() || translating) {
+        Surface(
+            shape = MuseShapes.extraLarge,
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f),
+            shadowElevation = 1.dp,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(MusePaddings.cardInner),
+                verticalArrangement = Arrangement.spacedBy(MusePaddings.contentGap),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.translate_page_target_language),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+
+                if (translating) {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                }
+
+                SelectionContainer {
+                    Text(
+                        text = translatedText,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(MusePaddings.tightGap)) {
+                        ActionIconButton(
+                            icon = Icons.Filled.ContentCopy,
+                            contentDescription = stringResource(R.string.translate_page_copy),
+                            onClick = onCopy,
+                            enabled = !translating && translatedText.isNotBlank(),
+                        )
+                        ActionIconButton(
+                            icon = Icons.AutoMirrored.Filled.VolumeUp,
+                            contentDescription = stringResource(R.string.translate_page_speak_result),
+                            onClick = onSpeak,
+                            enabled = !translating && translatedText.isNotBlank(),
+                        )
+                        ActionIconButton(
+                            icon = Icons.Outlined.SwapHoriz,
+                            contentDescription = stringResource(R.string.translate_page_use_as_input),
+                            onClick = onUseAsInput,
+                            enabled = !translating && translatedText.isNotBlank(),
+                        )
+                    }
+
+                    SendToChatButton(
+                        onClick = onSendToNewChat,
+                        enabled = !translating && translatedText.isNotBlank(),
                     )
                 }
             }
@@ -360,58 +702,72 @@ private fun TranslateInputCard(
 }
 
 /**
- * 结果卡片 — SelectionContainer 包裹译文(可选中复制) + 复制按钮。
- *
- * 空结果时显示 placeholder 引导文字(与 rikkahub 一致)。
- * 译文非空时才显示复制按钮。
+ * "发送到新会话" 按钮 — 胶囊形状,主色高亮。
  */
 @Composable
-private fun TranslateResultCard(
-    translatedText: String,
-    onCopy: () -> Unit,
+private fun SendToChatButton(
+    onClick: () -> Unit,
+    enabled: Boolean,
 ) {
     Surface(
-        shape = MuseShapes.large,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-        modifier = Modifier.fillMaxWidth(),
+        shape = MuseShapes.pill,
+        color = if (enabled) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        },
+        contentColor = if (enabled) {
+            MaterialTheme.colorScheme.onPrimary
+        } else {
+            MaterialTheme.colorScheme.outline
+        },
+        onClick = onClick,
+        enabled = enabled,
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.translate_page_target_language),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.outline,
-                )
-                if (translatedText.isNotEmpty()) {
-                    IconButton(onClick = onCopy) {
-                        Icon(
-                            imageVector = Icons.Filled.ContentCopy,
-                            contentDescription = stringResource(R.string.translate_page_copy),
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
-            }
-            SelectionContainer {
-                Text(
-                    text = translatedText.ifEmpty { stringResource(R.string.translate_page_result_placeholder) },
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (translatedText.isEmpty()) {
-                        MaterialTheme.colorScheme.outline
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                )
-            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Send,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                text = stringResource(R.string.translate_page_send_to_chat),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
+            )
         }
+    }
+}
+
+/**
+ * 统一操作图标按钮 — 小号、无边框、禁用状态变灰。
+ */
+@Composable
+private fun ActionIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+) {
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.size(40.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (enabled) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+            },
+            modifier = Modifier.size(22.dp),
+        )
     }
 }
 
@@ -431,17 +787,10 @@ private fun copyToClipboard(context: Context, text: String) {
     clipboard.setPrimaryClip(ClipData.newPlainText("translation", text))
 }
 
-// ── v1.97: 翻译历史区 ──
+// ── 翻译历史区 ──
 
 /**
- * 翻译历史区 — 展示最近 20 条翻译记录,点击加载到输入框重新翻译或查看。
- *
- * 设计:
- *  - 顶部标题行:历史图标 + "历史记录" + 右侧"清空历史"按钮(空时不显示)
- *  - 空状态:Surface 内灰色 placeholder 文案
- *  - 历史项:Surface 卡片,展示 目标语言 chip + 相对时间 + 原文/译文(单行省略号)
- *
- * 历史仅在内存中保留(TranslateViewModel.State.history),不持久化,退出页面即清空。
+ * 翻译历史区 — 展示最近 N 条翻译记录,点击加载到输入框重新翻译或查看。
  */
 @Composable
 private fun TranslateHistorySection(
@@ -503,7 +852,7 @@ private fun TranslateHistorySection(
         return
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(MusePaddings.contentGap)) {
         history.forEach { item ->
             TranslateHistoryItemCard(item = item, onClick = { onItemClick(item) })
         }
@@ -511,7 +860,7 @@ private fun TranslateHistorySection(
 }
 
 /**
- * 单条翻译历史卡片 — 双行(原文/译文)布局,顶部展示目标语言 chip 和相对时间。
+ * 单条翻译历史卡片 — 双行(原文/译文)布局,顶部展示源→目标语言流向 chip 和相对时间。
  */
 @Composable
 private fun TranslateHistoryItemCard(
@@ -528,7 +877,11 @@ private fun TranslateHistoryItemCard(
         tonalElevation = 0.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -539,17 +892,34 @@ private fun TranslateHistoryItemCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                // 目标语言 chip
+                // 源 → 目标语言 chip(低饱和)
                 Surface(
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
-                    Text(
-                        text = item.targetLanguage,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                    )
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = item.sourceLanguage,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Icon(
+                            imageVector = Icons.Outlined.SwapHoriz,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(10.dp),
+                        )
+                        Text(
+                            text = item.targetLanguage,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
                 }
                 // 相对时间
                 Text(
@@ -585,20 +955,19 @@ private fun HistoryTextLine(label: String, text: String) {
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
     }
 }
 
-/**
- * 格式化历史时间戳为简短相对时间文案(刚刚 / N 分钟前 / N 小时前 / MM-dd HH:mm)。
- * 与主聊天列表的时间格式风格保持一致。
- */
+/** 格式化历史时间戳为相对时间(刚刚 / N 分钟前 / 今天 HH:mm / 日期)。 */
 private fun formatHistoryTime(timestamp: Long): String {
-    val delta = System.currentTimeMillis() - timestamp
+    val now = System.currentTimeMillis()
+    val diff = now - timestamp
     return when {
-        delta < 60_000L -> "刚刚"
-        delta < 3_600_000L -> "${delta / 60_000L}分钟前"
-        delta < 86_400_000L -> "${delta / 3_600_000L}小时前"
-        else -> SimpleDateFormat(MuseDateFormats.DATE_TIME_SHORT, Locale.getDefault()).format(Date(timestamp))
+        diff < 60_000 -> "刚刚"
+        diff < 60 * 60_000 -> "${diff / 60_000} 分钟前"
+        diff < 24 * 60 * 60_000 -> "${diff / (60 * 60_000)} 小时前"
+        else -> SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(timestamp))
     }
 }

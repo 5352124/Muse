@@ -1,31 +1,31 @@
 package io.zer0.muse.tools
 
 /**
- * Tool approval state machine (RikkaHub GenerationHandler.kt port).
+ * 工具审批状态机（移植自 RikkaHub GenerationHandler.kt）。
  *
- * Controls whether a tool call needs user approval before execution.
+ * 控制工具调用在执行前是否需要用户审批。
  *
- * Flow:
- *  - AUTO: Tool is auto-approved (always allow)
- *  - PENDING: Waiting for user decision
- *  - APPROVED: User approved this call
- *  - DENIED: User denied this call (with optional reason)
- *  - ANSWERED: User provided a custom answer instead of executing
+ * 流程：
+ *  - AUTO：工具自动审批通过（始终允许）
+ *  - PENDING：等待用户决定
+ *  - APPROVED：用户批准了本次调用
+ *  - DENIED：用户拒绝了本次调用（可附原因）
+ *  - ANSWERED：用户提供了自定义回答而非执行工具
  */
 sealed class ToolApprovalState {
-    /** Auto-approved, execute immediately. */
+    /** 自动审批通过，立即执行。 */
     data object Auto : ToolApprovalState()
 
-    /** Waiting for user approval. Generation loop should break here. */
+    /** 等待用户审批。生成循环应在此中断。 */
     data object Pending : ToolApprovalState()
 
-    /** User approved this tool call. */
+    /** 用户批准了本次工具调用。 */
     data object Approved : ToolApprovalState()
 
-    /** User denied this tool call. */
+    /** 用户拒绝了本次工具调用。 */
     data class Denied(val reason: String = "") : ToolApprovalState()
 
-    /** User provided a custom text answer instead of executing the tool. */
+    /** 用户提供了自定义文本回答，而非执行该工具。 */
     data class Answered(val answer: String) : ToolApprovalState()
 
     val isTerminal: Boolean
@@ -36,13 +36,13 @@ sealed class ToolApprovalState {
 }
 
 /**
- * Per-tool approval policy, persisted to DataStore.
+ * 针对单个工具的审批策略，持久化到 DataStore。
  */
 enum class ToolApprovalPolicy {
-    /** Always auto-approve (default for safe tools like get_time). */
+    /** 始终自动批准（如 get_time 等安全工具的默认值）。 */
     ALWAYS_ALLOW,
-    /** Always deny (tool effectively disabled). */
+    /** 始终拒绝（相当于禁用该工具）。 */
     ALWAYS_DENY,
-    /** Ask user every time. */
+    /** 每次都询问用户。 */
     ASK_EVERY_TIME,
 }

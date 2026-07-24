@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ===== ToolsScreen.kt ===== -->
+    <!-- Title and intro -->
+    <string name="tools_screen_title">AI Tools</string>
+    <string name="tools_intro_what">Tools are capabilities the AI can call, such as reading notifications, calculating, executing code, etc.</string>
+    <string name="tools_intro_manage">In Assistant detail page → Extensions → Tools, you can enable/disable tools per assistant. High-risk tools (e.g. code execution) require user confirmation before invocation.</string>
+
+    <!-- Stats -->
+    <string name="tools_stats_count">%1$d tools · %2$d high-risk</string>
+
+    <!-- Built-in plugins -->
+    <string name="tools_plugins_section">Built-in plugins</string>
+    <string name="tools_plugins_desc">Plugins are coarser-grained capability sets that declare required permissions and activation timing. Below is the list of app-preset built-in plugins, for understanding the boundary of AI capabilities.</string>
+
+    <!-- Risk level badges -->
+    <string name="tools_risk_safe">Safe</string>
+    <string name="tools_risk_normal">Normal</string>
+    <string name="tools_risk_high">High</string>
+
+    <!-- Tool detail dialog -->
+    <string name="tools_detail_category_label">Category: %1$s</string>
+    <string name="tools_detail_params">Parameters</string>
+    <string name="tools_detail_sandbox_title">Sandbox security limits</string>
+    <string name="tools_detail_sandbox_content">• Based on WebView V8 engine, isolated from system pages\n• fetch / XHR / WebSocket disabled, no network access\n• blockNetworkLoads intercepts all network requests\n• Default timeout 10 seconds to avoid infinite loops\n• User confirmation required before invocation (high-risk tool permission)</string>
+
+    <!-- Parameter row -->
+    <string name="tools_param_required">Required</string>
+
+    <!-- Tool categories -->
+    <string name="tools_category_built_in">Built-in tools</string>
+    <string name="tools_category_local">Local tools</string>
+    <string name="tools_category_mcp">MCP tools</string>
+
+    <!-- Plugin capability captions -->
+    <string name="tools_permissions_label">Permissions: </string>
+    <string name="tools_activation_label">Activation: </string>
+</resources>

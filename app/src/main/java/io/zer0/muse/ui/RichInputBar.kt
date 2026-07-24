@@ -60,6 +60,7 @@ import io.zer0.muse.ui.chat.VideoAttachment
 import io.zer0.muse.ui.common.IosTactileButton
 import io.zer0.muse.ui.common.MuseDialog
 import io.zer0.muse.ui.theme.MuseElevation
+import io.zer0.muse.ui.theme.MuseHaptics
 import io.zer0.muse.ui.theme.MuseIconSizes
 import io.zer0.muse.ui.theme.MusePaddings
 import io.zer0.muse.ui.theme.MuseShapes
@@ -133,6 +134,8 @@ internal fun RichInputBar(
     onOpenVoiceConversation: () -> Unit = {},
     // P2-12: 是否启用 Markdown 格式工具条(开关关闭时等价于直接调用 InputBar)
     formatEnabled: Boolean = true,
+    // v1.0.29: 是否进入页面时自动聚焦输入框并呼出输入法。
+    autoFocus: Boolean = true,
 ) {
     // 工具条展开状态(配置变更后保留,避免旋转屏 / 切后台后丢失)
     var showFormatToolbar by rememberSaveable { mutableStateOf(false) }
@@ -156,12 +159,12 @@ internal fun RichInputBar(
             ) {
                 FormatToolbarSurface(
                     onFormatClick = { format ->
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        MuseHaptics.light(hapticFeedback)
                         val newText = applyMarkdownFormat(text, format)
                         onTextChanged(newText)
                     },
                 onLinkClick = {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    MuseHaptics.light(hapticFeedback)
                     showLinkDialog = true
                 },
             )
@@ -184,7 +187,7 @@ internal fun RichInputBar(
                 IosTactileButton(
                     icon = Icons.Default.TextFormat,
                     onClick = {
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        MuseHaptics.light(hapticFeedback)
                         showFormatToolbar = !showFormatToolbar
                     },
                     contentDescription = stringResource(R.string.rich_input_format),
@@ -242,6 +245,7 @@ internal fun RichInputBar(
             onShowToolCalls = onShowToolCalls,
             hasDraft = hasDraft,
             onOpenVoiceConversation = onOpenVoiceConversation,
+            autoFocus = autoFocus,
         )
     }
 

@@ -333,12 +333,12 @@ internal object PcmWavConverter {
         val out = ByteArrayOutputStream(44 + dataSize)
         val dos = java.io.DataOutputStream(out)
 
-        // RIFF header
+        // RIFF 头
         dos.writeBytes("RIFF")
         dos.writeIntLittleEndian(chunkSize)
         dos.writeBytes("WAVE")
 
-        // fmt sub-chunk
+        // fmt 子块
         dos.writeBytes("fmt ")
         dos.writeIntLittleEndian(16)        // PCM 格式子块大小
         dos.writeShortLittleEndian(1)       // 音频格式 = 1 (PCM)
@@ -348,7 +348,7 @@ internal object PcmWavConverter {
         dos.writeShortLittleEndian(blockAlign)
         dos.writeShortLittleEndian(bitsPerSample)
 
-        // data sub-chunk
+        // data 子块
         dos.writeBytes("data")
         dos.writeIntLittleEndian(dataSize)
         dos.write(pcm)

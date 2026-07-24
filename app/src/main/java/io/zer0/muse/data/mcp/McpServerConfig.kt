@@ -20,7 +20,7 @@ data class McpCommonOptions(
 )
 
 /**
- * MCP tool definition discovered from a remote MCP server.
+ * 从远程 MCP 服务端发现的工具定义。
  */
 @Serializable
 data class McpTool(
@@ -75,7 +75,7 @@ sealed class McpServerConfig {
 }
 
 /**
- * MCP connection status for UI display.
+ * 用于 UI 展示的 MCP 连接状态。
  */
 sealed class McpConnectionStatus {
     data object Idle : McpConnectionStatus()

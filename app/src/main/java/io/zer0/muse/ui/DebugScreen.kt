@@ -61,12 +61,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import io.zer0.muse.R
 import io.zer0.muse.crash.MuseCrashHandler
 import io.zer0.muse.data.analytics.AnalyticsSnapshot
 import io.zer0.muse.data.analytics.LocalAnalyticsTracker
@@ -82,6 +84,7 @@ import io.zer0.muse.ui.common.MuseToast
 import io.zer0.muse.ui.theme.MuseMonoFontFamily
 import io.zer0.muse.ui.theme.MusePaddings
 import io.zer0.muse.ui.theme.MuseShapes
+import io.zer0.muse.ui.theme.tiny
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -184,14 +187,14 @@ fun DebugScreen(
     if (showClearDialog) {
         MuseDialog(
             onDismissRequest = { showClearDialog = false },
-            title = "清空调试日志",
-            content = { Text("确认清空全部 ${DebugLogStore.size()} 条日志?此操作不可撤销。") },
-            confirmText = "清空",
+            title = stringResource(R.string.debug_clear_logs_title),
+            content = { Text(stringResource(R.string.debug_clear_logs_confirm, DebugLogStore.size())) },
+            confirmText = stringResource(R.string.debug_action_clear),
             onConfirm = {
                 DebugLogStore.clear()
                 allLogs = emptyList()
                 showClearDialog = false
-                MuseToast.show("已清空")
+                MuseToast.show(context.getString(R.string.debug_cleared_toast))
             },
             onDismiss = { showClearDialog = false },
         )
@@ -240,7 +243,7 @@ fun DebugScreen(
         // v1.0.4 (P3-7): 一键复制当前过滤后的日志到剪贴板(纯文本),便于内测用户粘贴反馈
         onCopy = {
             if (filteredLogs.isEmpty()) {
-                MuseToast.show("当前无日志可复制")
+                MuseToast.show(context.getString(R.string.debug_no_logs_to_copy))
             } else {
                 val text = buildString {
                     filteredLogs.forEach { entry ->
@@ -253,13 +256,13 @@ fun DebugScreen(
                 clipboard.setPrimaryClip(
                     android.content.ClipData.newPlainText("Muse Debug Log", text)
                 )
-                MuseToast.show("已复制 ${filteredLogs.size} 条日志到剪贴板")
+                MuseToast.show(context.getString(R.string.debug_logs_copied_toast, filteredLogs.size))
             }
         },
         onExport = {
             val file = DebugLogStore.exportToFile()
             if (file == null) {
-                MuseToast.show("导出失败:暂无日志或目录未初始化")
+                MuseToast.show(context.getString(R.string.debug_export_failed_no_logs))
             } else {
                 val uri = runCatching {
                     FileProvider.getUriForFile(
@@ -269,14 +272,16 @@ fun DebugScreen(
                     )
                 }.getOrNull()
                 if (uri == null) {
-                    MuseToast.show("导出失败:无法获取文件 URI")
+                    MuseToast.show(context.getString(R.string.debug_export_failed_no_uri))
                 } else {
                     val intent = Intent(Intent.ACTION_SEND).apply {
                         type = "text/plain"
                         putExtra(Intent.EXTRA_STREAM, uri)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
-                    context.startActivity(Intent.createChooser(intent, "分享调试日志"))
+                    context.startActivity(
+                        Intent.createChooser(intent, context.getString(R.string.debug_share_log_chooser))
+                    )
                 }
             }
         },
@@ -318,14 +323,14 @@ private fun ScaffoldLayout(
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(modifier = Modifier.fillMaxSize()) {
             IosTopBar(
-                title = "调试日志",
+                title = stringResource(R.string.debug_screen_title),
                 onBack = onBack,
                 actions = {
                     // 暂停/继续跟随按钮
                     IconButton(onClick = onTogglePause) {
                         Icon(
                             imageVector = if (paused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                            contentDescription = if (paused) "继续跟随" else "暂停跟随",
+                            contentDescription = if (paused) stringResource(R.string.debug_cd_resume_follow) else stringResource(R.string.debug_cd_pause_follow),
                             tint = if (paused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         )
                     }
@@ -333,42 +338,42 @@ private fun ScaffoldLayout(
                     IconButton(onClick = onShowCrashLogs) {
                         Icon(
                             imageVector = Icons.Outlined.History,
-                            contentDescription = "崩溃日志",
+                            contentDescription = stringResource(R.string.debug_cd_crash_logs),
                         )
                     }
                     // 本地数据分析入口(P3-2):展示 LocalAnalyticsTracker 已采集的 DAU/MAU/留存/功能使用
                     IconButton(onClick = onShowAnalytics) {
                         Icon(
                             imageVector = Icons.Outlined.Analytics,
-                            contentDescription = "本地数据分析",
+                            contentDescription = stringResource(R.string.debug_cd_analytics),
                         )
                     }
                     // 数据库完整性入口(P3-3):展示 IntegrityChecker 最近一次 PRAGMA integrity_check 结果
                     IconButton(onClick = onShowDbIntegrity) {
                         Icon(
                             imageVector = Icons.Outlined.HealthAndSafety,
-                            contentDescription = "数据库完整性",
+                            contentDescription = stringResource(R.string.debug_cd_db_integrity),
                         )
                     }
                     // v1.0.4 (P3-7): 复制按钮 — 把当前过滤后的日志复制到剪贴板(纯文本)
                     IconButton(onClick = onCopy) {
                         Icon(
                             imageVector = Icons.Outlined.ContentCopy,
-                            contentDescription = "复制",
+                            contentDescription = stringResource(R.string.debug_cd_copy),
                         )
                     }
                     // 导出按钮
                     IconButton(onClick = onExport) {
                         Icon(
                             imageVector = Icons.Outlined.Share,
-                            contentDescription = "导出",
+                            contentDescription = stringResource(R.string.debug_cd_export),
                         )
                     }
                     // 清空按钮
                     IconButton(onClick = onClear) {
                         Icon(
                             imageVector = Icons.Outlined.DeleteOutline,
-                            contentDescription = "清空",
+                            contentDescription = stringResource(R.string.debug_cd_clear),
                         )
                     }
                 },
@@ -392,7 +397,8 @@ private fun ScaffoldLayout(
 
             // ── 日志计数 ───────────────────────────────────────────────
             Text(
-                text = "共 ${logs.size} 条" + if (paused) " · 已暂停跟随" else "",
+                text = stringResource(R.string.debug_log_count, logs.size) +
+                    if (paused) stringResource(R.string.debug_log_count_paused_suffix) else "",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.padding(horizontal = MusePaddings.screen),
@@ -463,7 +469,7 @@ private fun FilterRow(
         IosDropdown(
             value = levelFilter,
             onValueChange = onLevelChange,
-            label = "等级",
+            label = stringResource(R.string.debug_level_label),
             options = levelOptions,
             modifier = Modifier.width(120.dp),
         )
@@ -480,7 +486,7 @@ private fun FilterRow(
         OutlinedTextField(
             value = keywordQuery,
             onValueChange = onKeywordChange,
-            label = { Text("关键字") },
+            label = { Text(stringResource(R.string.debug_keyword_label)) },
             singleLine = true,
             shape = MuseShapes.medium,
             leadingIcon = {
@@ -515,13 +521,13 @@ private fun EmptyLogs() {
             )
             Spacer(Modifier.height(MusePaddings.contentGap))
             Text(
-                text = "暂无日志",
+                text = stringResource(R.string.debug_empty_title),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.outline,
             )
             Spacer(Modifier.height(MusePaddings.tightGap))
             Text(
-                text = "Logger 调用的日志会在此实时显示",
+                text = stringResource(R.string.debug_empty_subtitle),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -658,7 +664,7 @@ private fun LogEntryItem(
 @Composable
 private fun LevelChip(level: String, color: Color) {
     Surface(
-        shape = RoundedCornerShape(4.dp),
+        shape = MuseShapes.tiny,
         color = color.copy(alpha = 0.18f),
     ) {
         Text(
@@ -750,7 +756,7 @@ private fun CrashLogSheet(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "崩溃日志",
+                text = stringResource(R.string.debug_crash_log_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -764,7 +770,7 @@ private fun CrashLogSheet(
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(Modifier.width(6.dp))
-                Text("导出 ZIP 并分享")
+                Text(stringResource(R.string.debug_export_zip_and_share))
             }
         }
 
@@ -774,7 +780,7 @@ private fun CrashLogSheet(
         when {
             loading -> {
                 Text(
-                    text = "正在读取崩溃日志…",
+                    text = stringResource(R.string.debug_loading_crash_logs),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = MusePaddings.contentGap),
@@ -782,7 +788,7 @@ private fun CrashLogSheet(
             }
             logs.isEmpty() -> {
                 Text(
-                    text = "暂无崩溃日志\n\n应用未崩溃过,或日志已被自动清理(保留最近 5 份)。",
+                    text = stringResource(R.string.debug_no_crash_logs),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = MusePaddings.contentGap),
@@ -790,7 +796,7 @@ private fun CrashLogSheet(
             }
             else -> {
                 Text(
-                    text = "共 ${logs.size} 份(按时间倒序,仅保留最近 5 份)",
+                    text = stringResource(R.string.debug_crash_log_count, logs.size),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline,
                 )
@@ -849,7 +855,7 @@ private fun CrashLogItem(
             .fillMaxWidth()
             .clickable(onClick = onToggleExpand),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+        Column(modifier = Modifier.padding(MusePaddings.cardInnerAux)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Outlined.Description,
@@ -877,7 +883,7 @@ private fun CrashLogItem(
                 IconButton(onClick = onShare) {
                     Icon(
                         imageVector = Icons.Outlined.Share,
-                        contentDescription = "分享此条日志",
+                        contentDescription = stringResource(R.string.debug_cd_share_crash_log),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -898,12 +904,12 @@ private fun CrashLogItem(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
-                            text = preview ?: "正在读取…",
+                            text = preview ?: stringResource(R.string.debug_loading),
                             style = MaterialTheme.typography.bodySmall,
                             fontFamily = FontFamily.Monospace,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
-                                .padding(8.dp)
+                                .padding(MusePaddings.contentGap)
                                 .heightIn(max = 240.dp)
                                 .verticalScroll(rememberScrollState()),
                         )
@@ -911,7 +917,7 @@ private fun CrashLogItem(
                     if (preview != null && preview.length >= CRASH_PREVIEW_CHARS) {
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "仅显示前 $CRASH_PREVIEW_CHARS 字符,完整内容请通过分享按钮导出查看。",
+                            text = stringResource(R.string.debug_crash_preview_truncated, CRASH_PREVIEW_CHARS),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.outline,
                         )
@@ -959,7 +965,7 @@ private fun AnalyticsSheet(onDismiss: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "本地数据分析",
+                text = stringResource(R.string.debug_analytics_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -972,7 +978,7 @@ private fun AnalyticsSheet(onDismiss: () -> Unit) {
         when {
             loading -> {
                 Text(
-                    text = "正在读取分析数据…",
+                    text = stringResource(R.string.debug_loading_analytics),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = MusePaddings.contentGap),
@@ -980,7 +986,7 @@ private fun AnalyticsSheet(onDismiss: () -> Unit) {
             }
             snapshot == null -> {
                 Text(
-                    text = "无法读取分析数据",
+                    text = stringResource(R.string.debug_analytics_load_failed),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(vertical = MusePaddings.contentGap),
@@ -991,12 +997,13 @@ private fun AnalyticsSheet(onDismiss: () -> Unit) {
                 // ── 核心指标:2 列网格 ─────────────────────────────────────────
                 MetricGrid(
                     metrics = listOf(
-                        "DAU 今日" to s.dauToday.toString(),
-                        "MAU 本月" to s.mauMonth.toString(),
-                        "总会话数" to s.totalSessions.toString(),
-                        "总消息数" to s.totalMessages.toString(),
-                        "启动次数" to s.launchCount.toString(),
-                        "崩溃次数" to "${s.crashCount}(${formatPercent(s.crashRate)})",
+                        stringResource(R.string.debug_metric_dau_today) to s.dauToday.toString(),
+                        stringResource(R.string.debug_metric_mau_month) to s.mauMonth.toString(),
+                        stringResource(R.string.debug_metric_total_sessions) to s.totalSessions.toString(),
+                        stringResource(R.string.debug_metric_total_messages) to s.totalMessages.toString(),
+                        stringResource(R.string.debug_metric_launch_count) to s.launchCount.toString(),
+                        stringResource(R.string.debug_metric_crash_count) to
+                            stringResource(R.string.debug_metric_crash_count_value, s.crashCount, formatPercent(s.crashRate)),
                     ),
                 )
 
@@ -1012,10 +1019,16 @@ private fun AnalyticsSheet(onDismiss: () -> Unit) {
                 Spacer(Modifier.height(MusePaddings.contentGap))
 
                 // ── 其他状态:首次对话 / 记忆系统 / 最近活跃 ──────────────────
-                StatusRow(label = "首次对话完成", value = if (s.firstChatCompleted) "是" else "否")
-                StatusRow(label = "记忆系统采用", value = if (s.memoryAdopted) "是" else "否")
+                StatusRow(
+                    label = stringResource(R.string.debug_status_first_chat),
+                    value = if (s.firstChatCompleted) stringResource(R.string.debug_value_yes) else stringResource(R.string.debug_value_no),
+                )
+                StatusRow(
+                    label = stringResource(R.string.debug_status_memory_adopted),
+                    value = if (s.memoryAdopted) stringResource(R.string.debug_value_yes) else stringResource(R.string.debug_value_no),
+                )
                 if (s.lastActiveDate.isNotBlank()) {
-                    StatusRow(label = "最近活跃日期", value = s.lastActiveDate)
+                    StatusRow(label = stringResource(R.string.debug_status_last_active), value = s.lastActiveDate)
                 }
 
                 Spacer(Modifier.height(MusePaddings.contentGap))
@@ -1046,7 +1059,7 @@ private fun MetricGrid(metrics: List<Pair<String, String>>) {
                         color = MaterialTheme.colorScheme.surface,
                         modifier = Modifier.weight(1f),
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
+                        Column(modifier = Modifier.padding(MusePaddings.itemGap)) {
                             Text(
                                 text = label,
                                 style = MaterialTheme.typography.labelSmall,
@@ -1083,9 +1096,9 @@ private fun RetentionCard(d1: Int, d7: Int, d30: Int) {
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(MusePaddings.itemGap)) {
             Text(
-                text = "留存(自首次启动)",
+                text = stringResource(R.string.debug_retention_title),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1094,9 +1107,9 @@ private fun RetentionCard(d1: Int, d7: Int, d30: Int) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                RetentionItem(label = "次日(D1)", retained = d1)
-                RetentionItem(label = "7 日(D7)", retained = d7)
-                RetentionItem(label = "30 日(D30)", retained = d30)
+                RetentionItem(label = stringResource(R.string.debug_retention_d1), retained = d1)
+                RetentionItem(label = stringResource(R.string.debug_retention_d7), retained = d7)
+                RetentionItem(label = stringResource(R.string.debug_retention_d30), retained = d30)
             }
         }
     }
@@ -1170,14 +1183,14 @@ private fun StatusRow(label: String, value: String) {
 @Composable
 private fun FeatureUsageSection(usage: List<Pair<String, Int>>) {
     Text(
-        text = "功能使用 Top 10",
+        text = stringResource(R.string.debug_feature_usage_top),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Spacer(Modifier.height(8.dp))
     if (usage.isEmpty()) {
         Text(
-            text = "暂无功能使用记录",
+            text = stringResource(R.string.debug_no_feature_usage),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(vertical = MusePaddings.contentGap),
@@ -1257,6 +1270,7 @@ private fun formatPercent(value: Float): String = "%.1f%%".format(value * 100)
 private fun DbIntegritySheet(onDismiss: () -> Unit) {
     val checker: IntegrityChecker = koinInject()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var latest by remember { mutableStateOf<DbIntegrityLogEntity?>(null) }
     var loading by remember { mutableStateOf(true) }
@@ -1275,7 +1289,7 @@ private fun DbIntegritySheet(onDismiss: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "数据库完整性",
+                text = stringResource(R.string.debug_db_integrity_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -1288,7 +1302,7 @@ private fun DbIntegritySheet(onDismiss: () -> Unit) {
         when {
             loading -> {
                 Text(
-                    text = "正在读取最近检查记录…",
+                    text = stringResource(R.string.debug_loading_db_integrity),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = MusePaddings.contentGap),
@@ -1308,7 +1322,7 @@ private fun DbIntegritySheet(onDismiss: () -> Unit) {
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Row(
-                            modifier = Modifier.padding(16.dp),
+                            modifier = Modifier.padding(MusePaddings.screen),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Surface(
@@ -1340,7 +1354,7 @@ private fun DbIntegritySheet(onDismiss: () -> Unit) {
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = if (isOk) "数据库正常" else "数据库异常",
+                                    text = if (isOk) stringResource(R.string.debug_db_status_ok) else stringResource(R.string.debug_db_status_error),
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                                     color = if (isOk) {
                                         MaterialTheme.colorScheme.onSurface
@@ -1350,12 +1364,12 @@ private fun DbIntegritySheet(onDismiss: () -> Unit) {
                                 )
                                 Spacer(Modifier.height(2.dp))
                                 Text(
-                                    text = "DB 大小:${formatFileSize(entity.dbSizeBytes)}",
+                                    text = stringResource(R.string.debug_db_size_label, formatFileSize(entity.dbSizeBytes)),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 Text(
-                                    text = "检查时间:${dateFormat.format(Date(entity.checkedAt))}",
+                                    text = stringResource(R.string.debug_db_check_time_label, dateFormat.format(Date(entity.checkedAt))),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -1372,7 +1386,8 @@ private fun DbIntegritySheet(onDismiss: () -> Unit) {
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(
-                                text = entity.details.takeIf { it.isNotBlank() } ?: "(无详情)",
+                                text = entity.details.takeIf { it.isNotBlank() }
+                                    ?: stringResource(R.string.debug_no_details),
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontFamily = FontFamily.Monospace,
                                 ),
@@ -1385,7 +1400,7 @@ private fun DbIntegritySheet(onDismiss: () -> Unit) {
                         }
                         Spacer(Modifier.height(MusePaddings.contentGap))
                         Text(
-                            text = "建议:请从「设置 → 备份与恢复」恢复最近一次自动备份,或导出关键会话后重新安装应用。",
+                            text = stringResource(R.string.debug_db_error_advice),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                         )
@@ -1402,7 +1417,12 @@ private fun DbIntegritySheet(onDismiss: () -> Unit) {
                                 val ok = checker.checkAndLog()
                                 latest = checker.getLatestStatus()
                                 checking = false
-                                MuseToast.show(if (ok) "完整性检查通过" else "完整性检查异常,请查看详情")
+                                MuseToast.show(
+                                    context.getString(
+                                        if (ok) R.string.debug_integrity_check_passed
+                                        else R.string.debug_integrity_check_failed
+                                    )
+                                )
                             }
                         },
                         enabled = !checking,
@@ -1416,7 +1436,7 @@ private fun DbIntegritySheet(onDismiss: () -> Unit) {
                                 color = MaterialTheme.colorScheme.onPrimary,
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text("正在检查…")
+                            Text(stringResource(R.string.debug_checking))
                         } else {
                             Icon(
                                 imageVector = Icons.Outlined.HealthAndSafety,
@@ -1424,13 +1444,13 @@ private fun DbIntegritySheet(onDismiss: () -> Unit) {
                                 modifier = Modifier.size(18.dp),
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text("立即检查")
+                            Text(stringResource(R.string.debug_check_now))
                         }
                     }
                 } ?: run {
                     // 无任何检查记录(首次使用 / 表为空)
                     Text(
-                        text = "暂无检查记录\n\n点击下方按钮立即执行一次完整性检查。",
+                        text = stringResource(R.string.debug_no_check_record),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = MusePaddings.contentGap),
@@ -1456,7 +1476,7 @@ private fun DbIntegritySheet(onDismiss: () -> Unit) {
                                 color = MaterialTheme.colorScheme.onPrimary,
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text("正在检查…")
+                            Text(stringResource(R.string.debug_checking))
                         } else {
                             Icon(
                                 imageVector = Icons.Outlined.HealthAndSafety,
@@ -1464,7 +1484,7 @@ private fun DbIntegritySheet(onDismiss: () -> Unit) {
                                 modifier = Modifier.size(18.dp),
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text("立即检查")
+                            Text(stringResource(R.string.debug_check_now))
                         }
                     }
                 }
@@ -1482,7 +1502,7 @@ private fun DbIntegritySheet(onDismiss: () -> Unit) {
 private fun shareCrashZip(context: android.content.Context) {
     val zipFile = MuseCrashHandler.packageCrashLogsToZip(context)
     if (zipFile == null) {
-        MuseToast.show("导出失败:暂无崩溃日志")
+        MuseToast.show(context.getString(R.string.debug_export_failed_no_crash_logs))
         return
     }
     runCatching {
@@ -1498,11 +1518,11 @@ private fun shareCrashZip(context: android.content.Context) {
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(
-            android.content.Intent.createChooser(intent, "分享崩溃日志 ZIP")
+            android.content.Intent.createChooser(intent, context.getString(R.string.debug_share_crash_zip_chooser))
                 .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }.onFailure {
-        MuseToast.show("分享失败:无法获取文件 URI")
+        MuseToast.show(context.getString(R.string.debug_share_failed_no_uri))
     }
 }
 
@@ -1525,11 +1545,11 @@ private fun shareCrashFile(context: android.content.Context, file: File) {
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(
-            android.content.Intent.createChooser(intent, "分享崩溃日志")
+            android.content.Intent.createChooser(intent, context.getString(R.string.debug_share_crash_log_chooser))
                 .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }.onFailure {
-        MuseToast.show("分享失败:无法获取文件 URI")
+        MuseToast.show(context.getString(R.string.debug_share_failed_no_uri))
     }
 }
 

@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import io.zer0.muse.ui.theme.MuseAnimation
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -312,7 +313,7 @@ private fun StatusDot(status: DelegationNodeStatus) {
             initialValue = 0.3f,
             targetValue = 1f,
             animationSpec = infiniteRepeatable(
-                animation = tween(800),
+                animation = tween(MuseAnimation.LOOP_SLOW_MS),
                 repeatMode = RepeatMode.Reverse,
             ),
             label = "delegationPulseAlpha",

@@ -76,6 +76,7 @@ import io.zer0.common.Logger
  *   - 迁移链已覆盖标准升级路径;未知版本降级时由 fallbackToDestructiveMigrationOnDowngrade 处理
  * v0.45: 版本 11 → 12,sessions 加 archived 字段(归档功能)。
  * v1.43: 版本 15 → 16,新增 artifacts 表 + messages.artifactIdsJson 字段(会话产物)。
+ * v1.0.23 hotfix: 版本 41 → 42,修复"假 v41"数据库 integrity check 崩溃(防御性补字段,无 schema 变更)。
  */
 @Database(
     entities = [
@@ -109,8 +110,10 @@ import io.zer0.common.Logger
         // 注:KnowledgeChunkFtsEntity 不在此列表 — FTS4 vtable 由 MIGRATION_38_39 raw SQL 创建,
         // DAO 全部 @SkipQueryVerification,Room 不感知该虚拟表存在(避免 KSP schema 验证报 vtable constructor failed)
         KnowledgeBaseEntity::class,
+        // v1.0.15: 消息发送 outbox(持久化发送队列,进程被杀后恢复未发送消息)
+        MessageOutboxEntity::class,
     ],
-    version = 41,
+    version = 43,
     exportSchema = true,
 )
 abstract class MuseDb : RoomDatabase() {
@@ -144,6 +147,8 @@ abstract class MuseDb : RoomDatabase() {
     abstract fun statsCacheDao(): StatsCacheDao
     // P3-3: 数据库完整性校验 DAO(IntegrityChecker 使用)
     abstract fun integrityLogDao(): DbIntegrityLogDao
+    // v1.0.15: 消息发送 outbox DAO
+    abstract fun messageOutboxDao(): MessageOutboxDao
 
     companion object {
         @Volatile
@@ -892,48 +897,6 @@ abstract class MuseDb : RoomDatabase() {
         }
 
         /**
-         * v2.0: MIGRATION_31_32 — 软删除(deletedAt 列)。
-         * sessions 和 messages 添加 deletedAt 列,支持回收站功能。
-         */
-        val MIGRATION_31_32 = object : Migration(31, 32) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE sessions ADD COLUMN deletedAt INTEGER DEFAULT NULL")
-                db.execSQL("ALTER TABLE messages ADD COLUMN deletedAt INTEGER DEFAULT NULL")
-            }
-        }
-
-        /**
-         * 功能1: MIGRATION_32_33 — 消息表情回应(reaction 列)。
-         * messages 加 reaction 字段(null = 无回应)。
-         */
-        val MIGRATION_32_33 = object : Migration(32, 33) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE messages ADD COLUMN reaction TEXT DEFAULT NULL")
-            }
-        }
-
-        /**
-         * 功能2: MIGRATION_33_34 — assistants 表加 providerId 字段。
-         * 用于每助手独立模型绑定时指定模型所属的 Provider,避免跨 Provider 模型名冲突。
-         */
-        val MIGRATION_33_34 = object : Migration(33, 34) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE assistants ADD COLUMN providerId TEXT DEFAULT NULL")
-            }
-        }
-
-        /**
-         * v1.122: MIGRATION_34_35 — 补齐 sessions 表 parentSessionId + childCount 列。
-         * MIGRATION_31_32 漏加了 parentSessionId(分支父会话)和 childCount(分支计数),此处补加。
-         */
-        val MIGRATION_34_35 = object : Migration(34, 35) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE sessions ADD COLUMN parentSessionId TEXT DEFAULT NULL")
-                db.execSQL("ALTER TABLE sessions ADD COLUMN childCount INTEGER NOT NULL DEFAULT 0")
-            }
-        }
-
-        /**
          * v1.107: MIGRATION_30_31 — 全库冗余设计。
          *
          * 四个方向:
@@ -1021,6 +984,48 @@ abstract class MuseDb : RoomDatabase() {
                         `createdAt` INTEGER NOT NULL DEFAULT 0
                     )
                 """.trimIndent())
+            }
+        }
+
+        /**
+         * v2.0: MIGRATION_31_32 — 软删除(deletedAt 列)。
+         * sessions 和 messages 添加 deletedAt 列,支持回收站功能。
+         */
+        val MIGRATION_31_32 = object : Migration(31, 32) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE sessions ADD COLUMN deletedAt INTEGER DEFAULT NULL")
+                db.execSQL("ALTER TABLE messages ADD COLUMN deletedAt INTEGER DEFAULT NULL")
+            }
+        }
+
+        /**
+         * 功能1: MIGRATION_32_33 — 消息表情回应(reaction 列)。
+         * messages 加 reaction 字段(null = 无回应)。
+         */
+        val MIGRATION_32_33 = object : Migration(32, 33) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE messages ADD COLUMN reaction TEXT DEFAULT NULL")
+            }
+        }
+
+        /**
+         * 功能2: MIGRATION_33_34 — assistants 表加 providerId 字段。
+         * 用于每助手独立模型绑定时指定模型所属的 Provider,避免跨 Provider 模型名冲突。
+         */
+        val MIGRATION_33_34 = object : Migration(33, 34) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE assistants ADD COLUMN providerId TEXT DEFAULT NULL")
+            }
+        }
+
+        /**
+         * v1.122: MIGRATION_34_35 — 补齐 sessions 表 parentSessionId + childCount 列。
+         * MIGRATION_31_32 漏加了 parentSessionId(分支父会话)和 childCount(分支计数),此处补加。
+         */
+        val MIGRATION_34_35 = object : Migration(34, 35) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE sessions ADD COLUMN parentSessionId TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE sessions ADD COLUMN childCount INTEGER NOT NULL DEFAULT 0")
             }
         }
 
@@ -1213,6 +1218,78 @@ abstract class MuseDb : RoomDatabase() {
             }
         }
 
+        /**
+         * v1.0.23 hotfix: MIGRATION_41_42 — 修复"假 v41"数据库 integrity check 崩溃。
+         *
+         * 问题根因:
+         *  某个中间开发版本改了 ScheduledTaskEntity 但未升 MuseDb version(仍标 41),
+         *  导致装过该中间版的设备数据库 schema hash 为 f651a76c...(非标准 v41 的 8edc5eb8...),
+         *  升级到正确 v41 APK 后 Room 因 version 相同跳过 migration,直接 integrity check 失败崩溃。
+         *
+         * 修复策略:
+         *  提升 version 到 42,强制 Room 走 migration 路径(绕过 v41 的 integrity check)。
+         *  migration 中防御性检测 scheduled_tasks 表的字段完整性 — 逐列 PRAGMA table_info 检查,
+         *  缺失则 ALTER TABLE ADD COLUMN 补上。
+         *  这样无论设备上是"真 v41"(字段齐全,无需 ALTER)还是"假 v41"(字段缺失,逐个补上),
+         *  migration 后 schema 都与 v42(= 正确 v41)一致,integrity check 通过。
+         *
+         * 数据安全:
+         *  - "真 v41"用户:所有字段存在,migration 空跑,数据零丢失
+         *  - "假 v41"用户:补上缺失字段(默认值填充),现有数据保留
+         */
+        val MIGRATION_41_42 = object : Migration(41, 42) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 防御性修复:检测 scheduled_tasks 表字段完整性,补上可能缺失的列
+                val existingColumns = mutableSetOf<String>()
+                db.query("PRAGMA table_info(scheduled_tasks)").use { cursor ->
+                    val nameIndex = cursor.getColumnIndexOrThrow("name")
+                    while (cursor.moveToNext()) {
+                        existingColumns.add(cursor.getString(nameIndex))
+                    }
+                }
+                // v1.134: dedicated_session_id
+                if ("dedicated_session_id" !in existingColumns) {
+                    db.execSQL("ALTER TABLE scheduled_tasks ADD COLUMN dedicated_session_id TEXT NOT NULL DEFAULT ''")
+                }
+                // v1.137: 5 个自动化字段
+                if ("condition_json" !in existingColumns) {
+                    db.execSQL("ALTER TABLE scheduled_tasks ADD COLUMN condition_json TEXT NOT NULL DEFAULT ''")
+                }
+                if ("action_type" !in existingColumns) {
+                    db.execSQL("ALTER TABLE scheduled_tasks ADD COLUMN action_type TEXT NOT NULL DEFAULT 'ai_prompt'")
+                }
+                if ("action_config_json" !in existingColumns) {
+                    db.execSQL("ALTER TABLE scheduled_tasks ADD COLUMN action_config_json TEXT NOT NULL DEFAULT ''")
+                }
+                if ("next_task_ids_json" !in existingColumns) {
+                    db.execSQL("ALTER TABLE scheduled_tasks ADD COLUMN next_task_ids_json TEXT NOT NULL DEFAULT ''")
+                }
+                if ("parent_task_id" !in existingColumns) {
+                    db.execSQL("ALTER TABLE scheduled_tasks ADD COLUMN parent_task_id TEXT NOT NULL DEFAULT ''")
+                }
+            }
+        }
+
+        val MIGRATION_42_43 = object : Migration(42, 43) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // v1.0.15: 消息发送 outbox 表(持久化发送队列)
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS message_outbox (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        sessionId TEXT NOT NULL,
+                        text TEXT NOT NULL,
+                        imageBase64Json TEXT NOT NULL DEFAULT '[]',
+                        userMessageId TEXT NOT NULL,
+                        assistantMessageId TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        FOREIGN KEY(sessionId) REFERENCES sessions(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_message_outbox_sessionId ON message_outbox(sessionId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_message_outbox_createdAt ON message_outbox(createdAt)")
+            }
+        }
+
     fun get(context: Context): MuseDb {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -1239,6 +1316,8 @@ abstract class MuseDb : RoomDatabase() {
                         MIGRATION_38_39,
                         MIGRATION_39_40,
                         MIGRATION_40_41,
+                        MIGRATION_41_42,
+                        MIGRATION_42_43,
                     )
                     // 启用外键约束(artifacts 表的 ON DELETE CASCADE 依赖此设置)
                     // onOpen 不在 onCreate 事务内,可以执行此类命令;onCreate 内禁止 PRAGMA

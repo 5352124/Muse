@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap
  *    避免限流的 key 被反复选中;TTL 过期后自动恢复候选
  *  - [markFailed]: 显式标记某个 key 失败(如 401 鉴权失败),TTL 内完全排除
  *
- * Usage:
+ * 用法：
  * ```kotlin
  * val keyRoulette = KeyRoulette()
  * // 首次选 key
@@ -28,7 +28,7 @@ class KeyRoulette {
     companion object {
         private const val TAG = "KeyRoulette"
         private const val MAX_ENTRIES = 100
-        private const val EXPIRY_MS = 24 * 60 * 60 * 1000L // 24 hours
+        private const val EXPIRY_MS = 24 * 60 * 60 * 1000L // 24 小时
         /** v1.0.1: 限流 key 的临时黑名单 TTL(60 秒,与多数 Provider 的 Retry-After 推荐值对齐)。 */
         private const val BLACKLIST_TTL_MS = 60 * 1000L
     }
@@ -46,19 +46,19 @@ class KeyRoulette {
         val hardBlock: Boolean,
     )
 
-    /** providerId → list of recent entries (oldest first) */
+    /** providerId → 最近使用条目列表（最旧的在前） */
     private val cache = ConcurrentHashMap<String, MutableList<Entry>>()
 
-    /** v1.0.1: providerId → list of blacklist entries */
+    /** v1.0.1: providerId → 黑名单条目列表 */
     private val blacklist = ConcurrentHashMap<String, MutableList<BlacklistEntry>>()
 
     /**
-     * Pick a key from a comma/newline-separated key string.
-     * Uses LRU strategy: prefers keys not recently used.
+     * 从逗号/换行分隔的 key 字符串中选取一个 key。
+     * 采用 LRU 策略：优先选择最近未使用的 key。
      *
-     * @param providerId unique identifier for the provider
-     * @param keysString comma or newline separated API keys
-     * @return the selected key, or the original string if single key
+     * @param providerId Provider 的唯一标识
+     * @param keysString 逗号或换行分隔的 API key
+     * @return 选中的 key；若只有一个 key 则返回原始字符串
      */
     fun pick(providerId: String, keysString: String): String {
         val keys = parseKeys(keysString)
@@ -94,7 +94,7 @@ class KeyRoulette {
      * 把 [currentKey] 加入软黑名单(60s 内降优先级),然后 pick 下一个 key。
      * 如果只有一个 key,返回原 key(无法切换,由 Provider 走指数退避)。
      *
-     * @param providerId Provider id
+     * @param providerId Provider 标识
      * @param keysString 全部 key 字符串
      * @param currentKey 当前触发 429 的 key
      * @return 下一个 key(可能与 currentKey 相同,如果只有一个 key)
@@ -131,7 +131,7 @@ class KeyRoulette {
      *  - [markFailed] 默认 hardBlock=true,完全排除该 key(直到 TTL 过期)
      *  - [pickNext] 是软黑名单,仅在有多 key 时降优先级
      *
-     * @param providerId Provider id
+     * @param providerId Provider 标识
      * @param key 失败的 key
      * @param hardBlock true=完全排除(默认,如 401),false=降优先级(如 429)
      * @param ttlMs 黑名单 TTL,默认 5 分钟(hardBlock 场景比 429 更长)
@@ -156,7 +156,7 @@ class KeyRoulette {
         Logger.w(TAG, "markFailed: key=${maskKey(key)} 标记为失败(hardBlock=$hardBlock, ttl=${ttlMs}ms)")
     }
 
-    /** Clear all cached key usage data. */
+    /** 清除所有缓存的 key 使用数据。 */
     fun clear() {
         cache.clear()
         blacklist.clear()
@@ -205,7 +205,7 @@ class KeyRoulette {
         return if (unusedKeys.isNotEmpty()) {
             unusedKeys.random()
         } else {
-            // All keys used recently, pick the oldest among candidates
+            // 所有 key 最近都使用过，在候选中选最久未用的
             val oldest = entries.filter { it.key in candidates }.minByOrNull { it.lastUsedAt }
             oldest?.key?.takeIf { it in candidates } ?: candidates.random()
         }

@@ -26,9 +26,9 @@ import io.zer0.muse.R
 import kotlinx.serialization.Serializable
 
 /**
- * Activity panel (openhanako ActivityPanel.tsx port).
+ * 活动面板(openhanako ActivityPanel.tsx 移植)。
  *
- * Shows cron/heartbeat/compilation execution history with status.
+ * 展示定时任务/心跳/编译的执行历史及状态。
  */
 @Composable
 fun ActivityPanel(

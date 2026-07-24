@@ -259,4 +259,37 @@
     <string name="settings_tutorial_ch7_s5_content">• 401 Unauthorized: usually an API Key issue. Check the Key is correct, has no extra spaces, isn\'t expired or disabled. Try generating a new Key in the provider\'s dashboard.\n• 400 Bad Request: common causes — wrong model name, request too long, incompatible params. Check the model name matches the official list; try a new short conversation to test.\n• 429 Too Many Requests: too frequent or over quota — wait a bit, or switch Key/provider.\n• 5xx server errors: provider-side issue — retry later, or check the provider\'s status page.\n\nWhen an error occurs, the app usually shows the specific message — match it against the above to troubleshoot.</string>
     <string name="settings_tutorial_ch7_s6_title">How to protect privacy (PII redaction)?</string>
     <string name="settings_tutorial_ch7_s6_content">PII (Personally Identifiable Information) redaction automatically replaces sensitive info in conversations (phone numbers, ID numbers, bank cards, emails) with placeholders before sending to the AI — the AI can\'t see the real info; after the reply it\'s restored for display.\n\n• Enable: Settings → Privacy/Security → PII Redaction, turn it on.\n• How it works: locally identifies sensitive patterns and redacts them — processed locally, nothing extra uploaded.\n• Scenarios: when chatting about personal info (e.g. having the AI organize contacts or analyze a contract), enabling this is reassuring.\n• Limits: redaction is rule-based and may miss or misjudge — still stay alert with important info; never proactively share passwords or verification codes.\n\nCombined with a local model + PII redaction, you get very strong privacy protection.</string>
+
+    <!-- CrashReportSettings.kt -->
+    <string name="settings_crash_page_title">Crash Reporting</string>
+    <string name="settings_crash_pending_section">Pending crash reports</string>
+    <string name="settings_crash_pending_count">Pending crash reports: %1$d</string>
+    <string name="settings_crash_pending_hint_active">Tap the button below to report (enable and configure first)</string>
+    <string name="settings_crash_pending_hint_idle">Crashes will be added to the pending queue automatically</string>
+    <string name="settings_crash_report_now_button">Report pending crashes now</string>
+    <string name="settings_crash_settings_section">Report settings</string>
+    <string name="settings_crash_enable_title">Enable crash reporting</string>
+    <string name="settings_crash_enable_subtitle">Off by default — when enabled, crashes enter the pending queue and require manual confirmation to report</string>
+    <string name="settings_crash_method_section">Report method</string>
+    <string name="settings_crash_method_label">Choose report method</string>
+    <string name="settings_crash_method_email">Email</string>
+    <string name="settings_crash_email_label">Recipient email</string>
+    <string name="settings_crash_email_placeholder">e.g. support@example.com</string>
+    <string name="settings_crash_email_saved_toast">Email saved</string>
+    <string name="settings_crash_email_save_button">Save email</string>
+    <string name="settings_crash_webhook_saved_toast">Webhook URL saved</string>
+    <string name="settings_crash_webhook_save_button">Save URL</string>
+    <string name="settings_crash_privacy_section">Privacy</string>
+    <string name="settings_crash_privacy_title">Crash reporting privacy promise</string>
+    <string name="settings_crash_privacy_content">• Off by default; must be enabled manually to take effect\n• A confirmation dialog appears before reporting — never silently uploaded\n• Crash stacks are redacted (API keys / Bearer tokens are replaced with ***)\n• Only collected: device model / Android version / App version / timestamp\n• Does NOT collect IMEI / Android ID / MAC or any unique device identifier\n• Email: opens the email app for you to confirm sending\n• Webhook: HTTP POST to the URL you configure</string>
+    <string name="settings_crash_confirm_dialog_title">Confirm crash report</string>
+    <string name="settings_crash_confirm_target_email">Email (%1$s)</string>
+    <string name="settings_crash_confirm_target_webhook">Webhook (%1$s)</string>
+    <string name="settings_crash_confirm_dialog_content">About to report %1$d crash records to %2$s\n\nReport content includes: crash stack + device model + Android version + App version + timestamp.\nCrash stacks are redacted. Continue?</string>
+    <string name="settings_crash_confirm_button">Confirm report</string>
+    <string name="settings_crash_no_pending">No pending crashes to report</string>
+    <string name="settings_crash_no_email">Please configure the recipient email first</string>
+    <string name="settings_crash_no_webhook">Please configure a valid Webhook URL first</string>
+    <string name="settings_crash_no_method">Report method not configured, skipped</string>
+    <string name="settings_crash_reported_count">Reported %1$d crash records</string>
 </resources>

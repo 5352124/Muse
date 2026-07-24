@@ -14,6 +14,7 @@ import io.zer0.common.AppDispatchers
 import io.zer0.common.Logger
 import io.zer0.muse.data.SettingsRepository
 import io.zer0.muse.data.session.SessionRepository
+import io.zer0.muse.R
 import io.zer0.muse.doc.OcrManager
 import io.zer0.muse.ui.ChatError
 import io.zer0.muse.ui.ChatErrorType
@@ -50,6 +51,7 @@ class ImageGenCoordinator(
     private val sessionRepository: SessionRepository,
     private val ocrManager: OcrManager,
     private val chatService: ChatService,
+    private val appContext: Context,
 ) {
 
     private val tag = "ChatVM"
@@ -79,7 +81,7 @@ class ImageGenCoordinator(
                     try {
                         val text = ocrManager.recognize(uri, context)
                         if (text.isBlank()) {
-                            reportError("OCR 识别失败或图片中未检测到文字")
+                            reportError(context.getString(R.string.err_image_gen_ocr_failed))
                             return@launch
                         }
                         val current = accessor.snapshot.input
@@ -91,19 +93,19 @@ class ImageGenCoordinator(
                 } else {
                     val base64 = readImageAsBase64(uri, context, addError)
                     if (base64.isBlank()) {
-                        reportError("图片读取失败")
+                        reportError(context.getString(R.string.err_image_gen_read_failed))
                         return@launch
                     }
                     val current = accessor.snapshot.pendingImages
                     if (current.size >= 4) {
-                        reportError("最多支持 4 张图片")
+                        reportError(context.getString(R.string.err_image_gen_max_images))
                         return@launch
                     }
                     accessor.update { it.copy(pendingImages = current + base64) }
                 }
             } catch (t: Exception) {
                 Logger.e(tag, "pickImage failed", t)
-                reportError("图片处理失败: ${t.message}")
+                reportError(context.getString(R.string.err_image_gen_process_failed, t.message ?: ""))
             }
         }
     }
@@ -121,20 +123,20 @@ class ImageGenCoordinator(
                 // 1. 提取关键帧(首帧/中间/末帧)
                 val keyFrames = VideoHandler().extractKeyFrames(uri, context, frameCount = 3)
                 if (keyFrames.isEmpty()) {
-                    reportError("视频处理失败:无法提取关键帧")
+                    reportError(context.getString(R.string.err_image_gen_video_no_frames))
                     return@launch
                 }
                 // 2. 检查待发送图片上限(加上关键帧后不超过 4 张)
                 val current = accessor.snapshot.pendingImages
                 if (current.size + keyFrames.size > 4) {
-                    reportError("视频关键帧 ${keyFrames.size} 张加上现有 ${current.size} 张超过 4 张上限")
+                    reportError(context.getString(R.string.err_image_gen_video_too_many, keyFrames.size, current.size))
                     return@launch
                 }
                 accessor.update { it.copy(pendingImages = current + keyFrames) }
                 Logger.i(tag, "pickVideo: 已提取 ${keyFrames.size} 张关键帧加入 pendingImages")
             } catch (t: Exception) {
                 Logger.e(tag, "pickVideo failed", t)
-                reportError("视频处理失败: ${t.message}")
+                reportError(context.getString(R.string.err_image_gen_video_failed, t.message ?: ""))
             }
         }
     }
@@ -197,7 +199,7 @@ class ImageGenCoordinator(
                 result
             }.getOrElse { e ->
                 Logger.e(tag, "readImageAsBase64 failed", e)
-                addError(ChatErrorType.UNKNOWN, "图片读取失败: ${e.message ?: "未知错误"}")
+                addError(ChatErrorType.UNKNOWN, context.getString(R.string.err_image_gen_read_failed_msg, e.message ?: context.getString(R.string.err_chat_unknown)))
                 ""
             }
         }
@@ -247,7 +249,7 @@ class ImageGenCoordinator(
                 if (!hasImageProvider) {
                     accessor.update {
                         it.copy(
-                            errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = "未配置绘画供应商")),
+                            errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = appContext.getString(R.string.err_image_gen_no_provider))),
                             isGeneratingImage = false,
                         )
                     }
@@ -273,7 +275,7 @@ class ImageGenCoordinator(
                 if (config == null) {
                     accessor.update {
                         it.copy(
-                            errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = "未配置绘画供应商")),
+                            errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = appContext.getString(R.string.err_image_gen_no_provider))),
                             isGeneratingImage = false,
                         )
                     }
@@ -282,7 +284,7 @@ class ImageGenCoordinator(
                 if (model == null) {
                     accessor.update {
                         it.copy(
-                            errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = "未选择绘画模型")),
+                            errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = appContext.getString(R.string.err_image_gen_no_model))),
                             isGeneratingImage = false,
                         )
                     }
@@ -294,7 +296,7 @@ class ImageGenCoordinator(
                         if (!model.supportsImageOutput()) {
                             accessor.update {
                                 it.copy(
-                                    errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = "所选模型不支持图像输出")),
+                                    errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = appContext.getString(R.string.err_image_gen_model_no_output))),
                                     isGeneratingImage = false,
                                 )
                             }
@@ -303,12 +305,12 @@ class ImageGenCoordinator(
                         generateImageViaGemini(prompt, sessionId, assistantMsg.id, config, model, addError, updateAssistant)
                     }
                     ProviderType.OPENAI -> {
-                        generateImageViaOpenAi(prompt, sessionId, assistantMsg.id, config, model, addError, updateAssistant)
+                        generateImageViaOpenAi(prompt, sessionId, assistantMsg.id, config, model, addError)
                     }
                     else -> {
                         accessor.update {
                             it.copy(
-                                errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = "当前 Provider(${config.type})不支持绘图。OpenAI 走 Image API,Gemini 走多模态输出。")),
+                                errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = appContext.getString(R.string.err_image_gen_provider_unsupported, config.type))),
                                 isGeneratingImage = false,
                             )
                         }
@@ -320,10 +322,14 @@ class ImageGenCoordinator(
                 Logger.e(tag, "image gen failed", t)
                 accessor.update {
                     it.copy(
-                        errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = "图片生成失败: ${t.message}")),
+                        errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = appContext.getString(R.string.err_image_gen_failed, t.message ?: appContext.getString(R.string.err_chat_unknown)))),
                         isGeneratingImage = false,
                     )
                 }
+            } finally {
+                // 9.1 修复: 任何路径下都重置 isGeneratingImage,避免 Gemini 返回空图片列表等
+                // 错误路径早返回时 loading 卡死(成功/失败/取消均会触发 finally)
+                accessor.update { it.copy(isGeneratingImage = false) }
             }
         }
     }
@@ -336,10 +342,6 @@ class ImageGenCoordinator(
         providerConfig: ProviderConfig,
         model: Model,
         addError: (ChatErrorType, String) -> Unit,
-        updateAssistant: (
-            id: Uuid, content: String, reasoning: String?, imageBase64List: List<String>?,
-            imageUrls: List<String>?, isStreaming: Boolean,
-        ) -> Unit,
     ) {
         // v1.136: 把 UI 选中的绘图模型 ID 传入 ImageService,避免 model 为空导致自定义端点 404
         val urls = imageService.generate(
@@ -350,7 +352,7 @@ class ImageGenCoordinator(
         if (urls.isEmpty()) {
             accessor.update {
                 it.copy(
-                    errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = "图片生成未返回结果")),
+                    errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = appContext.getString(R.string.err_image_gen_no_result))),
                     isGeneratingImage = false,
                 )
             }
@@ -373,7 +375,7 @@ class ImageGenCoordinator(
                 sessionRepository.upsertMessage(sessionId, finalAssistant)
             } catch (e: Exception) {
                 Logger.e(tag, "generateImageViaOpenAi upsertMessage failed", e)
-                addError(ChatErrorType.UNKNOWN, "绘图结果保存失败: ${e.message ?: "未知错误"}")
+                addError(ChatErrorType.UNKNOWN, appContext.getString(R.string.err_image_gen_save_failed, e.message ?: appContext.getString(R.string.err_chat_unknown)))
             }
         }
     }
@@ -439,7 +441,7 @@ class ImageGenCoordinator(
                     messages = it.messages.map { msg ->
                         if (msg.id == assistantId) msg.copy(content = textBuilder.toString()) else msg
                     },
-                    errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = "图片生成未返回图片,模型可能不支持绘图。请检查模型是否支持图像输出。")),
+                    errors = listOf(ChatError(type = ChatErrorType.UNKNOWN, message = appContext.getString(R.string.err_image_gen_no_image))),
                     isGeneratingImage = false,
                 )
             }
@@ -472,7 +474,7 @@ class ImageGenCoordinator(
                 sessionRepository.upsertMessage(sessionId, finalAssistant)
             } catch (e: Exception) {
                 Logger.e(tag, "generateImageViaGemini upsertMessage failed", e)
-                addError(ChatErrorType.UNKNOWN, "绘图结果保存失败: ${e.message ?: "未知错误"}")
+                addError(ChatErrorType.UNKNOWN, appContext.getString(R.string.err_image_gen_save_failed, e.message ?: appContext.getString(R.string.err_chat_unknown)))
             }
         }
     }

@@ -479,7 +479,7 @@ object OAuthManager {
                     .add("grant_type", "refresh_token")
                     .add("refresh_token", refreshToken)
                     .add("client_id", config.clientId)
-                    .apply { if (!config.clientSecret.isNullOrBlank()) add("client_secret", config.clientSecret!!) }
+                    .apply { config.clientSecret?.takeIf { it.isNotBlank() }?.let { add("client_secret", it) } }
                     .build()
                 val request = Request.Builder().url(config.tokenUrl).post(form).build()
                 httpClient.newCall(request).execute().use { resp ->
@@ -513,7 +513,7 @@ object OAuthManager {
                     .add("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
                     .add("device_code", deviceCode)
                     .add("client_id", config.clientId)
-                    .apply { if (!config.clientSecret.isNullOrBlank()) add("client_secret", config.clientSecret!!) }
+                    .apply { config.clientSecret?.takeIf { it.isNotBlank() }?.let { add("client_secret", it) } }
                     .build()
                 val request = Request.Builder().url(config.tokenUrl).post(form).build()
                 httpClient.newCall(request).execute().use { resp ->
@@ -547,7 +547,7 @@ object OAuthManager {
                     .add("redirect_uri", config.redirectUri)
                     .add("client_id", config.clientId)
                     .add("code_verifier", codeVerifier)
-                    .apply { if (!config.clientSecret.isNullOrBlank()) add("client_secret", config.clientSecret!!) }
+                    .apply { config.clientSecret?.takeIf { it.isNotBlank() }?.let { add("client_secret", it) } }
                     .build()
                 val request = Request.Builder().url(config.tokenUrl).post(form).build()
                 httpClient.newCall(request).execute().use { resp ->

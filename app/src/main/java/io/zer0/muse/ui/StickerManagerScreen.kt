@@ -21,7 +21,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.EmojiEmotions
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -44,10 +43,13 @@ import androidx.compose.ui.unit.dp
 import io.zer0.muse.R
 import io.zer0.muse.data.sticker.StickerItem
 import io.zer0.muse.data.sticker.StickerLibraryRepository
+import io.zer0.muse.ui.common.IosFloatingButton
 import io.zer0.muse.ui.common.IosTactileButton
 import io.zer0.muse.ui.common.SectionLabel
 import io.zer0.muse.ui.theme.MuseCornerRadius
 import io.zer0.muse.ui.theme.MusePaddings
+import io.zer0.muse.ui.theme.MuseShapes
+import io.zer0.muse.ui.theme.semiLarge
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -100,15 +102,14 @@ fun StickerManagerScreen(
             }
         },
         floatingActionButton = {
-            FloatingActionButton(
+            IosFloatingButton(
+                icon = Icons.Filled.Add,
                 onClick = {
                     // TODO: 触发 ZIP 导入 — 需要 ActivityResultContracts.GetContent
                     // 暂时留空，后续集成文件选择器
                 },
-                containerColor = MaterialTheme.colorScheme.primary,
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = "导入")
-            }
+                contentDescription = "导入",
+            )
         },
     ) { paddingValues ->
         if (stickers.isEmpty()) {
@@ -117,7 +118,7 @@ fun StickerManagerScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .padding(32.dp),
+                    .padding(MusePaddings.emptyStateGap),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -206,7 +207,7 @@ private fun CategoryChips(
         val allSelected = selected == null
         Surface(
             modifier = Modifier.padding(0.dp),
-            shape = RoundedCornerShape(16.dp),
+            shape = MuseShapes.semiLarge,
             color = if (allSelected) {
                 MaterialTheme.colorScheme.primary
             } else {
@@ -229,7 +230,7 @@ private fun CategoryChips(
         categories.forEach { category ->
             val isSelected = selected == category
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = MuseShapes.semiLarge,
                 color = if (isSelected) {
                     MaterialTheme.colorScheme.primary
                 } else {
@@ -269,7 +270,7 @@ private fun StickerRow(
             // 贴纸缩略图占位
             Surface(
                 modifier = Modifier.size(48.dp),
-                shape = RoundedCornerShape(8.dp),
+                shape = MuseShapes.small,
                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f),
             ) {
                 Box(contentAlignment = Alignment.Center) {

@@ -21,6 +21,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -58,12 +59,10 @@ class KlingVideoProvider(
     /**
      * 提交任务后缓存的 apiKey,供后续 queryTask/waitForCompletion 使用。
      *
-     * 注:由于 [VideoGenerationProvider.queryTask] 接口签名不传 apiKey,
-     * 实际查询时从此字段读取(由 [submitTask] 缓存)。
-     * 多任务并发时会覆盖前一个 apiKey(已知限制,后续可改为 taskId→apiKey map)。
+     * 9.2 修复: 改为按 taskId 维度的 Map,避免多任务并发时 apiKey 相互覆盖。
+     * 任务终态(成功/失败/超时)后由 [waitForCompletion] 的 finally 移除条目。
      */
-    @Volatile
-    private var apiKeyForQuery: String = ""
+    private val apiKeyForQuery = ConcurrentHashMap<String, String>()
 
     /**
      * 提交视频生成任务。
@@ -121,8 +120,8 @@ class KlingVideoProvider(
                         ?: error("Kling submit response missing data: $respBody")
                     val taskId = data["task_id"]?.jsonPrimitive?.content
                         ?: error("Kling submit response missing task_id: $respBody")
-                    // 缓存 apiKey 供后续 queryTask/waitForCompletion 使用
-                    apiKeyForQuery = request.apiKey
+                    // 9.2 修复: 按 taskId 缓存 apiKey,避免并发任务相互覆盖
+                    apiKeyForQuery[taskId] = request.apiKey
                     Logger.i(TAG, "submitTask success: taskId=$taskId")
                     taskId
                 }
@@ -149,30 +148,35 @@ class KlingVideoProvider(
         taskId: String,
         timeoutMs: Long,
     ): Result<String> = withContext(Dispatchers.IO) {
-        runCatching {
-            val effectiveTimeout = if (timeoutMs > 0) timeoutMs else DEFAULT_POLL_TIMEOUT_MS
-            val result = withTimeoutOrNull(effectiveTimeout) {
-                while (true) {
-                    val taskResult = queryTaskInternal(taskId)
-                    when (taskResult.status) {
-                        VideoTaskStatus.SUCCESS -> return@withTimeoutOrNull taskResult
-                        VideoTaskStatus.FAILED ->
-                            error(taskResult.errorMessage ?: "Kling task failed")
-                        VideoTaskStatus.PENDING,
-                        VideoTaskStatus.PROCESSING -> {
-                            // 继续轮询
+        try {
+            runCatching {
+                val effectiveTimeout = if (timeoutMs > 0) timeoutMs else DEFAULT_POLL_TIMEOUT_MS
+                val result = withTimeoutOrNull(effectiveTimeout) {
+                    while (true) {
+                        val taskResult = queryTaskInternal(taskId)
+                        when (taskResult.status) {
+                            VideoTaskStatus.SUCCESS -> return@withTimeoutOrNull taskResult
+                            VideoTaskStatus.FAILED ->
+                                error(taskResult.errorMessage ?: "Kling task failed")
+                            VideoTaskStatus.PENDING,
+                            VideoTaskStatus.PROCESSING -> {
+                                // 继续轮询
+                            }
                         }
+                        delay(POLL_INTERVAL_MS)
                     }
-                    delay(POLL_INTERVAL_MS)
-                }
-                @Suppress("UNREACHABLE_CODE")
-                null
-            } ?: error("Kling task timeout (taskId=$taskId, timeoutMs=$effectiveTimeout)")
+                    @Suppress("UNREACHABLE_CODE")
+                    null
+                } ?: error("Kling task timeout (taskId=$taskId, timeoutMs=$effectiveTimeout)")
 
-            val videoUrl = result.videoUrl
-                ?: error("Kling task succeeded but no video URL: taskId=$taskId")
-            Logger.i(TAG, "waitForCompletion success: taskId=$taskId url=$videoUrl")
-            videoUrl
+                val videoUrl = result.videoUrl
+                    ?: error("Kling task succeeded but no video URL: taskId=$taskId")
+                Logger.i(TAG, "waitForCompletion success: taskId=$taskId url=$videoUrl")
+                videoUrl
+            }
+        } finally {
+            // 9.2 修复: 任务终态(成功/失败/超时/取消)后清理缓存的 apiKey,避免内存泄漏
+            apiKeyForQuery.remove(taskId)
         }
     }
 
@@ -181,9 +185,11 @@ class KlingVideoProvider(
      */
     private suspend fun queryTaskInternal(taskId: String): VideoTaskResult {
         val url = "${baseUrl.trimEnd('/')}/videos/generations/$taskId"
+        // 9.2 修复: 按 taskId 取出对应的 apiKey,避免并发任务相互覆盖
+        val apiKey = apiKeyForQuery[taskId] ?: ""
         val httpRequest = Request.Builder()
             .url(url)
-            .header("Authorization", "Bearer $apiKeyForQuery")
+            .header("Authorization", "Bearer $apiKey")
             .get()
             .build()
 
@@ -254,6 +260,9 @@ class KlingVideoProvider(
 
     /**
      * 把可灵 task_status 字符串映射到 [VideoTaskStatus]。
+     *
+     * 9.4 修复: 未知状态映射为 FAILED 并告警,避免未知状态被静默当作 PENDING 导致任务卡死。
+     * 错误消息由 [queryTaskInternal] 的 FAILED 分支拼接原始状态字符串。
      */
     private fun mapStatus(statusStr: String): VideoTaskStatus {
         return when (statusStr.lowercase()) {
@@ -262,8 +271,8 @@ class KlingVideoProvider(
             "succeed", "success", "succeeds" -> VideoTaskStatus.SUCCESS
             "failed", "fail", "error" -> VideoTaskStatus.FAILED
             else -> {
-                Logger.w(TAG, "unknown kling task_status: $statusStr")
-                VideoTaskStatus.PENDING
+                Logger.w(TAG, "未知任务状态: $statusStr，映射为 FAILED")
+                VideoTaskStatus.FAILED
             }
         }
     }

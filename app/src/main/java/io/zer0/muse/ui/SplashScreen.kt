@@ -2,6 +2,7 @@ package io.zer0.muse.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import io.zer0.muse.ui.theme.MuseAnimation
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -11,13 +12,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -50,7 +48,7 @@ fun SplashScreen(
         kotlinx.coroutines.delay(1200)
         alpha.animateTo(
             targetValue = 0f,
-            animationSpec = tween(200),
+            animationSpec = tween(MuseAnimation.TACTILE_MS),
         )
         onFinished()
     }
@@ -66,44 +64,33 @@ fun SplashScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            // Muse Logo — 80x80dp 渐变圆角方块
-            Surface(
-                shape = RoundedCornerShape(20.dp), // 设计稿 logo 圆角
-                color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.size(80.dp),
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_muse_logo),
-                        contentDescription = stringResource(R.string.app_name),
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(12.dp)),
-                    )
-                }
-            }
+            // Muse Logo — 直接展示图标,不再叠加主题色背景块
+            Image(
+                painter = painterResource(R.drawable.ic_muse_logo),
+                contentDescription = stringResource(R.string.app_name),
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(MuseShapes.extraLarge),
+            )
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(20.dp))
 
             // 品牌名
             Text(
                 text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                 ),
                 color = MaterialTheme.colorScheme.onBackground,
             )
 
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(6.dp))
 
-            // 副标题 — "Your AI Companion"
+            // 副标题 — 使用更柔和的色调
             Text(
                 text = stringResource(R.string.splash_subtitle),
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.outline,
             )
         }
     }

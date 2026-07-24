@@ -55,6 +55,24 @@ sealed class ChatStreamEvent {
 
     /** 出错,流被中断。 */
     data class Error(val message: String, val throwable: Throwable? = null) : ChatStreamEvent()
+
+    /**
+     * v1.0.15: 流式连接被中断(网络切换/后台 Doze/服务端中途断开),但已收到部分内容。
+     *
+     * 与 [Error] 的区别:
+     *  - [Error]: 还没收到任何内容(anyDeltaSent=false)就失败,UI 应显示错误并允许重试
+     *  - [StreamInterrupted]: 已收到部分内容(anyDeltaSent=true)后连接断开,
+     *    UI 应保留已收内容并提示"网络中断,正在尝试恢复",网络恢复后可自动重连
+     *
+     * 消费方(ChatViewModel)应:
+     *  1. 不清空已收的 ContentDelta/ReasoningDelta,保留已生成的部分回复
+     *  2. 显示"网络中断"提示(非致命错误,不弹错误对话框)
+     *  3. 监听 NetworkMonitor,网络恢复后自动重新发起请求续生成
+     */
+    data class StreamInterrupted(
+        val message: String,
+        val throwable: Throwable? = null,
+    ) : ChatStreamEvent()
 }
 
 /**

@@ -28,6 +28,31 @@ object Perf {
     const val SLOW_THRESHOLD_MS = 500L
 
     /**
+     * 性能数据 sink,供外部(如 PerformanceReporter)订阅每次埋点。
+     *
+     * 回调在调用线程同步执行,必须轻量(仅判定/入队,IO 异步)。
+     * 内部已 try-catch,异常不会影响埋点调用方。
+     */
+    @Volatile
+    var sink: ((name: String, elapsedMs: Long) -> Unit)? = null
+
+    /** 单条 Perf 埋点记录(供 [snapshotRecent] 输出,用于 ANR 诊断等场景)。 */
+    data class PerfRecord(
+        val name: String,
+        val elapsedMs: Long,
+        val timestamp: Long,
+    )
+
+    /** 最近埋点记录环形缓冲容量(供 ANR 诊断读取最近性能数据)。 */
+    private const val MAX_RECENT = 50
+
+    /** 最近埋点记录(线程安全,内部加锁)。 */
+    private val recentRecords = mutableListOf<PerfRecord>()
+
+    /** 获取最近 [MAX_RECENT] 条埋点记录的快照(线程安全拷贝,供 ANR 诊断使用)。 */
+    fun snapshotRecent(): List<PerfRecord> = synchronized(recentRecords) { recentRecords.toList() }
+
+    /**
      * 计时执行 [block] 并记录耗时。
      *
      * @param name 操作名称(如 "rag-index" / "stream-first-token")
@@ -71,6 +96,17 @@ object Perf {
      */
     fun log(name: String, elapsedMs: Long) {
         if (!enabled) return
+        // 写入最近记录环形缓冲(供 ANR 诊断等读取最近性能数据)
+        synchronized(recentRecords) {
+            recentRecords.add(PerfRecord(name, elapsedMs, System.currentTimeMillis()))
+            if (recentRecords.size > MAX_RECENT) recentRecords.removeAt(0)
+        }
+        // 通知外部 sink(供 PerformanceReporter 订阅慢操作);try-catch 防止 sink 异常影响调用方
+        sink?.let { cb ->
+            try { cb(name, elapsedMs) } catch (t: Throwable) {
+                Logger.w("Perf", "sink 回调异常: ${t.message}", t)
+            }
+        }
         if (elapsedMs >= SLOW_THRESHOLD_MS) {
             Logger.w("Perf", "$name: ${elapsedMs}ms (slow)")
         } else {

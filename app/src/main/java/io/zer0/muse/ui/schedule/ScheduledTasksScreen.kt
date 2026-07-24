@@ -27,11 +27,11 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Schedule
 import io.zer0.muse.ui.common.EmptyState
+import io.zer0.muse.ui.common.IosFloatingButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -187,11 +187,12 @@ fun ScheduledTasksScreen(
             )
         },
         floatingActionButton = {
-            // L-SC5: 使用 FloatingActionButton + MuseShapes.mega 自定义圆角,
-            // 覆盖 Material3 默认方形 FAB,与应用 iOS 风格一致
-            FloatingActionButton(onClick = { showCreate = true }, shape = MuseShapes.mega) {
-                Icon(Icons.Default.Add, stringResource(R.string.schedule_new_task))
-            }
+            // L-SC5: 使用 IosFloatingButton,与应用 iOS 风格一致
+            IosFloatingButton(
+                icon = Icons.Default.Add,
+                onClick = { showCreate = true },
+                contentDescription = stringResource(R.string.schedule_new_task),
+            )
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->

@@ -58,6 +58,6 @@ val memoryModule: Module = module {
     single { FactStore(get()) }                       // factDao
     single { DeepMemoryProcessor(get<io.zer0.memory.fact.FactDbProvider>(), get()) }  // factDbProvider + llmClient
 
-    // Pinned memory store (openhanako pinned-memory-store.ts)
+    // 置顶记忆存储(openhanako pinned-memory-store.ts)
     single { io.zer0.memory.pin.PinnedMemoryStore(java.io.File(androidContext().filesDir, "pinned_memory")) }
 }

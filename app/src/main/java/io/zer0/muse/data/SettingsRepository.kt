@@ -166,6 +166,22 @@ class SettingsRepository(
         private set
 
     /**
+     * ANR 检测开关的内存缓存,供 AnrWatcher 零阻塞同步读取。
+     * 仿照 [piiGuardEnabledCache] 模式:后台协程订阅 [anrDetectionFlow] 落缓存,默认 true。
+     */
+    @Volatile
+    var anrDetectionCache: Boolean = true
+        private set
+
+    /**
+     * 性能数据上报开关的内存缓存,供 PerformanceReporter 零阻塞同步读取。
+     * 默认 false(隐私优先),用户主动开启后才会标记待上报。
+     */
+    @Volatile
+    var perfReportCache: Boolean = false
+        private set
+
+    /**
      * v1.39: 当前 ProxyConfig 的内存缓存,供 AppKoinModule 创建 OkHttpClient 时零阻塞读取。
      *
      * 仿照 [memoryConfigCache] 模式:init 时后台协程订阅 [proxyConfigFlow] 落缓存。
@@ -369,6 +385,16 @@ class SettingsRepository(
         prefs[KEY_PII_GUARD_ENABLED] ?: true
     }
 
+    // ANR 检测开关(默认 true),供 AnrWatcher 运行时同步读取。
+    val anrDetectionFlow: Flow<Boolean> = store.data.map { prefs ->
+        prefs[KEY_ANR_DETECTION] ?: true
+    }
+
+    // 性能数据上报开关(默认 false,隐私优先),供 PerformanceReporter 同步读取。
+    val perfReportFlow: Flow<Boolean> = store.data.map { prefs ->
+        prefs[KEY_PERF_REPORT] ?: false
+    }
+
     // v0.32: 保持唤醒(默认关闭)
     val keepAwakeFlow: Flow<Boolean> = store.data.map { prefs ->
         prefs[KEY_KEEP_AWAKE] ?: false
@@ -515,6 +541,24 @@ class SettingsRepository(
         prefs[KEY_UPDATE_CHECK_ENABLED] ?: true
     }
 
+    // ── v2.0+: 崩溃上报配置(默认全部关闭,隐私优先) ───────────────────────
+    /** 是否启用崩溃上报(默认 false — 必须用户主动开启,绝不默认上报)。 */
+    val crashReportEnabledFlow: Flow<Boolean> = store.data.map { prefs ->
+        prefs[KEY_CRASH_REPORT_ENABLED] ?: false
+    }
+    /** 上报方式:"email" / "webhook"(默认 "email")。 */
+    val crashReportMethodFlow: Flow<String> = store.data.map { prefs ->
+        prefs[KEY_CRASH_REPORT_METHOD] ?: "email"
+    }
+    /** 邮件上报收件人地址(默认空 — 用户必须配置后才生效)。 */
+    val crashReportEmailFlow: Flow<String> = store.data.map { prefs ->
+        prefs[KEY_CRASH_REPORT_EMAIL] ?: ""
+    }
+    /** Webhook 上报 URL(默认空 — 用户必须配置后才生效)。 */
+    val crashReportWebhookUrlFlow: Flow<String> = store.data.map { prefs ->
+        prefs[KEY_CRASH_REPORT_WEBHOOK_URL] ?: ""
+    }
+
     /** 保存上次更新检查时间戳。 */
     suspend fun saveLastUpdateCheckTime(timestamp: Long) {
         store.edit { it[KEY_LAST_UPDATE_CHECK_TIME] = timestamp }
@@ -533,6 +577,24 @@ class SettingsRepository(
     /** 保存"启用自动更新检查"开关。 */
     suspend fun saveUpdateCheckEnabled(enabled: Boolean) {
         store.edit { it[KEY_UPDATE_CHECK_ENABLED] = enabled }
+    }
+
+    // ── v2.0+: 崩溃上报配置保存方法 ───────────────────────────────────
+    /** 保存"启用崩溃上报"开关(默认关闭,用户主动开启后才会上报)。 */
+    suspend fun saveCrashReportEnabled(enabled: Boolean) {
+        store.edit { it[KEY_CRASH_REPORT_ENABLED] = enabled }
+    }
+    /** 保存上报方式("email" / "webhook")。 */
+    suspend fun saveCrashReportMethod(method: String) {
+        store.edit { it[KEY_CRASH_REPORT_METHOD] = method }
+    }
+    /** 保存邮件上报收件人地址。 */
+    suspend fun saveCrashReportEmail(email: String) {
+        store.edit { it[KEY_CRASH_REPORT_EMAIL] = email }
+    }
+    /** 保存 Webhook 上报 URL。 */
+    suspend fun saveCrashReportWebhookUrl(url: String) {
+        store.edit { it[KEY_CRASH_REPORT_WEBHOOK_URL] = url }
     }
 
     /**
@@ -578,6 +640,10 @@ class SettingsRepository(
         cacheScope.launch { stickerSendProbabilityFlow.collect { stickerSendProbabilityCache = it } }
         // PII Guard:订阅开关 Flow,供 ChatViewModel 在 launchStream 内零阻塞读取。
         cacheScope.launch { piiGuardEnabledFlow.collect { piiGuardEnabledCache = it } }
+        // ANR 检测开关:订阅 Flow 落缓存,供 AnrWatcher 同步读取(支持运行时切换)。
+        cacheScope.launch { anrDetectionFlow.collect { anrDetectionCache = it } }
+        // 性能上报开关:订阅 Flow 落缓存,供 PerformanceReporter 同步读取。
+        cacheScope.launch { perfReportFlow.collect { perfReportCache = it } }
         cacheScope.launch { migrateLegacyProviderIfNeeded() }
         // v2.3: 恢复连接测试缓存
         cacheScope.launch { restoreConnectionTestCache() }
@@ -720,6 +786,12 @@ class SettingsRepository(
 
     // PII Guard 开关(默认开启)
     suspend fun savePiiGuardEnabled(enabled: Boolean) { store.edit { it[KEY_PII_GUARD_ENABLED] = enabled } }
+
+    // ANR 检测开关
+    suspend fun saveAnrDetection(enabled: Boolean) { store.edit { it[KEY_ANR_DETECTION] = enabled } }
+
+    // 性能数据上报开关
+    suspend fun savePerfReport(enabled: Boolean) { store.edit { it[KEY_PERF_REPORT] = enabled } }
 
     // v0.32: 保持唤醒
     suspend fun saveKeepAwake(enabled: Boolean) { store.edit { it[KEY_KEEP_AWAKE] = enabled } }
@@ -1128,6 +1200,10 @@ class SettingsRepository(
         private val KEY_PII_GUARD_ENABLED = booleanPreferencesKey("pii_guard_enabled")
         private val KEY_KEEP_AWAKE = booleanPreferencesKey("keep_awake")
         private val KEY_AUTO_LAUNCH = booleanPreferencesKey("auto_launch")
+        /** ANR 检测开关(默认 true)。 */
+        private val KEY_ANR_DETECTION = booleanPreferencesKey("anr_detection_enabled")
+        /** 性能数据上报开关(默认 false,隐私优先)。 */
+        private val KEY_PERF_REPORT = booleanPreferencesKey("perf_report_enabled")
         private val KEY_APP_PIN = stringPreferencesKey("app_pin")
         private val KEY_BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
         // v1.104: PIN 锁暴力破解防护持久化(之前用 rememberSaveable,杀进程即重置)
@@ -1166,6 +1242,11 @@ class SettingsRepository(
         private val KEY_LAST_UPDATE_CHECK_TIME = longPreferencesKey("last_update_check_time")
         private val KEY_LATEST_RELEASE_INFO = stringPreferencesKey("latest_release_info_json")
         private val KEY_UPDATE_CHECK_ENABLED = booleanPreferencesKey("update_check_enabled")
+        // v2.0+: 崩溃上报配置键(默认全部关闭,隐私优先)
+        private val KEY_CRASH_REPORT_ENABLED = booleanPreferencesKey("crash_report_enabled")
+        private val KEY_CRASH_REPORT_METHOD = stringPreferencesKey("crash_report_method")
+        private val KEY_CRASH_REPORT_EMAIL = stringPreferencesKey("crash_report_email")
+        private val KEY_CRASH_REPORT_WEBHOOK_URL = stringPreferencesKey("crash_report_webhook_url")
     }
 
     // ── v2.3: Provider 连接测试缓存 ───────────────────────────────────

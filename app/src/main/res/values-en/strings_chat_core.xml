@@ -200,6 +200,8 @@
     <string name="chat_list_scheduled_subtitle">Auto-run</string>
     <string name="chat_list_quick_notes">Quick Notes</string>
     <string name="chat_list_quick_notes_subtitle">Light notes</string>
+    <string name="chat_list_quick_translate">Quick Translate</string>
+    <string name="chat_list_knowledge_base">Knowledge</string>
 
     <!-- Filter cards -->
     <string name="chat_list_filter_all">All</string>
@@ -221,6 +223,7 @@
 
     <!-- Bottom button and dialogs -->
     <string name="chat_list_new_task">New Task</string>
+    <string name="chat_list_new_task_card_subtitle">Capture ideas, create tasks, or start a chat</string>
     <string name="chat_list_folder_name_placeholder">Folder name</string>
     <string name="chat_list_create">Create</string>
 

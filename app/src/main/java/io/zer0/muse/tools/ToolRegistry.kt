@@ -1067,7 +1067,7 @@ class ToolRegistry(private val context: Context) {
             "${android.provider.CalendarContract.Events.DTEND} IS NULL)"
         val selectionArgs = arrayOf(endDay.toString(), startDay.toString())
         val sortOrder = "${android.provider.CalendarContract.Events.DTSTART} ASC"
-        val dateLabel = FMT_DATE.get().format(Date(startDay))
+        val dateLabel = FMT_DATE.get()?.format(Date(startDay)) ?: startDay.toString()
         val sb = StringBuilder(context.getString(R.string.tool_calendar_header, dateLabel,
             if (days > 0) context.getString(R.string.tool_calendar_days_suffix, days + 1) else ""))
         var count = 0
@@ -1080,7 +1080,7 @@ class ToolRegistry(private val context: Context) {
                 val startIdx = cursor.getColumnIndexOrThrow(android.provider.CalendarContract.Events.DTSTART)
                 val endIdx = cursor.getColumnIndexOrThrow(android.provider.CalendarContract.Events.DTEND)
                 val locIdx = cursor.getColumnIndexOrThrow(android.provider.CalendarContract.Events.EVENT_LOCATION)
-                val fmt = FMT_DATETIME_MIN.get()
+                val fmt = FMT_DATETIME_MIN.get() ?: SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
                 while (cursor.moveToNext()) {
                     val title = cursor.getString(titleIdx) ?: context.getString(R.string.tool_no_title)
                     val startMs = cursor.getLong(startIdx)
@@ -1155,7 +1155,7 @@ class ToolRegistry(private val context: Context) {
     private fun parseDateTime(input: String): Long? {
         if (input.isBlank()) return null
         // v1.131: 复用 ThreadLocal 缓存的格式器列表,避免每次解析都新建 4 个 SimpleDateFormat。
-        val formats = PARSE_FORMATS_TL.get()
+        val formats = PARSE_FORMATS_TL.get() ?: return null
         for (fmt in formats) {
             // M-TR1: 改用 resultOf{}(正确重抛 CancellationException)
             val parsed = resultOf { fmt.parse(input) }.getOrNull()
@@ -1725,8 +1725,9 @@ class ToolRegistry(private val context: Context) {
                 context.getString(R.string.tool_notification_not_connected)
             }
         } else {
+            val fmt = FMT_TIME_MIN.get() ?: SimpleDateFormat("HH:mm", Locale.getDefault())
             records.joinToString("\n") { r ->
-                val time = FMT_TIME_MIN.get().format(Date(r.timestamp))
+                val time = fmt.format(Date(r.timestamp))
                 "[${r.packageName}] $time ${r.title}: ${r.text}"
             }
         }
@@ -2265,6 +2266,11 @@ class ToolRegistry(private val context: Context) {
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT
             }
             val pi = android.app.PendingIntent.getBroadcast(context, id.hashCode(), intent, flags)
+            // v1.0.14: Android 12+ 须先检查 canScheduleExactAlarms,否则 setExact* 抛 SecurityException。
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
+                Logger.w("ToolRegistry", "无 SCHEDULE_EXACT_ALARM 权限,无法设置精确提醒: id=$id")
+                return@resultOf false
+            }
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
                 am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
             } else {

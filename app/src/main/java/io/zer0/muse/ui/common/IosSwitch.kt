@@ -2,6 +2,7 @@ package io.zer0.muse.ui.common
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import io.zer0.muse.ui.theme.MuseAnimation
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -66,7 +67,7 @@ fun IosSwitch(
     }
     val thumbX by animateFloatAsState(
         targetValue = targetThumbX,
-        animationSpec = tween(200),
+        animationSpec = tween(MuseAnimation.TACTILE_MS),
         label = "iosSwitchThumb",
     )
 

@@ -2,6 +2,7 @@ package io.zer0.muse.ui.common
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import io.zer0.muse.ui.theme.MuseAnimation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -72,13 +73,13 @@ fun IosCapsuleTab(
                 val bgColor by animateColorAsState(
                     targetValue = if (selected) MaterialTheme.colorScheme.surface
                     else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0f),
-                    animationSpec = tween(200),
+                    animationSpec = tween(MuseAnimation.TACTILE_MS),
                     label = "capsule_tab_bg",
                 )
                 val textColor by animateColorAsState(
                     targetValue = if (selected) MaterialTheme.colorScheme.onSurface
                     else MaterialTheme.colorScheme.onSurfaceVariant,
-                    animationSpec = tween(200),
+                    animationSpec = tween(MuseAnimation.TACTILE_MS),
                     label = "capsule_tab_text",
                 )
                 Surface(

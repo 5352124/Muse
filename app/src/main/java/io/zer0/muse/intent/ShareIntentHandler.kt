@@ -14,7 +14,7 @@ import io.zer0.common.resultOf
  *
  * 支持两类 Intent:
  *
- * **Deep Link**(`muse://` scheme):
+ * **深度链接**(`muse://` 协议):
  *  - `muse://session/{sessionId}` → 打开指定会话
  *  - `muse://new` → 新建会话
  *  - `muse://assistants` → 打开 Assistant 管理页

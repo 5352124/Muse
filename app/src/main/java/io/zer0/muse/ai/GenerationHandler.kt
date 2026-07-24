@@ -28,17 +28,17 @@ private const val MAX_TOOL_OUTPUT_CHARS = 32 * 1024
 private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
 
 /**
- * Generation handler with multi-step tool loop (RikkaHub GenerationHandler.kt port).
+ * 支持多步工具循环的生成处理器（移植自 RikkaHub GenerationHandler.kt）。
  *
- * Manages the agentic loop:
- * 1. Call LLM with current messages + tools
- * 2. Parse tool calls from response
- * 3. Check approval (auto/pending/denied)
- * 4. Execute approved tools, report denied
- * 5. Merge results back into conversation
- * 6. Continue until no more tool calls or max steps reached
+ * 管理 Agent 循环：
+ * 1. 带当前消息与工具调用 LLM
+ * 2. 从响应中解析工具调用
+ * 3. 检查审批状态（自动/待审批/已拒绝）
+ * 4. 执行已批准的工具，上报被拒绝的
+ * 5. 将结果合并回会话
+ * 6. 持续循环直到没有更多工具调用或达到最大步数
  *
- * Tool outputs exceeding [MAX_TOOL_OUTPUT_CHARS] are truncated with a summary.
+ * 超过 [MAX_TOOL_OUTPUT_CHARS] 的工具输出会被截断并附带摘要。
  */
 class GenerationHandler(
     private val chatService: ChatService,
@@ -47,7 +47,7 @@ class GenerationHandler(
     private val json: Json = Json { ignoreUnknownKeys = true },
 ) {
     /**
-     * Generation result from a single step.
+     * 单步生成的结果。
      */
     data class StepResult(
         val assistantMessage: UIMessage,
@@ -65,19 +65,19 @@ class GenerationHandler(
     )
 
     /**
-     * Execute the multi-step generation loop.
+     * 执行多步生成循环。
      *
-     * @param messages Initial conversation messages
-     * @param model The model to use
-     * @param providerConfig Provider configuration
-     * @param tools Available tool definitions for the LLM
-     * @param maxSteps Maximum number of agentic steps (default 32)
-     * @param temperature Sampling temperature
-     * @param maxTokens Max output tokens
-     * @param reasoningLevel Reasoning level for thinking models
-     * @param onStepResult Called for each step result (for UI updates)
-     * @param approvalCallback Called when a tool needs user approval; return Approved/Denied
-     * @return Final list of all messages (original + generated)
+     * @param messages 初始会话消息
+     * @param model 要使用的模型
+     * @param providerConfig Provider 配置
+     * @param tools 提供给 LLM 的可用工具定义
+     * @param maxSteps Agent 最大步数（默认 32）
+     * @param temperature 采样温度
+     * @param maxTokens 最大输出 token 数
+     * @param reasoningLevel 思考模型的推理级别
+     * @param onStepResult 每步结果回调（用于 UI 更新）
+     * @param approvalCallback 工具需要用户审批时调用；返回 Approved/Denied
+     * @return 所有消息的最终列表（原始 + 生成的）
      */
     suspend fun generate(
         messages: List<UIMessage>,
@@ -94,13 +94,13 @@ class GenerationHandler(
         val conversationHistory = messages.toMutableList()
         val enhancedModel = model?.let { ModelRegistry.enhanceModel(it) }
 
-        // Check if tools should be sent based on model capabilities
+        // 根据模型能力判断是否需要发送工具
         val effectiveTools = if (enhancedModel?.supportsToolCalling() == true) tools else null
 
         for (step in 0 until maxSteps) {
             Logger.d(TAG, "Step #$step (model=${enhancedModel?.id})")
 
-            // Collect streaming response
+            // 收集流式响应
             val builder = StringBuilder()
             val toolCallAccumulator = mutableMapOf<Int, Triple<String?, String?, StringBuilder>>()
             var streamError: String? = null
@@ -147,16 +147,16 @@ class GenerationHandler(
             )
             conversationHistory.add(assistantMessage)
 
-            // No tool calls → done
+            // 没有工具调用 → 完成
             if (toolCalls.isEmpty()) {
                 onStepResult(StepResult(assistantMessage = assistantMessage, isFinal = true))
                 break
             }
 
-            // Process tool calls with approval
+            // 处理工具调用并审批
             val toolResults = mutableListOf<ToolResult>()
             for (tc in toolCalls) {
-                // Check approval
+                // 检查审批状态
                 val approvalState = resolveApproval(tc, approvalCallback)
 
                 when (approvalState) {
@@ -188,11 +188,11 @@ class GenerationHandler(
                 }
             }
 
-            // Build tool results message
+            // 构造工具结果消息
             val toolResultContent = toolResults.joinToString("\n") { result ->
                 "[${result.toolName}]: ${truncateOutput(result.output)}"
             }
-            // Add a TOOL role message with the combined results
+            // 添加一条 TOOL 角色消息，包含合并后的结果
             val toolMessage = UIMessage(
                 role = MessageRole.TOOL,
                 content = toolResultContent,
@@ -216,16 +216,16 @@ class GenerationHandler(
         tc: ToolCall,
         approvalCallback: (suspend (String, String) -> ToolApprovalState)?,
     ): ToolApprovalState {
-        // Check stored policy first
+        // 先检查已存储的审批策略
         val storedState = toolConfigStore.resolveApprovalState(tc.name)
         return when (storedState) {
             is ToolApprovalState.Auto -> ToolApprovalState.Auto
             is ToolApprovalState.Denied -> storedState
             is ToolApprovalState.Pending -> {
-                // Need user approval
+                // 需要用户审批
                 val argsPreview = tc.arguments.take(200)
                 approvalCallback?.invoke(tc.name, argsPreview)
-                    ?: ToolApprovalState.Auto // fallback to auto if no callback
+                    ?: ToolApprovalState.Auto // 无回调时回退为自动
             }
             else -> storedState
         }
@@ -264,21 +264,22 @@ class GenerationHandler(
                     val idx = event.index
                     val existing = toolCallAccumulator[idx]
                     if (existing != null) {
-                        // accumulate arguments delta
+                        // 累积参数增量
                         event.argumentsDelta?.let { existing.third.append(it) }
-                        // update id/name if this chunk carries them (first chunk)
+                        // 如果当前分片携带 id/name 则更新（首个分片）
                         val newId = event.id ?: existing.first
                         val newName = event.name ?: existing.second
                         toolCallAccumulator[idx] = Triple(newId, newName, existing.third)
                     } else {
-                        // first chunk for this index
+                        // 该 index 的首个分片
                         toolCallAccumulator[idx] = Triple(event.id, event.name, StringBuilder(event.argumentsDelta ?: ""))
                     }
                 }
-                is ChatStreamEvent.ReasoningDelta -> { /* thinking tokens, ignore for tool loop */ }
-                is ChatStreamEvent.ImageDelta -> { /* image output, not relevant to tool loop */ }
-                is ChatStreamEvent.Done -> { /* stream complete */ }
+                is ChatStreamEvent.ReasoningDelta -> { /* 思考 token，工具循环中忽略 */ }
+                is ChatStreamEvent.ImageDelta -> { /* 图片输出，与工具循环无关 */ }
+                is ChatStreamEvent.Done -> { /* 流结束 */ }
                 is ChatStreamEvent.Error -> onError(event.message)
+                is ChatStreamEvent.StreamInterrupted -> onError(event.message)
             }
         }
     }

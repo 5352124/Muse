@@ -34,9 +34,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.zer0.muse.R
 import io.zer0.muse.tools.ToolRegistry
 import io.zer0.muse.tools.ToolRiskLevel
 import io.zer0.muse.data.plugin.PluginManifest
@@ -46,6 +48,7 @@ import io.zer0.muse.ui.settings.SettingsSubPageScaffold
 import io.zer0.muse.ui.theme.MuseMonoFontFamily
 import io.zer0.muse.ui.theme.MusePaddings
 import io.zer0.muse.ui.theme.MuseShapes
+import io.zer0.muse.ui.theme.tiny
 import org.koin.compose.koinInject
 
 /**
@@ -79,7 +82,7 @@ fun ToolsScreen(
     var detailTarget by remember { mutableStateOf<ToolRegistry.ToolDef?>(null) }
 
     SettingsSubPageScaffold(
-        title = "AI 工具",
+        title = stringResource(R.string.tools_screen_title),
         onBack = onBack,
     ) {
         // ── 说明卡片 ────────────────────────────────────────────────────
@@ -96,7 +99,7 @@ fun ToolsScreen(
                             )
                             Spacer(Modifier.size(8.dp))
                             Text(
-                                text = "工具是 AI 可调用的能力,如读取通知、计算、执行代码等",
+                                text = stringResource(R.string.tools_intro_what),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f),
@@ -104,8 +107,7 @@ fun ToolsScreen(
                         }
                         Spacer(Modifier.height(MusePaddings.itemGap))
                         Text(
-                            text = "在助手详情页 → 扩展 → 工具,可为每个助手单独启用/禁用工具。" +
-                                "高风险工具(如代码执行)调用前会要求用户确认。",
+                            text = stringResource(R.string.tools_intro_manage),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -118,7 +120,7 @@ fun ToolsScreen(
         item(key = "stats") {
             val highRiskCount = tools.count { it.riskLevel == ToolRiskLevel.HIGH }
             Text(
-                text = "共 ${tools.size} 个工具 · $highRiskCount 个高风险",
+                text = stringResource(R.string.tools_stats_count, tools.size, highRiskCount),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
@@ -156,7 +158,7 @@ fun ToolsScreen(
         // 此处透出给用户,提升能力边界透明度(只读展示,启用/禁用仍由代码控制)。
         item(key = "plugins_section_header") {
             Text(
-                text = "内置插件",
+                text = stringResource(R.string.tools_plugins_section),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -165,8 +167,7 @@ fun ToolsScreen(
         }
         item(key = "plugins_section_desc") {
             Text(
-                text = "插件是比工具更粗粒度的能力集合,声明了所需的权限与激活时机。" +
-                    "下方为应用预置的内置插件清单,供了解 AI 可用的能力边界。",
+                text = stringResource(R.string.tools_plugins_desc),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
@@ -204,7 +205,7 @@ private fun ToolRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(MusePaddings.cardInner),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 高风险工具用 Warning 图标,普通/安全用 Build 图标
@@ -250,12 +251,12 @@ private fun ToolRow(
 @Composable
 private fun RiskBadge(level: ToolRiskLevel) {
     val (label, color) = when (level) {
-        ToolRiskLevel.SAFE -> "安全" to Color(0xFF2E7D32)
-        ToolRiskLevel.NORMAL -> "普通" to Color(0xFFEF6C00)
-        ToolRiskLevel.HIGH -> "高危" to Color(0xFFD32F2F)
+        ToolRiskLevel.SAFE -> stringResource(R.string.tools_risk_safe) to Color(0xFF2E7D32)
+        ToolRiskLevel.NORMAL -> stringResource(R.string.tools_risk_normal) to Color(0xFFEF6C00)
+        ToolRiskLevel.HIGH -> stringResource(R.string.tools_risk_high) to Color(0xFFD32F2F)
     }
     Surface(
-        shape = RoundedCornerShape(6.dp),
+        shape = MuseShapes.extraSmall,
         color = color.copy(alpha = 0.16f),
     ) {
         Text(
@@ -297,7 +298,7 @@ private fun ToolDetailDialog(
                 // 元信息行:分类 + 风险等级
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "分类:${categoryLabel(tool.category)}",
+                        text = stringResource(R.string.tools_detail_category_label, categoryLabel(tool.category)),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f),
@@ -309,7 +310,7 @@ private fun ToolDetailDialog(
                 // 参数 Schema
                 if (tool.parameters.isNotEmpty()) {
                     Text(
-                        text = "参数",
+                        text = stringResource(R.string.tools_detail_params),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -336,7 +337,7 @@ private fun ToolDetailDialog(
                         color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
+                        Column(modifier = Modifier.padding(MusePaddings.itemGap)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
                                     imageVector = Icons.Outlined.Code,
@@ -346,7 +347,7 @@ private fun ToolDetailDialog(
                                 )
                                 Spacer(Modifier.size(6.dp))
                                 Text(
-                                    text = "沙箱安全限制",
+                                    text = stringResource(R.string.tools_detail_sandbox_title),
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface,
@@ -354,11 +355,7 @@ private fun ToolDetailDialog(
                             }
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                text = "• 基于 WebView V8 引擎,与系统页面隔离\n" +
-                                    "• 禁用 fetch / XHR / WebSocket,不可联网\n" +
-                                    "• blockNetworkLoads 拦截所有网络请求\n" +
-                                    "• 默认超时 10 秒,避免死循环\n" +
-                                    "• 调用前会要求用户确认(高风险工具权限)",
+                                text = stringResource(R.string.tools_detail_sandbox_content),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -367,7 +364,7 @@ private fun ToolDetailDialog(
                 }
             }
         },
-        confirmText = "关闭",
+        confirmText = stringResource(R.string.action_close),
         onConfirm = onDismiss,
     )
 }
@@ -398,7 +395,7 @@ private fun ParamRow(
                 )
                 Spacer(Modifier.size(8.dp))
                 Surface(
-                    shape = RoundedCornerShape(4.dp),
+                    shape = MuseShapes.tiny,
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
                 ) {
                     Text(
@@ -411,11 +408,11 @@ private fun ParamRow(
                 if (required) {
                     Spacer(Modifier.size(6.dp))
                     Surface(
-                        shape = RoundedCornerShape(4.dp),
+                        shape = MuseShapes.tiny,
                         color = MaterialTheme.colorScheme.error.copy(alpha = 0.16f),
                     ) {
                         Text(
-                            text = "必填",
+                            text = stringResource(R.string.tools_param_required),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
@@ -435,11 +432,12 @@ private fun ParamRow(
     }
 }
 
-/** 把分类 key 映射为中文标签。 */
+/** 把分类 key 映射为本地化标签。 */
+@Composable
 private fun categoryLabel(category: String): String = when (category) {
-    "built-in" -> "内置工具"
-    "local" -> "本地工具"
-    "mcp" -> "MCP 工具"
+    "built-in" -> stringResource(R.string.tools_category_built_in)
+    "local" -> stringResource(R.string.tools_category_local)
+    "mcp" -> stringResource(R.string.tools_category_mcp)
     else -> category
 }
 
@@ -454,7 +452,7 @@ private fun PluginRow(plugin: PluginManifest) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(MusePaddings.cardInner),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -484,14 +482,16 @@ private fun PluginRow(plugin: PluginManifest) {
                 )
             }
             // 能力 + 激活事件小字
+            val permissionsLabel = stringResource(R.string.tools_permissions_label)
+            val activationLabel = stringResource(R.string.tools_activation_label)
             val capsText = buildString {
                 if (plugin.capabilities.isNotEmpty()) {
-                    append("权限: ")
+                    append(permissionsLabel)
                     append(plugin.capabilities.joinToString(", "))
                 }
                 if (plugin.activationEvents.isNotEmpty() && plugin.activationEvents != listOf("onStartup")) {
                     if (isNotEmpty()) append(" · ")
-                    append("激活: ")
+                    append(activationLabel)
                     append(plugin.activationEvents.joinToString(", "))
                 }
             }

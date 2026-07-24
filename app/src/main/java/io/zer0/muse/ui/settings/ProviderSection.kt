@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,7 +59,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -67,6 +67,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import io.zer0.muse.ui.common.IosChip
 import io.zer0.muse.ui.common.IosSwitch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -1236,7 +1237,11 @@ internal fun ProviderEditPage(
                                             .weight(1f)
                                             .fillMaxHeight()
                                             .semantics { contentDescription = "$label Tab" }
-                                            .clickable { selectedTab = page },
+                                            .clickable(
+                                                interactionSource = remember { MutableInteractionSource() },
+                                                indication = null,
+                                                onClick = { selectedTab = page },
+                                            ),
                                     ) {
                                         Box(
                                             contentAlignment = Alignment.Center,
@@ -1796,8 +1801,8 @@ private fun ConfigTab(
                     Text(stringResource(R.string.settings_provider_type), style = MaterialTheme.typography.labelMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(MusePaddings.contentGap)) {
                         ProviderType.entries.forEach { t ->
-                            // v1.134 P0-8: FilterChip → 自定义 IosSelectChip 胶囊
-                            IosSelectChip(
+                            // v1.134 P0-8: FilterChip → IosChip 胶囊
+                            IosChip(
                                 selected = type == t,
                                 onClick = { onTypeChange(t) },
                                 label = providerDisplayTypeName(t),
@@ -3191,36 +3196,4 @@ private fun parseCustomBody(text: String): Map<String, JsonElement> {
     return runCatching {
         AppJson.parseToJsonElement(trimmed).jsonObject.toMap()
     }.getOrDefault(emptyMap())
-}
-
-/**
- * v1.134 P0-8: iOS 风格选择胶囊 — 替代 Material3 FilterChip。
- *
- * 选中态:primary 色背景 + onPrimary 文本;未选中:surfaceVariant 半透明 + onSurfaceVariant 文本。
- * 圆角 [MuseShapes.semiLarge],无 ripple(Surface onClick 默认无 ripple)。
- */
-@Composable
-private fun IosSelectChip(
-    selected: Boolean,
-    onClick: () -> Unit,
-    label: String,
-) {
-    val bgColor = if (selected) MaterialTheme.colorScheme.primary
-    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-    val contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
-    else MaterialTheme.colorScheme.onSurfaceVariant
-    Surface(
-        shape = MuseShapes.semiLarge,
-        color = bgColor,
-        contentColor = contentColor,
-        onClick = onClick,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            maxLines = 1,
-        )
-    }
 }

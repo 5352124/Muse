@@ -1,4 +1,4 @@
-﻿package io.zer0.muse.transformer
+package io.zer0.muse.transformer
 
 import io.zer0.ai.core.MessageRole
 import io.zer0.ai.core.UIMessage
@@ -110,7 +110,7 @@ class PromptInjectionTransformerTest {
         val result = transformer.transform(messages, context)
 
         assertEquals(4, result.size)
-        // Higher priority first
+        // 高优先级在前
         assertTrue(result[1].content.contains("高优先级"))
         assertTrue(result[2].content.contains("低优先级"))
     }

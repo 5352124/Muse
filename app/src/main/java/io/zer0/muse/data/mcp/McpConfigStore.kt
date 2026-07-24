@@ -14,10 +14,10 @@ import kotlin.uuid.Uuid
 private val Context.mcpDataStore by preferencesDataStore(name = "muse_mcp_servers")
 
 /**
- * MCP server configuration persistence (RikkaHub SettingsStore MCP port).
+ * MCP 服务端配置持久化(RikkaHub SettingsStore MCP 移植版)。
  *
- * Stores the list of MCP server configs in DataStore as JSON.
- * Provides Flow for reactive UI updates.
+ * 以 JSON 形式将 MCP 服务端配置列表存储到 DataStore。
+ * 提供 Flow 供响应式 UI 更新使用。
  */
 class McpConfigStore(private val context: Context) {
 
@@ -31,7 +31,7 @@ class McpConfigStore(private val context: Context) {
         private val MCP_SERVERS_KEY = stringPreferencesKey("mcp_servers")
     }
 
-    /** Flow of all MCP server configurations. */
+    /** 所有 MCP 服务端配置的 Flow。 */
     val serversFlow: Flow<List<McpServerConfig>> =
         context.mcpDataStore.data.map { prefs ->
             val raw = prefs[MCP_SERVERS_KEY] ?: return@map emptyList()
@@ -42,7 +42,7 @@ class McpConfigStore(private val context: Context) {
             }
         }
 
-    /** Add or update a server config. */
+    /** 新增或更新服务端配置。 */
     suspend fun upsertServer(config: McpServerConfig) {
         context.mcpDataStore.edit { prefs ->
             val current = parseServers(prefs[MCP_SERVERS_KEY])
@@ -51,7 +51,7 @@ class McpConfigStore(private val context: Context) {
         }
     }
 
-    /** Remove a server by ID. */
+    /** 按 ID 移除服务端。 */
     suspend fun removeServer(id: Uuid) {
         context.mcpDataStore.edit { prefs ->
             val current = parseServers(prefs[MCP_SERVERS_KEY])
@@ -60,7 +60,7 @@ class McpConfigStore(private val context: Context) {
         }
     }
 
-    /** Update tools for a specific server (after tool discovery). */
+    /** 更新指定服务端的工具列表(工具发现后调用)。 */
     suspend fun updateServerTools(serverId: Uuid, tools: List<McpTool>) {
         context.mcpDataStore.edit { prefs ->
             val current = parseServers(prefs[MCP_SERVERS_KEY])
@@ -91,7 +91,7 @@ class McpConfigStore(private val context: Context) {
         }
     }
 
-    /** Export all servers as JSON string. */
+    /** 将所有服务端导出为 JSON 字符串。 */
     suspend fun exportAsJson(): String {
         return context.mcpDataStore.data.map { it[MCP_SERVERS_KEY] }.first() ?: "[]"
     }

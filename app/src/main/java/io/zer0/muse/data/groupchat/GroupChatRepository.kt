@@ -18,7 +18,8 @@ import java.util.UUID
  *
  * 职责:
  *  - 群聊 CRUD(createChat / deleteChat / updateChat / observeChats)
- *  - 消息发送(sendMessage)与观察(observeMessages)
+ *  - 消息发送(sendMessage)与观察(observeMessages 已 @Deprecated / getPagedMessages 分页版)
+ *  - 消息分页加载(getRecentMessagesPaged 首屏 + getOlderMessages 上滑加载更多)
  *  - 最近消息读取(getRecentMessages)供 Agent 工具 / 调度器读取上下文
  *  - memberIds JSON 序列化/反序列化辅助
  *
@@ -39,11 +40,81 @@ class GroupChatRepository(
 
     private val TAG = "GroupChatRepo"
 
+    companion object {
+        /** v1.53-GC: 群聊消息分页 — 首屏页大小(初始加载条数)。 */
+        const val INITIAL_PAGE_SIZE = 30
+        /** v1.53-GC: 群聊消息分页 — 上滑加载更多页大小。 */
+        const val LOAD_MORE_PAGE_SIZE = 20
+    }
+
     /** 观察全部群聊(按 updatedAt 降序)。 */
     fun observeChats(): Flow<List<GroupChatEntity>> = groupChatDao.observeAll()
 
-    /** 观察指定群聊的消息(按 timestamp 升序)。 */
+    /**
+     * 观察指定群聊的消息(按 timestamp 升序,全量上限 200)。
+     *
+     * v1.53-GC: 全量观察长群聊有 OOM 风险(图片 base64 直存 DB 叠加长消息列表)。
+     * 新代码改用 [getPagedMessages](首屏 Flow) + [getRecentMessagesPaged](初始加载)
+     * + [getOlderMessages](上滑加载更多)分页方案。本方法保留向后兼容,不在新代码中使用。
+     */
+    @Deprecated(
+        "全量观察长群聊有 OOM 风险,改用 getPagedMessages / getRecentMessagesPaged + getOlderMessages 分页加载。",
+        ReplaceWith("getPagedMessages(chatId)"),
+    )
     fun observeMessages(chatId: String): Flow<List<GroupChatMessageEntity>> = groupChatMessageDao.observeMessages(chatId)
+
+    /**
+     * v1.53-GC: 观察指定群聊最近 initialPageSize 条消息(按 timestamp 升序,Flow 实时更新)。
+     *
+     * 替代全量 [observeMessages]:聊天界面首屏只观察最近一页,新消息到达时 Flow 自动重发,
+     * ViewModel 据此增量追加到已加载列表(已加载的更早历史保留不动)。
+     *
+     * @param chatId 群聊 id
+     * @param initialPageSize 首屏页大小,默认 [INITIAL_PAGE_SIZE]
+     */
+    fun getPagedMessages(
+        chatId: String,
+        initialPageSize: Int = INITIAL_PAGE_SIZE,
+    ): Flow<List<GroupChatMessageEntity>> = groupChatMessageDao.observeRecentMessages(chatId, initialPageSize)
+
+    /**
+     * v1.53-GC: 分页初始加载 — 取指定群聊最近 limit 条消息(按 timestamp 升序)。
+     *
+     * DAO 返回降序(最新在前),这里 reversed() 转为升序,便于直接渲染。
+     * 用于 ViewModel 首屏加载,避免一次性加载全部消息导致卡顿/OOM。
+     *
+     * @param chatId 群聊 id
+     * @param limit 页大小,默认 [INITIAL_PAGE_SIZE]
+     * @return 消息列表(按时间升序)
+     */
+    suspend fun getRecentMessagesPaged(
+        chatId: String,
+        limit: Int = INITIAL_PAGE_SIZE,
+    ): List<GroupChatMessageEntity> = withContext(Dispatchers.IO) {
+        groupChatMessageDao.getRecentMessages(chatId, limit).reversed()
+    }
+
+    /**
+     * v1.53-GC: 分页加载更多 — 取早于锚点(beforeTimestamp, beforeId)的 limit 条消息(按 timestamp 升序)。
+     *
+     * 用于上滑加载更多:以当前列表最早一条消息的 (timestamp, id) 为双锚点,取更早的历史。
+     * DAO 返回降序(最新在前),这里 reversed() 转为升序,可直接前置拼接到现有列表。
+     * 双锚点(timestamp + id)避免同毫秒消息被漏取或重复。
+     *
+     * @param chatId 群聊 id
+     * @param beforeTimestamp 锚点时间戳(当前列表最早一条的 timestamp)
+     * @param beforeId 锚点消息 id(当前列表最早一条的 id,同毫秒去重用)
+     * @param limit 页大小,默认 [LOAD_MORE_PAGE_SIZE]
+     * @return 消息列表(按时间升序),空列表表示已无更早历史
+     */
+    suspend fun getOlderMessages(
+        chatId: String,
+        beforeTimestamp: Long,
+        beforeId: String,
+        limit: Int = LOAD_MORE_PAGE_SIZE,
+    ): List<GroupChatMessageEntity> = withContext(Dispatchers.IO) {
+        groupChatMessageDao.getOlderMessages(chatId, beforeTimestamp, beforeId, limit).reversed()
+    }
 
     /** 观察指定群聊的元数据(用于详情页标题刷新)。 */
     fun observeChat(id: String): Flow<GroupChatEntity?> = groupChatDao.observeById(id)

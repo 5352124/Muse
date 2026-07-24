@@ -14,6 +14,7 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
+import io.zer0.muse.ui.theme.MuseAnimation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -95,11 +96,15 @@ import io.zer0.muse.R
 import io.zer0.muse.asr.ASRStatus
 import io.zer0.muse.data.assistant.AssistantEntity
 import io.zer0.muse.data.quickmsg.QuickMessageEntity
+import io.zer0.muse.ui.common.IosChip
 import io.zer0.muse.ui.common.MuseBottomSheet
+import io.zer0.muse.ui.common.MuseDialog
 import io.zer0.muse.ui.common.MuseToast
 import io.zer0.muse.ui.theme.MuseIconSizes
+import io.zer0.muse.ui.theme.MuseHaptics
 import io.zer0.muse.ui.theme.MuseElevation
 import io.zer0.muse.ui.theme.MusePaddings
+import io.zer0.muse.ui.theme.MuseShadow
 import io.zer0.muse.ui.theme.MuseShapes
 import io.zer0.muse.ui.theme.huge
 import io.zer0.muse.ui.theme.pill
@@ -135,7 +140,7 @@ private val MENTION_HIGHLIGHT_REGEX = Regex("@[\\u4e00-\\u9fa5\\w]+")
  * 功能保留:
  *  - 附件、图片(OCR/视觉)、语音输入、绘图模式、联网搜索
  *  - 快捷消息 chips、模式选择器、待发送图片预览
- *  - edge-to-edge: navigationBarsPadding + imePadding
+ *  - 边缘到边缘: navigationBarsPadding + imePadding
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -201,6 +206,9 @@ internal fun InputBar(
     // 语音对话模式入口:点击进入全屏语音对话(连续 ASR + AI + TTS)
     // 仅在已配置 ASR API(showMic=true)时显示,与普通长按录音区分
     onOpenVoiceConversation: () -> Unit = {},
+    // v1.0.29: 是否进入页面时自动聚焦输入框并呼出输入法。
+    // Agent Tab 首次切换时不应主动弹键盘,避免抢占屏幕。
+    autoFocus: Boolean = true,
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     // v1.26: 上滑取消后的"已取消"瞬态提示(1.5s 后自动消失)
@@ -211,10 +219,10 @@ internal fun InputBar(
             showCancelledHint = false
         }
     }
-    // 进入聊天页时自动聚焦输入框(仅在文本为空时,避免打断已有草稿)
+    // 进入聊天页时自动聚焦输入框(仅在文本为空且允许自动聚焦时,避免打断已有草稿)
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) {
-        if (text.isEmpty()) {
+        if (autoFocus && text.isEmpty()) {
             focusRequester.requestFocus()
         }
     }
@@ -314,7 +322,7 @@ internal fun InputBar(
                             interactionSource = voiceInteractionSource,
                             indication = null,
                         ) {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            MuseHaptics.light(hapticFeedback)
                             onOpenVoiceConversation()
                         },
                     contentAlignment = Alignment.Center,
@@ -346,7 +354,7 @@ internal fun InputBar(
                             interactionSource = toolPillInteractionSource,
                             indication = null,
                         ) { onShowToolCalls() }
-                        .padding(horizontal = 12.dp)
+                        .padding(horizontal = MusePaddings.itemGap)
                         .semantics {
                             contentDescription = "工具调用进度 $toolCallCompleted/$toolCallTotal"
                         },
@@ -368,7 +376,7 @@ internal fun InputBar(
                 }
             }
         }
-        // QuickMessages chips
+        // QuickMessages 气泡
         if (quickMessages.isNotEmpty()) {
             Row(
                 modifier = Modifier
@@ -377,13 +385,10 @@ internal fun InputBar(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 quickMessages.forEach { qm ->
-                    AssistChip(
+                    IosChip(
+                        selected = false,
                         onClick = { onInsertQuickMessage(qm) },
-                        label = { Text(qm.name.ifBlank { stringResource(R.string.chat_unnamed) }, style = MaterialTheme.typography.labelMedium) },
-                        shape = MuseShapes.large,
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        ),
+                        label = qm.name.ifBlank { stringResource(R.string.chat_unnamed) },
                     )
                 }
             }
@@ -562,7 +567,7 @@ internal fun InputBar(
                     .padding(bottom = 8.dp)
                     .clip(MuseShapes.small)
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(MusePaddings.bubbleInner),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -599,12 +604,12 @@ internal fun InputBar(
                     )
                 }
             }
-            // v1.57: 引用编辑对话框
+            // v1.57: 引用编辑对话框(iOS 风格 MuseDialog)
             if (showEditReplyDialog) {
-                AlertDialog(
+                MuseDialog(
                     onDismissRequest = { showEditReplyDialog = false },
-                    title = { Text(stringResource(R.string.chat_edit_reply_title)) },
-                    text = {
+                    title = stringResource(R.string.chat_edit_reply_title),
+                    content = {
                         OutlinedTextField(
                             value = editReplyText,
                             onValueChange = { editReplyText = it },
@@ -613,19 +618,15 @@ internal fun InputBar(
                             maxLines = 8,
                         )
                     },
-                    confirmButton = {
-                        // v1.79 (M-I6): 保存按钮在引用文本为空时禁用
-                        TextButton(
-                            onClick = {
-                                onEditReply(editReplyText)
-                                showEditReplyDialog = false
-                            },
-                            enabled = editReplyText.isNotBlank(),
-                        ) { Text(stringResource(R.string.action_save)) }
+                    confirmText = stringResource(R.string.action_save),
+                    onConfirm = {
+                        if (editReplyText.isNotBlank()) {
+                            onEditReply(editReplyText)
+                            showEditReplyDialog = false
+                        }
                     },
-                    dismissButton = {
-                        TextButton(onClick = { showEditReplyDialog = false }) { Text(stringResource(R.string.action_cancel)) }
-                    },
+                    dismissText = stringResource(R.string.action_cancel),
+                    onDismiss = { showEditReplyDialog = false },
                 )
             }
         }
@@ -640,10 +641,12 @@ internal fun InputBar(
 
         // 主输入栏: 圆角容器
         // H-IB1: 预设主题未定义 surfaceContainerLow,改用 surfaceVariant 保持主题一致
+        // v1.0.22: 加 MuseShadow.low 微阴影,增强 MANUS 风格浮起感
         Surface(
             color = MaterialTheme.colorScheme.surfaceVariant,
             shape = MuseShapes.huge,
             tonalElevation = MuseElevation.low,
+            shadowElevation = MuseShadow.low.elevation,
             modifier = Modifier.fillMaxWidth(),
         ) {
             // v0.52: @mention 高亮转换(把 @文档名 染为 primary 色,提示引用了知识库)
@@ -682,7 +685,7 @@ internal fun InputBar(
                 // 左侧: + 号按钮 → 底部 Sheet
                 IconButton(
                     onClick = {
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        MuseHaptics.light(hapticFeedback)
                         showToolSheet = true
                     },
                     enabled = !isStreaming,
@@ -727,7 +730,7 @@ internal fun InputBar(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = 4.dp),
+                                .padding(horizontal = MusePaddings.tightGap),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
@@ -739,7 +742,7 @@ internal fun InputBar(
                                     icon = Icons.Default.PhotoCamera,
                                     label = stringResource(R.string.chat_tool_camera),
                                     onClick = {
-                                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        MuseHaptics.light(hapticFeedback)
                                         showToolSheet = false
                                         onPickImage(true)
                                     },
@@ -748,7 +751,7 @@ internal fun InputBar(
                                     icon = Icons.Default.Photo,
                                     label = stringResource(R.string.chat_tool_photo),
                                     onClick = {
-                                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        MuseHaptics.light(hapticFeedback)
                                         showToolSheet = false
                                         onPickImage(false)
                                     },
@@ -759,7 +762,7 @@ internal fun InputBar(
                             if (recentImages.isNotEmpty() || !hasGalleryPermission) {
                                 Box(
                                     modifier = Modifier
-                                        .padding(horizontal = 4.dp)
+                                        .padding(horizontal = MusePaddings.tightGap)
                                         .width(1.dp)
                                         .height(64.dp)
                                         .background(
@@ -784,7 +787,7 @@ internal fun InputBar(
                                                 .size(64.dp)
                                                 .clip(MuseShapes.medium)
                                                 .clickable {
-                                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    MuseHaptics.light(hapticFeedback)
                                                     showToolSheet = false
                                                     onPickGalleryImage(uri)
                                                 },
@@ -798,13 +801,13 @@ internal fun InputBar(
                                         .height(64.dp)
                                         .clip(MuseShapes.medium)
                                         .clickable {
-                                            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            MuseHaptics.light(hapticFeedback)
                                             galleryPermissionLauncher.launch(galleryPermission)
                                         },
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 16.dp),
+                                        modifier = Modifier.padding(horizontal = MusePaddings.screen),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
@@ -839,7 +842,7 @@ internal fun InputBar(
                             icon = Icons.Default.AttachFile,
                             title = stringResource(R.string.chat_tool_attachment),
                             onClick = {
-                                hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                MuseHaptics.light(hapticFeedback)
                                 showToolSheet = false
                                 onPickDocument()
                             },
@@ -853,7 +856,7 @@ internal fun InputBar(
                             title = stringResource(R.string.chat_tool_knowledge),
                             subtitle = stringResource(R.string.chat_tool_knowledge_subtitle),
                             onClick = {
-                                hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                MuseHaptics.light(hapticFeedback)
                                 showToolSheet = false
                                 onPickKnowledge()
                             },
@@ -868,7 +871,7 @@ internal fun InputBar(
                             title = stringResource(R.string.chat_prompt_templates_title),
                             subtitle = stringResource(R.string.chat_tool_prompt_template_subtitle),
                             onClick = {
-                                hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                MuseHaptics.light(hapticFeedback)
                                 showToolSheet = false
                                 onOpenPromptTemplates()
                             },
@@ -884,7 +887,7 @@ internal fun InputBar(
                             isActive = isDrawMode,
                             showArrow = !isDrawMode,
                             onClick = {
-                                hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                MuseHaptics.light(hapticFeedback)
                                 showToolSheet = false
                                 onToggleDrawMode()
                             },
@@ -899,9 +902,9 @@ internal fun InputBar(
                                 title = stringResource(R.string.chat_delegate_action),
                                 subtitle = stringResource(R.string.chat_tool_delegate_subtitle),
                                 onClick = {
-                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    showToolSheet = false
-                                    onDelegateToAssistant()
+                                    MuseHaptics.light(hapticFeedback)
+                                showToolSheet = false
+                                onDelegateToAssistant()
                                 },
                             )
                         }
@@ -915,14 +918,14 @@ internal fun InputBar(
                                 title = stringResource(R.string.chat_tool_restart_context),
                                 subtitle = stringResource(R.string.chat_tool_restart_context_subtitle),
                                 onClick = {
-                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    showToolSheet = false
-                                    onRestartContext()
+                                    MuseHaptics.light(hapticFeedback)
+                                showToolSheet = false
+                                onRestartContext()
                                 },
                             )
                         }
-                            } // end of inner padding Column
-                        } // end of verticalScroll Column
+                            } // 内部 padding Column 结束
+                        } // verticalScroll Column 结束
                     }
                 }
 
@@ -938,7 +941,7 @@ internal fun InputBar(
                                 MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
                                 shape = MuseShapes.pill,
                             )
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                            .padding(MusePaddings.chipInner),
                     )
                 }
 
@@ -1019,7 +1022,7 @@ internal fun InputBar(
                                 interactionSource = stopInteractionSource,
                                 indication = null,
                                 onClick = {
-                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    MuseHaptics.medium(hapticFeedback)
                                     onStop()
                                 },
                             ),
@@ -1039,9 +1042,9 @@ internal fun InputBar(
                     val pulseScale by animateFloatAsState(
                         targetValue = if (isRecording) 1.25f else 1f,
                         animationSpec = if (isRecording) infiniteRepeatable(
-                            animation = tween(600, easing = FastOutSlowInEasing),
+                            animation = tween(MuseAnimation.LOOP_NORMAL_MS, easing = FastOutSlowInEasing),
                             repeatMode = RepeatMode.Reverse,
-                        ) else tween(200),
+                        ) else tween(MuseAnimation.TACTILE_MS),
                         label = "micPulse",
                     )
                     // v1.79 (H-I2): 用 rememberUpdatedState 包装回调,
@@ -1065,7 +1068,7 @@ internal fun InputBar(
                                         // v1.98: 移除 Toast 提示,静默处理
                                         return@awaitPointerEventScope
                                     }
-                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    MuseHaptics.medium(hapticFeedback)
                                     var cancelled = false
                                     try {
                                         while (true) {
@@ -1135,7 +1138,7 @@ internal fun InputBar(
                     )
                     IconButton(
                         onClick = {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            MuseHaptics.medium(hapticFeedback)
                             onSend()
                         },
                         // v1.79 (M-I9): 移除冗余 enabled = !isStreaming(此分支仅在 !isStreaming 时进入)
@@ -1208,7 +1211,7 @@ private fun RecordingWaveform(amplitudes: List<Float>) {
             val fraction = amp.coerceIn(0.05f, 1f)
             val animatedHeight by animateFloatAsState(
                 targetValue = fraction,
-                animationSpec = tween(120),
+                animationSpec = tween(MuseAnimation.FAST_MS),
                 label = "wave",
             )
             Box(
@@ -1266,7 +1269,7 @@ private fun ImageGenParamsPanel(
             .padding(bottom = 8.dp)
             .clip(MuseShapes.medium)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(MusePaddings.cardInnerAux),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1293,10 +1296,10 @@ private fun ImageGenParamsPanel(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 sizes.map { it to it }.forEach { (value, label) ->
-                    FilterChip(
+                    IosChip(
                         selected = params.size == value,
                         onClick = { onParamsChange(params.copy(size = value)) },
-                        label = { Text(label) },
+                        label = label,
                     )
                 }
             }
@@ -1319,10 +1322,10 @@ private fun ImageGenParamsPanel(
                         "auto" -> stringResource(R.string.chat_quality_auto)
                         else -> value
                     }
-                    FilterChip(
+                    IosChip(
                         selected = params.quality == value,
                         onClick = { onParamsChange(params.copy(quality = value)) },
-                        label = { Text(label) },
+                        label = label,
                     )
                 }
             }
@@ -1341,10 +1344,10 @@ private fun ImageGenParamsPanel(
                         "natural" -> stringResource(R.string.chat_style_natural)
                         else -> value
                     }
-                    FilterChip(
+                    IosChip(
                         selected = params.style == value,
                         onClick = { onParamsChange(params.copy(style = value)) },
-                        label = { Text(label) },
+                        label = label,
                     )
                 }
             }
@@ -1353,13 +1356,13 @@ private fun ImageGenParamsPanel(
         // 参考图
         val supportsRef = model?.supportsReferenceImage == true
         if (params.referenceImageUri.isNullOrBlank()) {
-            FilterChip(
+            IosChip(
                 selected = false,
                 onClick = {
                     if (supportsRef) imagePicker.launch("image/*")
                 },
                 enabled = supportsRef,
-                label = { Text(if (supportsRef) stringResource(R.string.chat_ref_image_add) else stringResource(R.string.chat_ref_image_not_supported)) },
+                label = if (supportsRef) stringResource(R.string.chat_ref_image_add) else stringResource(R.string.chat_ref_image_not_supported),
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Photo,

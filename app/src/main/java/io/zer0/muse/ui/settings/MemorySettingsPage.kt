@@ -16,8 +16,7 @@ import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.automirrored.outlined.TrendingDown
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
+import io.zer0.muse.ui.common.IosChip
 import io.zer0.muse.ui.common.IosSlider
 import io.zer0.muse.ui.theme.MuseShapes
 import androidx.compose.material3.Text
@@ -259,17 +258,10 @@ private fun NotificationPolicyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             policies.forEach { (value, labelRes) ->
-                FilterChip(
+                IosChip(
                     selected = current == value,
                     onClick = { onChange(value) },
-                    label = { Text(stringResource(labelRes)) },
-                    shape = MuseShapes.large,
-                    colors = FilterChipDefaults.filterChipColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        selectedLabelColor = MaterialTheme.colorScheme.primary,
-                    ),
+                    label = stringResource(labelRes),
                 )
             }
         }

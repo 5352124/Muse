@@ -195,7 +195,6 @@
     <string name="err_not_found">资源不存在</string>
     <string name="err_stream_interrupted">流式连接中断</string>
     <string name="err_network_error">网络连接中断,请检查网络</string>
-    <string name="err_image_gen_failed">图片生成失败(%1$s)</string>
     <string name="err_image_response_too_large">图片生成响应过大(%1$sMB),上限 20MB</string>
     <string name="err_image_empty_response">图片生成返回空响应</string>
     <string name="err_image_no_results">图片生成返回空结果</string>

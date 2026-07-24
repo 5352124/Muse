@@ -144,12 +144,41 @@ class PresetProviders(
     )
 
     /**
-     * 全部预置供应商(15 + 22 + 6 = 43 个)。
+     * 自定义 OpenAI 兼容供应商模板。
+     * 用户在引导页选中后需手动填写 baseUrl + apiKey。
+     */
+    private fun customOpenAI() = ProviderConfig(
+        id = "preset_custom_openai",
+        displayName = context.getString(R.string.onboarding_provider_custom),
+        type = ProviderType.OPENAI,
+        baseUrl = "",
+        apiKey = "",
+        builtIn = true,
+        category = ProviderCategory.RELAY,
+        specific = ProviderSpecificConfig.Custom(),
+        models = emptyList(),
+    )
+
+    /**
+     * 引导页展示的精选供应商。
+     * 海外/国产/中转严格按 1:1:1 比例各取 3 个,并追加自定义选项。
+     */
+    val onboardingPresets: List<ProviderConfig> = (
+        overseas.take(3) +
+            domestic.take(3) +
+            relay.take(3) +
+            customOpenAI()
+    ).map { preset ->
+        preset.copy(specId = preset.id.removePrefix("preset_").ifBlank { null })
+    }
+
+    /**
+     * 全部预置供应商(15 + 22 + 6 + 1 自定义模板 = 43 + 1 个)。
      *
      * v1.0.7: 每个 preset 自动填入 specId(从 id 去除 "preset_" 前缀),
      * 供 [io.zer0.ai.core.ProviderSpecMerger] 在运行时合并 spec 默认模型 + 用户 overlay。
      */
-    val all: List<ProviderConfig> = (overseas + domestic + relay).map { preset ->
+    val all: List<ProviderConfig> = (overseas + domestic + relay + customOpenAI()).map { preset ->
         preset.copy(specId = preset.id.removePrefix("preset_").ifBlank { null })
     }
 

@@ -107,7 +107,7 @@ fun MuseBottomSheet(
             // Compose Dialog 内 View 层级: DialogLayout(extends AbstractComposeView) → DecorView
             // localView 的 windowAttributes 即 Dialog 的 WindowManager.LayoutParams
             val attrs = localView.layoutParams as? WindowManager.LayoutParams
-            if (attrs != null) {
+            if (attrs != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                 attrs.layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
                 localView.requestLayout()
@@ -260,7 +260,7 @@ fun MuseDraggableBottomSheet(
         val localView = LocalView.current
         DisposableEffect(localView) {
             val attrs = localView.layoutParams as? WindowManager.LayoutParams
-            if (attrs != null) {
+            if (attrs != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                 attrs.layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
                 localView.requestLayout()

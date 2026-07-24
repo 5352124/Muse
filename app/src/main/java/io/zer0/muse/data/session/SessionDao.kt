@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface SessionDao {
 
-    /** 观察全部会话(置顶优先,再按 updatedAt 降序)。含已归档,备份服务用。 */
+    /** 观察全部会话(置顶优先,再按 updatedAt 降序)。含已归档和已软删除会话,仅供备份导出使用。主列表用 [observeActive]。 */
     @Query("SELECT * FROM sessions ORDER BY pinned DESC, updatedAt DESC")
     fun observeAll(): Flow<List<SessionEntity>>
 

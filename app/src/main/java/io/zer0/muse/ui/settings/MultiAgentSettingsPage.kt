@@ -23,7 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.GroupWork
@@ -31,8 +31,7 @@ import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
+import io.zer0.muse.ui.common.IosChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -77,6 +76,7 @@ import io.zer0.muse.ui.common.SettingsGroup
 import io.zer0.muse.ui.common.SettingsGroupDivider
 import io.zer0.muse.ui.common.SettingsItemRow
 import io.zer0.muse.ui.common.SettingsSwitchRow
+import io.zer0.muse.ui.theme.MuseHaptics
 import io.zer0.muse.ui.theme.MusePaddings
 import io.zer0.muse.ui.theme.MuseShapes
 import io.zer0.muse.ui.theme.pill
@@ -96,6 +96,7 @@ import java.util.UUID
 @Composable
 fun MultiAgentSettingsPage(
     onBack: () -> Unit,
+    onOpenWorkflowEditor: (teamId: String) -> Unit = {},
 ) {
     val settings: SettingsRepository = koinInject()
     val assistantRepository: AssistantRepository = koinInject()
@@ -180,6 +181,7 @@ fun MultiAgentSettingsPage(
                     assistants = assistants ?: emptyList(),
                     onClick = { editingTeam = team },
                     onDelete = { teamToDelete = team },
+                    onOpenWorkflowEditor = { onOpenWorkflowEditor(team.id) },
                 )
             }
         }
@@ -369,6 +371,7 @@ private fun TeamCard(
     assistants: List<AssistantEntity>,
     onClick: () -> Unit,
     onDelete: () -> Unit,
+    onOpenWorkflowEditor: () -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
     val unnamedTeam = stringResource(R.string.settings_multi_agent_unnamed_team)
@@ -386,7 +389,7 @@ private fun TeamCard(
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    MuseHaptics.medium(haptic)
                     onDelete()
                 },
             ),
@@ -426,6 +429,14 @@ private fun TeamCard(
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),
                     )
                 }
+            }
+            // 工作流编排入口:点击进入可视化编排画布
+            IconButton(onClick = onOpenWorkflowEditor) {
+                Icon(
+                    imageVector = Icons.Outlined.GroupWork,
+                    contentDescription = "工作流编排",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
             }
             IconButton(onClick = onDelete) {
                 Icon(
@@ -556,7 +567,7 @@ private fun TeamEditDialog(
                     ) {
                         assistants.forEach { assistant ->
                             val selected = assistant.id in selectedIds
-                            FilterChip(
+                            IosChip(
                                 selected = selected,
                                 onClick = {
                                     selectedIds = if (selected) {
@@ -565,12 +576,11 @@ private fun TeamEditDialog(
                                         selectedIds + assistant.id
                                     }
                                 },
-                                label = { Text(assistant.name) },
-                                shape = MuseShapes.large,
+                                label = assistant.name,
                                 leadingIcon = if (selected) {
                                     {
                                         Icon(
-                                            imageVector = Icons.Outlined.Check,
+                                            imageVector = Icons.Filled.Check,
                                             contentDescription = null,
                                             modifier = Modifier.size(16.dp),
                                         )
@@ -608,15 +618,14 @@ private fun TeamEditDialog(
                 ) {
                     DelegationContract.TeamWorkflow.AggregationStrategy.entries.forEach { strategy ->
                         val selected = workflow.aggregationStrategy == strategy
-                        FilterChip(
+                        IosChip(
                             selected = selected,
                             onClick = { workflow = workflow.copy(aggregationStrategy = strategy) },
-                            label = { Text(aggregationName(strategy)) },
-                            shape = MuseShapes.large,
+                            label = aggregationName(strategy),
                             leadingIcon = if (selected) {
                                 {
                                     Icon(
-                                        imageVector = Icons.Outlined.Check,
+                                        imageVector = Icons.Filled.Check,
                                         contentDescription = null,
                                         modifier = Modifier.size(16.dp),
                                     )
@@ -847,15 +856,14 @@ private fun WorkflowNodeEditDialog(
                 ) {
                     DelegationContract.TeamWorkflowNode.Mode.entries.forEach { entry ->
                         val selected = mode == entry
-                        FilterChip(
+                        IosChip(
                             selected = selected,
                             onClick = { mode = entry },
-                            label = { Text(modeName(entry)) },
-                            shape = MuseShapes.large,
+                            label = modeName(entry),
                             leadingIcon = if (selected) {
                                 {
                                     Icon(
-                                        imageVector = Icons.Outlined.Check,
+                                        imageVector = Icons.Filled.Check,
                                         contentDescription = null,
                                         modifier = Modifier.size(16.dp),
                                     )
@@ -878,7 +886,7 @@ private fun WorkflowNodeEditDialog(
                     ) {
                         existingNodeIds.forEach { id ->
                             val selected = id in dependencies
-                            FilterChip(
+                            IosChip(
                                 selected = selected,
                                 onClick = {
                                     dependencies = if (selected) {
@@ -887,12 +895,11 @@ private fun WorkflowNodeEditDialog(
                                         dependencies + id
                                     }
                                 },
-                                label = { Text(id) },
-                                shape = MuseShapes.large,
+                                label = id,
                                 leadingIcon = if (selected) {
                                     {
                                         Icon(
-                                            imageVector = Icons.Outlined.Check,
+                                            imageVector = Icons.Filled.Check,
                                             contentDescription = null,
                                             modifier = Modifier.size(16.dp),
                                         )

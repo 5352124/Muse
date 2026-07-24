@@ -119,9 +119,9 @@ class ChatService(
             ?: error(ErrorCode.NO_PROVIDER_CONFIGURED.toMessage())
         val resolvedModel = model ?: config.models.firstOrNull()
             ?: error(ErrorCode.NO_MODEL_SELECTED.toMessage())
-        // Phase 2C: Auto-adapt model capabilities via ModelRegistry
+        // Phase 2C:通过 ModelRegistry 自动适配模型能力
         val enhancedModel = ModelRegistry.enhanceModel(resolvedModel)
-        // Strip tools if model doesn't support tool calling
+        // 若模型不支持工具调用则剥离工具
         val effectiveTools = if (enhancedModel.supportsToolCalling()) tools else null
         val provider = ProviderRegistry.create(config)
         // v1.0.7: UTILITY 模式强制关思考(对齐 openhanako buildProviderCompatOptions)

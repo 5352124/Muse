@@ -28,7 +28,7 @@ object ModelContextWindowRegistry {
 
     // ── 精确/前缀匹配表 ──
     private val REGISTRY: List<Pair<String, Int>> = listOf(
-        // OpenAI
+        // OpenAI 系列
         "gpt-4o" to 128000,
         "gpt-4o-mini" to 128000,
         "gpt-4-turbo" to 128000,
@@ -37,7 +37,7 @@ object ModelContextWindowRegistry {
         "o1" to 200000,
         "o3" to 200000,
         "o4-mini" to 200000,
-        // Claude
+        // Claude 系列
         "claude-3-5-sonnet" to 200000,
         "claude-3-5-haiku" to 200000,
         "claude-3-7-sonnet" to 200000,
@@ -45,14 +45,14 @@ object ModelContextWindowRegistry {
         "claude-sonnet-4" to 200000,
         "claude-opus-4" to 200000,
         "claude-3-haiku" to 200000,
-        // Gemini
+        // Gemini 系列
         "gemini-2.0-flash" to 1000000,
         "gemini-2.0-flash-lite" to 1000000,
         "gemini-1.5-pro" to 2000000,
         "gemini-1.5-flash" to 1000000,
         "gemini-2.5-pro" to 1000000,
         "gemini-2.5-flash" to 1000000,
-        // DeepSeek
+        // DeepSeek 深度求索
         "deepseek-chat" to 64000,
         "deepseek-reasoner" to 64000,
         "deepseek-v3" to 64000,
@@ -104,24 +104,24 @@ object ModelContextWindowRegistry {
         // 阶跃
         "step-2" to 32000,
         "step-1" to 8000,
-        // Mistral
+        // Mistral 系列
         "mistral-large" to 128000,
         "mistral-small" to 32000,
         "mixtral" to 32000,
-        // Meta Llama
+        // Meta Llama 系列
         "llama-3.1" to 128000,
         "llama-3.2" to 128000,
         "llama-3.3" to 128000,
-        // Google Gemma
+        // Google Gemma 系列
         "gemma-2" to 8192,
         "gemma-3" to 128000,
-        // xAI Grok
+        // xAI Grok 系列
         "grok-2" to 131072,
         "grok-3" to 131072,
-        // Cohere
+        // Cohere 系列
         "command-r" to 128000,
         "command-r-plus" to 128000,
-        // Perplexity
+        // Perplexity 系列
         "llama-3.1-sonar" to 127072,
     )
 

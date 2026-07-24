@@ -10,11 +10,11 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * subagent_task tool (openhanako subagent-tool.ts port).
+ * subagent_task 工具(openhanako subagent-tool.ts 移植)。
  *
- * Non-blocking background task execution with progress reporting.
- * The existing delegate_agent in SkillExecutor handles synchronous delegation;
- * this tool adds async/non-blocking execution with progress tracking.
+ * 非阻塞后台任务执行,带进度上报。
+ * SkillExecutor 中已有的 delegate_agent 负责同步委派;
+ * 本工具新增异步/非阻塞执行,并带进度跟踪。
  */
 object SubagentTool {
 

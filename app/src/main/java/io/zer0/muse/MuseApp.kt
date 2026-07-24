@@ -6,6 +6,7 @@ import android.content.Context
 import android.media.AudioManager
 import android.os.Build
 import android.os.PowerManager
+import android.os.StrictMode
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.decode.GifDecoder
@@ -13,6 +14,9 @@ import coil.decode.ImageDecoderDecoder
 import coil.decode.SvgDecoder
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import io.zer0.common.Logger
 import io.zer0.common.resultOf
 import io.zer0.memory.ticker.MemoryTicker
@@ -26,6 +30,7 @@ import io.zer0.muse.data.knowledge.KnowledgeDocEntity
 import io.zer0.muse.data.skill.SkillRepository
 import io.zer0.muse.notification.MuseNotificationManager
 import io.zer0.muse.tools.SkillExecutor
+import io.zer0.muse.ui.ChatViewModel
 import io.zer0.muse.ui.speech.TtsManager
 import io.zer0.muse.util.GlobalCoroutineExceptionHandler
 import io.zer0.muse.web.CompositeWebSearchService
@@ -40,6 +45,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 import org.koin.android.ext.koin.androidContext
@@ -74,6 +81,10 @@ class MuseApp : Application(), ImageLoaderFactory {
     private val updateNotifier: io.zer0.muse.update.UpdateNotifier by inject()
     /** P2-4: 审计日志记录器(启动时清理过期日志)。 */
     private val auditLogger: io.zer0.muse.data.audit.AuditLogger by inject()
+    /** v1.92: ChatViewModel 为 single 单例,onCleared 永不调用,需在 ON_STOP 时手动释放资源。 */
+    private val chatViewModel: ChatViewModel by inject()
+    /** v1.0.12: RAG 服务 — 启动时异步加载持久化的 HNSW 索引(若已落盘)。 */
+    private val ragService: io.zer0.muse.rag.RagService by inject()
     /** 应用级 scope:启动一次性任务用,独立于 Koin 注册的 IO scope。 */
     // v0.53: 加 GlobalCoroutineExceptionHandler,防止协程内未捕获异常导致应用崩溃(企业级容错)
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO + GlobalCoroutineExceptionHandler)
@@ -100,6 +111,11 @@ class MuseApp : Application(), ImageLoaderFactory {
             return
         }
         super.onCreate()
+        // StrictMode:仅 debug 构建,检测主线程磁盘读写/网络访问违规并 penaltyLog。
+        // 必须在服务初始化前启用,以便捕获 Koin/Runner 初始化期间的违规;release 不启用避免性能开销。
+        if (BuildConfig.DEBUG) {
+            configureStrictMode()
+        }
         // v1.91-hotfix: startKoin 包裹 resultOf,失败时标记 Safe Mode 并跳过服务初始化。
         // 若 startKoin 抛异常(模块加载失败/循环依赖等)且不被捕获,会直接崩溃;
         // 更糟的是 GlobalContext 可能处于未注册状态,后续 MainActivity by inject() 会
@@ -118,6 +134,13 @@ class MuseApp : Application(), ImageLoaderFactory {
             MuseCrashHandler.markSafeMode(this)
             return
         }
+        // ANR 检测 + 性能监控(在 startKoin 之后、服务初始化之前启动)
+        // AnrWatcher:独立守护线程检测主线程无响应(5s+),ANR 时采集线程堆栈/内存/Perf 记录写入 crash 目录。
+        //   开关 settings.enableAnrDetection(默认 true);自身不阻塞主线程(独立线程 + 弱引用 Handler)。
+        io.zer0.muse.crash.AnrWatcher(this, settings, auditLogger).start()
+        // PerformanceReporter:订阅 Perf.sink,慢操作(网络>10s/DB>2s/UI>500ms)写入 perf 目录(按天滚动,保留7天)。
+        //   开关 settings.enablePerfReport(默认 false,隐私优先);本地日志照常写入,远程上报待启用。
+        io.zer0.muse.perf.PerformanceReporter(this, settings).start()
         // 断点续传(工具中断恢复):初始化 pending tool calls 持久化文件路径。
         // 必须 Early-init,确保 ChatViewModel 启动时 fileRef 已就绪。
         io.zer0.muse.chat.PendingToolCallStore.init(this)
@@ -128,6 +151,32 @@ class MuseApp : Application(), ImageLoaderFactory {
         notificationManager.ensureChannels()
         // 启动 memory ticker(每小时 daily check,主触发仍是 ChatViewModel.notifyTurn)
         memoryTicker.start()
+        // v1.92: ChatViewModel 为 single 单例,onCleared 永不调用。
+        // 注册 ProcessLifecycleOwner 观察者,在 ON_STOP 时释放 TTS/ASR 资源并停止 memory ticker,
+        // 在 ON_START 时重启 memory ticker。
+        ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    Logger.i("MuseApp", "Process ON_STOP: 释放 ChatViewModel 资源 + 停止 MemoryTicker")
+                    resultOf { chatViewModel.release() }
+                        .onError { msg, t -> Logger.w("MuseApp", "chatViewModel.release 失败: $msg", t) }
+                    appScope.launch {
+                        resultOf { memoryTicker.stop() }
+                            .onError { msg, t -> Logger.w("MuseApp", "memoryTicker.stop 失败: $msg", t) }
+                    }
+                }
+                Lifecycle.Event.ON_START -> {
+                    // 回前台时重启 memory ticker(stop 时 _timerJob 已置 null,可安全重启)
+                    resultOf { memoryTicker.start() }
+                        .onError { msg, t -> Logger.w("MuseApp", "memoryTicker.start 失败: $msg", t) }
+                    // v1.0.16: 回前台清理 OkHttp 空闲连接,避免复用后台期间被系统关闭的
+                    // 失效 socket 导致首次 HTTP 请求即失败(切页/后台回来报错的常见原因)
+                    resultOf { io.zer0.ai.core.ProviderHttpSupport.evictIdleConnections() }
+                        .onError { msg, t -> Logger.w("MuseApp", "evictIdleConnections 失败: $msg", t) }
+                }
+                else -> {}
+            }
+        })
         // Phase 8.2: 确保默认 Assistant 存在(fire-and-forget,失败不阻塞启动)
         appScope.launch {
             resultOf { assistantRepository.ensureDefaultExists() }
@@ -143,6 +192,22 @@ class MuseApp : Application(), ImageLoaderFactory {
         appScope.launch {
             resultOf { seedDevDocs() }
                 .onError { msg, t -> Logger.w("MuseApp", "seedDevDocs 失败", t) }
+        }
+        // v1.0.12: 启动时从 filesDir/rag/hnsw_index.bin 异步加载 HNSW 索引
+        // (startKoin 之后、RagService 首次使用之前)。加载失败时首次检索走暴力遍历
+        // (向后兼容,<5000 chunk 的库本就走暴力遍历),索引会在后续 indexDocument 累计
+        // SAVE_INTERVAL 个 chunk 后自动重建并保存。fire-and-forget,不阻塞启动。
+        appScope.launch {
+            resultOf { ragService.loadVectorIndexIfNeeded() }
+                .onError { msg, t -> Logger.w("MuseApp", "HNSW 索引加载失败: $msg", t) }
+        }
+        // v1.0.14 P0-1: 订阅 ChatPreferences.hapticFeedback,同步到 MuseHaptics 总开关。
+        // 用户在「设置 → 聊天行为 → 触感反馈」切换后,所有 MuseHaptics.light/medium/heavy/soft
+        // 调用立即生效(无需重启)。MuseHaptics.enabled 是 @Volatile,UI 线程读取无并发风险。
+        appScope.launch {
+            settings.chatPreferencesFlow.collect { prefs ->
+                io.zer0.muse.ui.theme.MuseHaptics.setEnabled(prefs.hapticFeedback)
+            }
         }
         // Phase 8.11: 若 Web 服务器已启用,自动启动(fire-and-forget,失败不阻塞启动)
         appScope.launch {
@@ -272,7 +337,7 @@ class MuseApp : Application(), ImageLoaderFactory {
         appScope.launch(io.zer0.muse.util.GlobalCoroutineExceptionHandler) {
             settings.themeScheduleFlow.collect { currentSchedule = it }
         }
-        while (true) {
+        while (coroutineContext.isActive) {
             try {
                 if (currentSchedule.enabled) {
                     val now = java.util.Calendar.getInstance()
@@ -383,6 +448,32 @@ class MuseApp : Application(), ImageLoaderFactory {
     }
 
     /**
+     * 配置 StrictMode(仅 debug 构建,由 [onCreate] 在 [BuildConfig.DEBUG] 为 true 时调用)。
+     *
+     * 检测主线程磁盘读写与网络访问违规,通过 penaltyLog 输出到 logcat,
+     * 帮助开发期发现主线程 IO/网络等阻塞操作(潜在 ANR 根因)。
+     * release 构建不启用([BuildConfig.DEBUG] == false),避免性能开销与日志泄露。
+     *
+     * 同时配置 VmPolicy penaltyLog,捕获资源泄漏等 VM 级违规。
+     */
+    private fun configureStrictMode() {
+        StrictMode.setThreadPolicy(
+            StrictMode.ThreadPolicy.Builder()
+                .detectDiskReads()
+                .detectDiskWrites()
+                .detectNetwork()
+                .penaltyLog()
+                .build(),
+        )
+        StrictMode.setVmPolicy(
+            StrictMode.VmPolicy.Builder()
+                .penaltyLog()
+                .build(),
+        )
+        Logger.d("MuseApp", "StrictMode 已启用(debug): detectDiskReads/detectDiskWrites/detectNetwork + penaltyLog")
+    }
+
+    /**
      * v0.32: 根据 keepAwake 开关申请/释放 PARTIAL_WAKE_LOCK。
      *
      * 用于在长时间运行的后台任务(记忆编译、定时任务)中保持 CPU 唤醒,
@@ -394,8 +485,8 @@ class MuseApp : Application(), ImageLoaderFactory {
             val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Muse:KeepAwake").also {
                 it.setReferenceCounted(false)
-                // M7: 设置 10 分钟超时,避免异常情况下 wakeLock 永久持有导致耗电
-                it.acquire(10 * 60 * 1000L)
+                // 长任务（视频生成/RAG索引）可能超过10分钟，设30分钟兜底
+                it.acquire(30 * 60 * 1000L)
             }
             Logger.i("MuseApp", "keepAwake: WAKE_LOCK acquired")
         } else {

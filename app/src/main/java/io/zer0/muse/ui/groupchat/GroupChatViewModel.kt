@@ -1,7 +1,9 @@
 package io.zer0.muse.ui.groupchat
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.zer0.muse.R
 import io.zer0.muse.data.ChatPreferences
 import io.zer0.muse.data.SettingsRepository
 import io.zer0.muse.data.assistant.AssistantEntity
@@ -64,6 +66,18 @@ data class GroupChatUiState(
     val chatDeleted: Boolean = false,
     /** v1.126: 操作错误提示(null=无错误) */
     val errorMessage: String? = null,
+    /** v1.53-GC: 是否还有更早的历史消息可加载(上滑加载更多用)。 */
+    val hasMoreHistory: Boolean = false,
+    /** v1.53-GC: 是否正在加载更多历史消息(防止重复触发 + UI 顶部加载指示器)。 */
+    val isLoadingMore: Boolean = false,
+    /**
+     * v1.53-GC: 最近一次"加载更多"插入的历史条数。
+     *
+     * UI 监听该字段变化(>0)后,通过 [androidx.compose.foundation.lazy.LazyListState.scrollToItem]
+     * 跳过新插入的条数,保持用户视觉位置不跳动(原来在顶部的消息现在在该 index),
+     * 然后调 [GroupChatViewModel.clearHistoryLoadCount] 清空。
+     */
+    val lastHistoryLoadCount: Int = 0,
 )
 
 /**
@@ -71,9 +85,13 @@ data class GroupChatUiState(
  *
  * 职责:
  *  - 观察群聊列表(observeChats)与助手列表(AssistantRepository.observeAll)
- *  - 切换当前群聊时观察其消息流(observeMessages)
+ *  - 切换当前群聊时分页加载消息流(getPagedMessages 首屏 Flow + loadMoreHistory 上滑加载更多)
  *  - 用户发消息后调用 [GroupChatScheduler.triggerAgentRoundRobin] 串行触发各 Agent 发言
  *  - 创建 / 删除群聊
+ *
+ * v1.53-GC: 消息列表改分页加载,复用单聊 v1.53 方案(窗口查询 + Repository reversed +
+ * ViewModel loadMoreHistory)。首屏加载 [INITIAL_PAGE_SIZE] 条,上滑到顶触发
+ * [loadMoreHistory] 取更早 [LOAD_MORE_PAGE_SIZE] 条;新消息通过 Flow 增量追加到列表尾部。
  *
  * @param groupChatRepository 群聊仓库
  * @param scheduler 群聊调度器(触发 Agent 轮转)
@@ -86,12 +104,17 @@ class GroupChatViewModel(
     private val scheduler: GroupChatScheduler,
     private val assistantRepository: AssistantRepository,
     private val settings: SettingsRepository,
+    private val appContext: Context,
 ) : ViewModel() {
 
     companion object {
         private const val TAG = "GroupChatViewModel"
         /** v1.126: 发送消息最小间隔(ms),防止快速点击重复发送 */
         private const val SEND_DEBOUNCE_MS = 500L
+        /** v1.53-GC: 群聊消息分页 — 首屏页大小(初始加载条数)。 */
+        private const val INITIAL_PAGE_SIZE = GroupChatRepository.INITIAL_PAGE_SIZE
+        /** v1.53-GC: 群聊消息分页 — 上滑加载更多页大小。 */
+        private const val LOAD_MORE_PAGE_SIZE = GroupChatRepository.LOAD_MORE_PAGE_SIZE
     }
 
     private val _state = MutableStateFlow(GroupChatUiState())
@@ -123,16 +146,33 @@ class GroupChatViewModel(
                 _state.update { it.copy(assistants = assistants, currentSpeaker = speaker) }
             }
         }
-        // 观察当前群聊的消息流(随 currentChatId 切换)
+        // v1.53-GC: 观察当前群聊最近一页消息(Flow),增量追加新消息到 currentMessages。
+        // 首屏全量加载由 [selectChat] -> [loadInitialPage] 负责,此处只负责追加新到达的消息
+        // (Agent 轮转发言 / 用户发消息后 DB 写入触发 Flow 重发)。
         viewModelScope.launch {
             currentChatId.flatMapLatest { chatId ->
                 if (chatId != null) {
-                    groupChatRepository.observeMessages(chatId)
+                    groupChatRepository.getPagedMessages(chatId, INITIAL_PAGE_SIZE)
                 } else {
                     flowOf(emptyList())
                 }
-            }.collect { messages ->
-                _state.update { it.copy(currentMessages = messages) }
+            }.collect { recentWindow ->
+                // 首屏尚未加载(currentMessages 为空)时由 loadInitialPage 负责,跳过避免覆盖
+                val current = _state.value.currentMessages
+                if (current.isEmpty()) return@collect
+                // recentWindow 为空(消息被全删)时无新消息可追加,跳过
+                if (recentWindow.isEmpty()) return@collect
+                // 同 chatId 守卫:防切换群聊时旧消息与新 Flow 串扰
+                val lastLoaded = current.last()
+                if (lastLoaded.chatId != recentWindow.first().chatId) return@collect
+                // 增量合并:仅追加比 currentMessages 最新一条 (timestamp, id) 更新的消息
+                val newMessages = recentWindow.filter { msg ->
+                    msg.timestamp > lastLoaded.timestamp ||
+                        (msg.timestamp == lastLoaded.timestamp && msg.id > lastLoaded.id)
+                }
+                if (newMessages.isNotEmpty()) {
+                    _state.update { it.copy(currentMessages = current + newMessages) }
+                }
             }
         }
         // 观察当前群聊元数据(标题刷新用)
@@ -224,12 +264,121 @@ class GroupChatViewModel(
     }
 
     /**
-     * 选中群聊,切换消息流观察。
+     * 选中群聊,切换消息流观察并触发分页首屏加载。
+     *
+     * v1.53-GC: 改为分页加载 — 立即清空旧消息(避免跨群聊串扰),随后异步加载最近
+     * [INITIAL_PAGE_SIZE] 条;新消息由 init 中的 [getPagedMessages] Flow 增量追加。
      *
      * @param chatId 群聊 id
      */
     fun selectChat(chatId: String) {
         currentChatId.value = chatId
+        // 立即清空旧消息 + 分页状态,避免新群聊首屏加载完成前残留旧群聊内容
+        _state.update {
+            it.copy(
+                currentMessages = emptyList(),
+                hasMoreHistory = false,
+                isLoadingMore = false,
+                lastHistoryLoadCount = 0,
+            )
+        }
+        loadInitialPage(chatId)
+    }
+
+    /**
+     * v1.53-GC: 分页首屏加载 — 取最近 [INITIAL_PAGE_SIZE] 条消息,并据总数设置 hasMoreHistory。
+     *
+     * @param chatId 群聊 id
+     */
+    private fun loadInitialPage(chatId: String) {
+        viewModelScope.launch {
+            try {
+                val total = groupChatRepository.countMessages(chatId)
+                if (total == 0) {
+                    _state.update {
+                        it.copy(
+                            currentMessages = emptyList(),
+                            hasMoreHistory = false,
+                            isLoadingMore = false,
+                            lastHistoryLoadCount = 0,
+                        )
+                    }
+                    return@launch
+                }
+                val limit = minOf(INITIAL_PAGE_SIZE, total)
+                val messages = groupChatRepository.getRecentMessagesPaged(chatId, limit)
+                _state.update {
+                    it.copy(
+                        currentMessages = messages,
+                        hasMoreHistory = total > messages.size,
+                        isLoadingMore = false,
+                        lastHistoryLoadCount = 0,
+                    )
+                }
+            } catch (e: Exception) {
+                Logger.e(TAG, "群聊首屏分页加载失败 chatId=$chatId", e)
+                _state.update { it.copy(isLoadingMore = false, hasMoreHistory = false) }
+            }
+        }
+    }
+
+    /**
+     * v1.53-GC: 上滑加载更多历史消息。
+     *
+     * 取当前 currentMessages 最早一条消息的 (timestamp, id) 作为双锚点,从 DB 取早于该锚点的
+     * [LOAD_MORE_PAGE_SIZE] 条消息,前置插入到 currentMessages。
+     *
+     * - isLoadingMore=true 时跳过(防止重复触发)
+     * - hasMoreHistory=false 时跳过(已加载完)
+     * - currentMessages 为空时跳过(首屏尚未加载完成)
+     * - 加载完成后设置 [GroupChatUiState.lastHistoryLoadCount],UI 监听后调整滚动位置保持视觉位置
+     */
+    fun loadMoreHistory() {
+        val state = _state.value
+        if (state.isLoadingMore || !state.hasMoreHistory) return
+        val chatId = currentChatId.value ?: return
+        val firstMsg = state.currentMessages.firstOrNull() ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(isLoadingMore = true) }
+            try {
+                val older = groupChatRepository.getOlderMessages(
+                    chatId = chatId,
+                    beforeTimestamp = firstMsg.timestamp,
+                    beforeId = firstMsg.id,
+                    limit = LOAD_MORE_PAGE_SIZE,
+                )
+                if (older.isEmpty()) {
+                    _state.update { it.copy(hasMoreHistory = false, isLoadingMore = false) }
+                    return@launch
+                }
+                // 重新读取最新 state.currentMessages,防止加载期间 Flow 追加的新消息被覆盖
+                val current = _state.value.currentMessages
+                _state.update {
+                    it.copy(
+                        currentMessages = older + current,
+                        hasMoreHistory = older.size >= LOAD_MORE_PAGE_SIZE,
+                        isLoadingMore = false,
+                        lastHistoryLoadCount = older.size,
+                    )
+                }
+            } catch (e: Exception) {
+                Logger.e(TAG, "群聊加载更多历史失败 chatId=$chatId", e)
+                _state.update { it.copy(isLoadingMore = false, hasMoreHistory = false) }
+            }
+        }
+    }
+
+    /**
+     * v1.53-GC: 清空 [GroupChatUiState.lastHistoryLoadCount]。
+     *
+     * UI 在 [GroupChatDetailScreen] 监听 lastHistoryLoadCount 变化(>0)后,调
+     * [androidx.compose.foundation.lazy.LazyListState.scrollToItem] 跳过新插入的条数,
+     * 保持视觉位置不跳动,然后调本方法清空(避免重组时重复跳转)。
+     */
+    fun clearHistoryLoadCount() {
+        if (_state.value.lastHistoryLoadCount != 0) {
+            _state.update { it.copy(lastHistoryLoadCount = 0) }
+        }
     }
 
     /**
@@ -325,11 +474,20 @@ class GroupChatViewModel(
                 if (currentChatId.value == chatId) {
                     currentChatId.value = null
                     // M7: 设置删除标志,详情页据此自动返回
-                    _state.update { it.copy(chatDeleted = true) }
+                    // v1.53-GC: 分页模式下 Flow 不再全量重发,手动清空消息 + 分页状态
+                    _state.update {
+                        it.copy(
+                            chatDeleted = true,
+                            currentMessages = emptyList(),
+                            hasMoreHistory = false,
+                            isLoadingMore = false,
+                            lastHistoryLoadCount = 0,
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 Logger.e(TAG, "删除群聊失败", e)
-                _state.update { it.copy(errorMessage = "删除群聊失败") }
+                _state.update { it.copy(errorMessage = appContext.getString(R.string.err_group_chat_delete_failed)) }
             }
         }
     }
@@ -343,9 +501,14 @@ class GroupChatViewModel(
         viewModelScope.launch {
             try {
                 groupChatRepository.deleteMessage(messageId)
+                // v1.53-GC: 分页模式下 Flow 只增量追加新消息、不重发全量,
+                // 需手动从 currentMessages 移除已删消息(避免残留)
+                _state.update { state ->
+                    state.copy(currentMessages = state.currentMessages.filterNot { it.id == messageId })
+                }
             } catch (e: Exception) {
                 Logger.e(TAG, "删除消息失败", e)
-                _state.update { it.copy(errorMessage = "删除消息失败") }
+                _state.update { it.copy(errorMessage = appContext.getString(R.string.err_group_chat_delete_msg_failed)) }
             }
         }
     }
@@ -361,7 +524,7 @@ class GroupChatViewModel(
                 groupChatRepository.togglePin(chatId)
             } catch (e: Exception) {
                 Logger.e(TAG, "切换置顶失败", e)
-                _state.update { it.copy(errorMessage = "操作失败") }
+                _state.update { it.copy(errorMessage = appContext.getString(R.string.err_group_chat_operation_failed)) }
             }
         }
     }
@@ -385,7 +548,7 @@ class GroupChatViewModel(
                 groupChatRepository.updateChat(chatId, name, description, memberIds)
             } catch (e: Exception) {
                 Logger.e(TAG, "更新群聊失败", e)
-                _state.update { it.copy(errorMessage = "更新群聊失败") }
+                _state.update { it.copy(errorMessage = appContext.getString(R.string.err_group_chat_update_failed)) }
             }
         }
     }

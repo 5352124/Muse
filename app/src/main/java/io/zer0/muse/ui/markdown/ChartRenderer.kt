@@ -3,7 +3,6 @@ package io.zer0.muse.ui.markdown
 import android.annotation.SuppressLint
 import android.net.Uri
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,10 +41,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import io.zer0.muse.R
+import io.zer0.muse.ui.common.LifecycleAwareWebViewContainer
 import io.zer0.muse.ui.theme.MuseMonoFontFamily
 import io.zer0.muse.ui.theme.MusePaddings
 import io.zer0.muse.ui.theme.MuseShapes
@@ -290,30 +289,15 @@ fun MermaidBlock(code: String) {
                             ),
                         contentAlignment = Alignment.Center,
                     ) {
-                        AndroidView(
-                            factory = { ctx ->
-                                WebView(ctx).apply {
-                                    settings.javaScriptEnabled = true
-                                    settings.allowFileAccess = false
-                                    settings.allowContentAccess = false
-                                    settings.mediaPlaybackRequiresUserGesture = true
-                                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                                    webViewClient = WebViewClient()
-                                }.also { webViewRef = it }
-                            },
-                            update = { webView ->
-                                webView.loadDataWithBaseURL(
-                                    "file:///android_asset/",
-                                    html,
-                                    "text/html",
-                                    "UTF-8",
-                                    null,
-                                )
-                            },
-                            onRelease = {
-                                it.destroy()
-                                webViewRef = null
-                            },
+                        // v1.88 修复: 改用 LifecycleAwareWebViewContainer,自动处理 ON_PAUSE/ON_RESUME/ON_DESTROY,
+                        // 解决 Activity 后台时 mermaid.js 渲染相关 JS 定时器继续运行耗电的问题。
+                        // 通过 onWebViewCreated / onWebViewReleased 维护 webViewRef 供轮询使用。
+                        LifecycleAwareWebViewContainer(
+                            htmlContent = html,
+                            baseUrl = "file:///android_asset/",
+                            javaScriptEnabled = true,
+                            onWebViewCreated = { webViewRef = it },
+                            onWebViewReleased = { webViewRef = null },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .semantics { contentDescription = mermaidCd },

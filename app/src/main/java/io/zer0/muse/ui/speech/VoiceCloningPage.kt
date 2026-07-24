@@ -31,7 +31,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
+import io.zer0.muse.ui.common.IosChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -178,10 +178,10 @@ fun VoiceCloningPage(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         voiceCloningService.availableProviders().forEach { pid ->
-                            FilterChip(
+                            IosChip(
                                 selected = pid == selectedProvider,
                                 onClick = { selectedProvider = pid },
-                                label = { Text(pid) },
+                                label = pid,
                             )
                         }
                     }

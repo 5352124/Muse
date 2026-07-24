@@ -30,6 +30,7 @@ import coil.compose.AsyncImage
 import io.zer0.common.Logger
 import io.zer0.common.resultOf
 import io.zer0.muse.ui.theme.MuseShapes
+import io.zer0.muse.ui.theme.MusePaddings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -202,12 +203,12 @@ fun LinkPreviewCard(
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 runCatching { context.startActivity(intent) }
             },
-        shape = RoundedCornerShape(8.dp),
+        shape = MuseShapes.small,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
         ),
     ) {
-        Row(modifier = Modifier.padding(8.dp)) {
+        Row(modifier = Modifier.padding(MusePaddings.contentGap)) {
             if (preview.imageUrl.isNotBlank()) {
                 AsyncImage(
                     model = preview.imageUrl,

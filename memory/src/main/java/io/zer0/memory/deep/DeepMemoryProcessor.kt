@@ -22,6 +22,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -48,10 +49,14 @@ class DeepMemoryProcessor(
         const val MAX_CONCURRENT = 3
         const val MAX_RETRIES = 3
         const val FACT_EXTRACTION_MAX_TOKENS = 4096
+        // 连续 daily 失败达此上限后 markProcessed,不再重试(避免浪费 LLM 调用)
+        const val MAX_DAILY_FAILURES = 3
     }
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val concurrency = Semaphore(MAX_CONCURRENT)
+    // session → 连续 daily 失败次数,成功时清除,达 MAX_DAILY_FAILURES 后 markProcessed 跳过
+    private val failureCounts = ConcurrentHashMap<String, Int>()
 
     /** 处理结果。 */
     data class ProcessResult(
@@ -117,6 +122,14 @@ class DeepMemoryProcessor(
         locale: String = "zh-CN",
         config: MemoryConfig = MemoryConfig(),
     ): Int {
+        // 连续 daily 失败达上限,标记为已处理不再重试(避免反复浪费 LLM 调用)
+        if ((failureCounts[summary.sessionId] ?: 0) >= MAX_DAILY_FAILURES) {
+            Logger.w("DeepMemoryProcessor", "session=${summary.sessionId.take(8)}… 连续 daily 失败 ${MAX_DAILY_FAILURES} 次,标记为已处理跳过")
+            summaryManager.markProcessed(summary.sessionId)
+            failureCounts.remove(summary.sessionId)
+            return 0
+        }
+
         val summaryText = summary.summary
         val prevSnapshot = summary.snapshot
 
@@ -156,6 +169,7 @@ class DeepMemoryProcessor(
                     // v1.78: 区分"解析失败返回空"与"LLM 真的判定无事实"
                     // 这里无法完全区分,但记录原始返回长度便于排查
                     Logger.d("DeepMemoryProcessor", "fact extraction returned empty (rawLen=${rawResult.length}, session=${summary.sessionId.take(8)}…)")
+                    failureCounts.remove(summary.sessionId)
                     summaryManager.markProcessed(summary.sessionId)
                     return 0
                 }
@@ -167,6 +181,7 @@ class DeepMemoryProcessor(
                 resultOf { factStore.applyDecay(config) }.onError { msg, t ->
                     Logger.w("DeepMemoryProcessor", "applyDecay failed for ${summary.sessionId.take(8)}…: $msg", t)
                 }
+                failureCounts.remove(summary.sessionId)
                 summaryManager.markProcessed(summary.sessionId)
                 return added
             } catch (e: CancellationException) {
@@ -184,9 +199,12 @@ class DeepMemoryProcessor(
 
         // v1.78 (M5): 重试耗尽时不调 markProcessed —— 否则该 session 会被永久跳过,
         // 真正的失败被掩盖。改为仅记录失败日志,让下次 daily pipeline 重新拾取重试。
+        // 递增连续失败计数,达 MAX_DAILY_FAILURES 后下次 daily 跳过该 session。
+        failureCounts[summary.sessionId] = (failureCounts[summary.sessionId] ?: 0) + 1
         Logger.w(
             "DeepMemoryProcessor",
             "fact extraction 重试耗尽(${MAX_RETRIES}次),session=${summary.sessionId.take(8)}…," +
+                "连续 daily 失败 ${failureCounts[summary.sessionId]}/$MAX_DAILY_FAILURES," +
                 "下次 daily pipeline 将重试: ${lastError?.message}",
             lastError,
         )

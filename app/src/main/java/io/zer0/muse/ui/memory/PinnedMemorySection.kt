@@ -24,9 +24,9 @@ import androidx.compose.ui.unit.dp
 import io.zer0.memory.pin.PinnedMemoryStore
 
 /**
- * Pinned memory management section (openhanako pinned-memory-store.ts UI).
+ * 置顶记忆管理区(openhanako pinned-memory-store.ts 的 UI)。
  *
- * Shows all pinned memories with remove buttons.
+ * 显示所有置顶记忆及移除按钮。
  */
 @Composable
 fun PinnedMemorySection(
